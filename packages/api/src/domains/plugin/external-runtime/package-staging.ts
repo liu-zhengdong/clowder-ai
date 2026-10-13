@@ -6,8 +6,8 @@ import { isAbsolute, posix, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { type PluginManifest } from '@clowder-ai/plugin-contract';
 import { parse as parseYaml } from 'yaml';
-import { createModuleLogger } from '../../../infrastructure/logger.js';
 import { validateHostPluginManifest as validateManifest } from '../desktop-window-runtime/presentation-manifest.js';
+import { recordPackageStagingPhase } from './package-staging-diagnostics.js';
 import { sealStaticPackage } from './static-package-seal.js';
 import type { VerifiedPluginPackage } from './types.js';
 import { ExternalPluginRuntimeError } from './types.js';
@@ -16,23 +16,6 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_ARCHIVE_FILENAME = 'package.tgz';
 const PACKAGE_MANIFEST_FILENAMES = ['plugin.yaml', 'manifest.json'] as const;
 const NPM_ARCHIVE_ROOT = 'package';
-const log = createModuleLogger('plugin/package-staging');
-
-function describeStagingError(error: unknown, depth = 0): Record<string, unknown> {
-  if (!(error instanceof Error)) return { name: 'NonError', type: typeof error };
-  if (depth >= 4) return { name: error.name.slice(0, 128), truncated: true };
-  const diagnostic: Record<string, unknown> = {
-    name: error.name.slice(0, 128),
-    message: error.message.slice(0, 512),
-  };
-  const subprocess = error as NodeJS.ErrnoException & { signal?: unknown; stderr?: unknown };
-  if (typeof subprocess.code === 'string') diagnostic.code = subprocess.code.slice(0, 128);
-  if (typeof subprocess.code === 'number') diagnostic.code = subprocess.code;
-  if (typeof subprocess.signal === 'string') diagnostic.signal = subprocess.signal;
-  if (typeof subprocess.stderr === 'string') diagnostic.stderr = subprocess.stderr.slice(0, 2048);
-  if (error.cause !== undefined) diagnostic.cause = describeStagingError(error.cause, depth + 1);
-  return diagnostic;
-}
 
 interface FileFingerprint {
   readonly path: string;
@@ -260,12 +243,11 @@ export async function stageVerifiedPackageArchive(
     };
     return { rootDir: readyRoot, manifest: validation.manifest, verifyIntegrity, verifyStaticIntegrity, release };
   } catch (error) {
-    log.warn(
-      { phase, platform: process.platform, packageDigest: input.packageDigest, error: describeStagingError(error) },
-      'Plugin package staging failed',
-    );
     await release().catch(() => undefined);
-    if (error instanceof ExternalPluginRuntimeError) throw error;
-    throw runtimeError(`installed package ${input.packageDigest} could not be verified and staged`, error);
+    const failure =
+      error instanceof ExternalPluginRuntimeError
+        ? error
+        : runtimeError(`installed package ${input.packageDigest} could not be verified and staged`, error);
+    throw recordPackageStagingPhase(failure, phase);
   }
 }
