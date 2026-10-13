@@ -6,6 +6,7 @@ import { isAbsolute, posix, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { type PluginManifest } from '@clowder-ai/plugin-contract';
 import { parse as parseYaml } from 'yaml';
+import { createModuleLogger } from '../../../infrastructure/logger.js';
 import { validateHostPluginManifest as validateManifest } from '../desktop-window-runtime/presentation-manifest.js';
 import { sealStaticPackage } from './static-package-seal.js';
 import type { VerifiedPluginPackage } from './types.js';
@@ -15,6 +16,23 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_ARCHIVE_FILENAME = 'package.tgz';
 const PACKAGE_MANIFEST_FILENAMES = ['plugin.yaml', 'manifest.json'] as const;
 const NPM_ARCHIVE_ROOT = 'package';
+const log = createModuleLogger('plugin/package-staging');
+
+function describeStagingError(error: unknown, depth = 0): Record<string, unknown> {
+  if (!(error instanceof Error)) return { name: 'NonError', type: typeof error };
+  if (depth >= 4) return { name: error.name.slice(0, 128), truncated: true };
+  const diagnostic: Record<string, unknown> = {
+    name: error.name.slice(0, 128),
+    message: error.message.slice(0, 512),
+  };
+  const subprocess = error as NodeJS.ErrnoException & { signal?: unknown; stderr?: unknown };
+  if (typeof subprocess.code === 'string') diagnostic.code = subprocess.code.slice(0, 128);
+  if (typeof subprocess.code === 'number') diagnostic.code = subprocess.code;
+  if (typeof subprocess.signal === 'string') diagnostic.signal = subprocess.signal;
+  if (typeof subprocess.stderr === 'string') diagnostic.stderr = subprocess.stderr.slice(0, 2048);
+  if (error.cause !== undefined) diagnostic.cause = describeStagingError(error.cause, depth + 1);
+  return diagnostic;
+}
 
 interface FileFingerprint {
   readonly path: string;
@@ -192,9 +210,12 @@ export async function stageVerifiedPackageArchive(
     released = true;
     await rm(stageParent, { recursive: true, force: true });
   };
+  let phase = 'copy';
   try {
     await copyFile(archivePath, sealedArchivePath, constants.COPYFILE_EXCL);
+    phase = 'digest';
     await verifyArchiveDigest(sealedArchivePath, input.packageDigest);
+    phase = 'list';
     const archiveEnvironment = { PATH: process.env.PATH ?? '/usr/bin:/bin', LC_ALL: 'C' };
     const [list, verboseList] = await Promise.all([
       execFileAsync(input.tarBin, ['-tzf', sealedArchivePath], {
@@ -208,14 +229,17 @@ export async function stageVerifiedPackageArchive(
     ]);
     const members = archiveMembers(list.stdout);
     validateArchiveMemberTypes(verboseList.stdout, members.length);
+    phase = 'extract';
     await mkdir(partialRoot);
     await execFileAsync(input.tarBin, ['-xzf', sealedArchivePath, '-C', partialRoot, '--strip-components=1'], {
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin' },
       maxBuffer: 8 * 1024 * 1024,
     });
+    phase = 'tree';
     const admittedSnapshot = await snapshotPackageTree(partialRoot);
     await rename(partialRoot, readyRoot);
 
+    phase = 'manifest';
     const value = await readPackageManifest(readyRoot);
     const validation = (input.validateManifest ?? validateManifest)(value);
     if (!validation.valid) throw runtimeError('installed package manifest fails the published contract');
@@ -227,6 +251,7 @@ export async function stageVerifiedPackageArchive(
         throw runtimeError('launchable package bytes changed after verified staging');
       }
     };
+    phase = 'seal';
     const verifySeal = await sealStaticPackage(readyRoot, verifyIntegrity);
     const verifyStaticIntegrity = async () => {
       if (released) throw runtimeError('staged package was released');
@@ -235,6 +260,10 @@ export async function stageVerifiedPackageArchive(
     };
     return { rootDir: readyRoot, manifest: validation.manifest, verifyIntegrity, verifyStaticIntegrity, release };
   } catch (error) {
+    log.warn(
+      { phase, platform: process.platform, packageDigest: input.packageDigest, error: describeStagingError(error) },
+      'Plugin package staging failed',
+    );
     await release().catch(() => undefined);
     if (error instanceof ExternalPluginRuntimeError) throw error;
     throw runtimeError(`installed package ${input.packageDigest} could not be verified and staged`, error);

@@ -35,6 +35,25 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @cat-cafe/shared build
       - run: pnpm --filter @cat-cafe/api build
+      - name: Windows web build and duplicate Trusted Types regression
+        run: >-
+          node --test
+          scripts/run-preserving-signal-exit.test.mjs
+          packages/web/test/sanitize-widget-types.test.mjs
+      - name: Build the actual web application
+        run: pnpm --filter @cat-cafe/web build
+      - name: Widget sanitization behavior
+        run: pnpm --filter @cat-cafe/web exec vitest run src/components/rich/__tests__/sanitize-widget-html.test.ts
+      - name: Real tar package authority and published Companion installation
+        run: >-
+          node --test
+          packages/api/test/plugin-package-staging-diagnostics.test.js
+          packages/api/test/plugin-external-runtime-package.test.js
+          packages/api/test/plugin-official-package-installer.test.js
+          packages/api/test/plugin-companion-registry.smoke.mjs
+        env:
+          NODE_ENV: test
+          LOG_DIR: ${{ runner.temp }}/plugin-staging-logs
       - name: Install OpenCode behavior baseline
         run: npm install --global opencode-ai@1.18.9
       - name: Verify OpenCode model ID routing
