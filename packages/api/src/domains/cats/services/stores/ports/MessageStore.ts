@@ -1200,13 +1200,18 @@ export interface IMessageStore {
     ownerUserId: string,
     sinceInclusive: number,
     untilInclusive: number,
+    options?: { humanOnly?: true },
   ): StoredMessage[] | Promise<StoredMessage[]>;
-  /** Bounded evidence read. hasMore is conservative over source index entries, never silently truncated. */
+  /**
+   * Bounded evidence read. hasMore is conservative over source index entries, never silently truncated.
+   * humanOnly excludes cat rows after the same candidate cap; their fatal custody parse errors remain errors.
+   */
   listOwnerMessageWindowSlice?(
     ownerUserId: string,
     sinceInclusive: number,
     untilInclusive: number,
     limit: number,
+    options?: { humanOnly?: true },
   ): { messages: StoredMessage[]; hasMore: boolean } | Promise<{ messages: StoredMessage[]; hasMore: boolean }>;
   /**
    * Enumerate content-free durable Queue custody for one owner. Replay filters
@@ -1913,7 +1918,12 @@ export class MessageStore {
     return matches.reverse();
   }
 
-  listOwnerMessagesInWindow(ownerUserId: string, sinceInclusive: number, untilInclusive: number): StoredMessage[] {
+  listOwnerMessagesInWindow(
+    ownerUserId: string,
+    sinceInclusive: number,
+    untilInclusive: number,
+    options?: { humanOnly?: true },
+  ): StoredMessage[] {
     assertValidStoredMessageTimestamp(sinceInclusive);
     assertValidStoredMessageTimestamp(untilInclusive);
     if (sinceInclusive > untilInclusive) return [];
@@ -1921,6 +1931,7 @@ export class MessageStore {
     return this.messages
       .filter((message) => {
         if (message.userId !== ownerUserId || message.deletedAt || !isDelivered(message)) return false;
+        if (options?.humanOnly && message.catId !== null) return false;
         const timelineTime = getTimelineOrderTime(message);
         return timelineTime >= sinceInclusive && timelineTime <= untilInclusive;
       })
@@ -1930,10 +1941,20 @@ export class MessageStore {
       });
   }
 
-  listOwnerMessageWindowSlice(ownerUserId: string, sinceInclusive: number, untilInclusive: number, limit: number) {
+  listOwnerMessageWindowSlice(
+    ownerUserId: string,
+    sinceInclusive: number,
+    untilInclusive: number,
+    limit: number,
+    options?: { humanOnly?: true },
+  ) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) throw new Error('Invalid message window limit');
     const messages = this.listOwnerMessagesInWindow(ownerUserId, sinceInclusive, untilInclusive);
-    return { messages: messages.slice(0, limit), hasMore: messages.length > limit };
+    const candidates = messages.slice(0, limit);
+    return {
+      messages: options?.humanOnly ? candidates.filter((message) => message.catId === null) : candidates,
+      hasMore: messages.length > limit,
+    };
   }
 
   listOwnerQueueCustodyLifecycles(ownerUserId: string): QueueCustodyLifecycleRecord[] {

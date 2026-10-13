@@ -3,11 +3,13 @@ import { useState, useSyncExternalStore } from 'react';
 import { ApprovalPanel } from '@/components/ApprovalPanel';
 import { isApprovalItemBatchDecidable } from '@/lib/approval-features';
 import { useApprovalHubStore } from '@/stores/approvalHubStore';
+import { useShellCopy } from '../shell-copy';
 import type { UnifiedAttentionView } from '../use-unified-attention';
 import { matchHostedApproval } from './approval-match';
 import { describeReconcile } from './approval-reconcile';
 import { type ApprovalSessions, sessionKey } from './approval-sessions';
 import { HostedApprovalCard } from './HostedApprovalCard';
+import { mailboxEntryCopy } from './mailbox-entry.shell-copy';
 import type { MailboxSection } from './mailbox-navigation';
 import { resolveOriginalPlace } from './original-place';
 
@@ -167,6 +169,7 @@ export function MailboxSecondLayer({
   onNavigate: (section: MailboxSection) => void;
   disabled?: boolean;
 }) {
+  const t = useShellCopy(mailboxEntryCopy);
   return (
     <footer
       className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs"
@@ -180,7 +183,7 @@ export function MailboxSecondLayer({
         className="shell-nav-row shell-focusable rounded-lg px-2 py-1 disabled:opacity-50"
         style={{ color: 'var(--shell-primary-text)' }}
       >
-        已处理的
+        {t.history}
       </button>
       <button
         type="button"
@@ -190,7 +193,7 @@ export function MailboxSecondLayer({
         className="shell-nav-row shell-focusable rounded-lg px-2 py-1 disabled:opacity-50"
         style={{ color: 'var(--shell-primary-text)' }}
       >
-        审批记录
+        {t.records}
       </button>
     </footer>
   );

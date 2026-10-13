@@ -58,12 +58,23 @@ function isUserMention(value: unknown): boolean {
   );
 }
 
+function isPreferenceCoordinate(value: unknown, decisionRef: string): boolean {
+  return (
+    isRecord(value) && value.kind === 'mailbox' && value.decisionRef === decisionRef && isNonBlankString(value.version)
+  );
+}
+
 function isItem(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (!isNonBlankString(value.decisionRef)) return false;
   if (typeof value.kind !== 'string' || !ITEM_KIND.has(value.kind)) return false;
   if (typeof value.summary !== 'string') return false;
   if (!Array.isArray(value.linkedNeedsMe)) return false;
+  if (
+    value.preferenceCoordinate !== undefined &&
+    !isPreferenceCoordinate(value.preferenceCoordinate, value.decisionRef)
+  )
+    return false;
   if (value.choiceRequest !== undefined && !isChoiceRequest(value.choiceRequest)) return false;
   if (value.kind === 'user_mention') return isUserMention(value.userMention);
   if (value.approval === undefined) return true;
@@ -80,7 +91,8 @@ function hasSources(body: Record<string, unknown>): boolean {
     isSourceRead(body.sources.approvals) &&
     isSourceRead(body.sources.needsMe) &&
     (body.sources.structuredChoices === undefined || isSourceRead(body.sources.structuredChoices)) &&
-    (body.sources.userMentions === undefined || isSourceRead(body.sources.userMentions))
+    (body.sources.userMentions === undefined || isSourceRead(body.sources.userMentions)) &&
+    (body.sources.personalPreferences === undefined || isSourceRead(body.sources.personalPreferences))
   );
 }
 
@@ -114,11 +126,63 @@ function hasPage(body: Record<string, unknown>): boolean {
   return isRecord(body.page) && typeof body.page.hasMore === 'boolean';
 }
 
+const PERSONAL_COUNT_FIELDS = [
+  'originalTotalCount',
+  'visibleTotalCount',
+  'ignoredTotalCount',
+  'originalAttentionCount',
+  'visibleAttentionCount',
+  'ignoredAttentionCount',
+] as const;
+
+function hasValidPersonalCounts(view: Record<string, unknown>, body: Record<string, unknown>): boolean {
+  const present = PERSONAL_COUNT_FIELDS.filter((field) => view[field] !== undefined);
+  if (present.length === 0) return body.totalCount === undefined && body.attentionCount === undefined;
+  if (present.length !== PERSONAL_COUNT_FIELDS.length || view.preferenceRevision === undefined) return false;
+  const counts = PERSONAL_COUNT_FIELDS.map((field) => view[field]);
+  if (counts.some((value) => !Number.isSafeInteger(value) || (value as number) < 0)) return false;
+  const [originalTotal, visibleTotal, ignoredTotal, originalAttention, visibleAttention, ignoredAttention] =
+    counts as number[];
+  if (originalTotal !== visibleTotal + ignoredTotal || originalAttention !== visibleAttention + ignoredAttention)
+    return false;
+  const selectedTotal = view.mode === 'visible' ? visibleTotal : ignoredTotal;
+  const selectedAttention = view.mode === 'visible' ? visibleAttention : ignoredAttention;
+  return (
+    body.totalCount === selectedTotal &&
+    (body.attentionCount === undefined || body.attentionCount === selectedAttention)
+  );
+}
+
+function personalItemsHaveCoordinates(items: unknown): boolean {
+  return (
+    Array.isArray(items) &&
+    items.every((item) => isRecord(item) && isPreferenceCoordinate(item.preferenceCoordinate, String(item.decisionRef)))
+  );
+}
+
+function hasPersonalView(body: Record<string, unknown>): boolean {
+  if (body.personalView === undefined) return true;
+  if (!isRecord(body.personalView) || !['visible', 'ignored'].includes(String(body.personalView.mode))) return false;
+  const view = body.personalView;
+  if (!isRecord(body.sources) || !isSourceRead(body.sources.personalPreferences)) return false;
+  if (
+    view.preferenceRevision !== undefined &&
+    (!Number.isSafeInteger(view.preferenceRevision) || (view.preferenceRevision as number) < 0)
+  )
+    return false;
+  return personalItemsHaveCoordinates(body.items) && hasValidPersonalCounts(view, body);
+}
+
 export function parseUnifiedAttentionRead(body: unknown): UnifiedAttentionReadV1 | null {
   if (!isRecord(body) || body.version !== 1 || body.scope !== 'owner_all_projects') return null;
   if (typeof body.status !== 'string' || !OVERALL_STATUS.has(body.status)) return null;
   if (!Array.isArray(body.items) || !body.items.every(isItem)) return null;
   const structurallyValid =
-    hasOwnerIdentity(body) && hasSources(body) && hasConsistency(body) && hasValidTotal(body) && hasPage(body);
+    hasOwnerIdentity(body) &&
+    hasSources(body) &&
+    hasConsistency(body) &&
+    hasValidTotal(body) &&
+    hasPage(body) &&
+    hasPersonalView(body);
   return structurallyValid ? (body as unknown as UnifiedAttentionReadV1) : null;
 }

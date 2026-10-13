@@ -5,25 +5,19 @@ import type { MailboxSection } from './mailbox-navigation';
 export function MailboxPanelHeader({
   section,
   total,
-  handled,
   onClose,
   onBack,
   onOpenSchedule,
 }: {
   section: MailboxSection;
   total: number | null;
-  handled: number | null;
   onClose: () => void;
   onBack: () => void;
   onOpenSchedule?: () => void;
 }) {
   const t = useShellCopy(mailboxEntryCopy);
   const title =
-    section === 'history'
-      ? `已处理的${handled === null ? '' : ` · ${handled}`}`
-      : section === 'tools'
-        ? '审批记录'
-        : '待办';
+    section === 'history' ? t.history : section === 'ignored' ? t.ignored : section === 'tools' ? t.records : t.title;
   return (
     <header className="flex-none px-[22px] pb-3 pt-3">
       <div className="flex items-center justify-between gap-2">
@@ -33,7 +27,7 @@ export function MailboxPanelHeader({
         <button
           type="button"
           data-testid="mailbox-close"
-          aria-label="关闭待办"
+          aria-label={t.close}
           onClick={onClose}
           className="shell-nav-row shell-focusable rounded-lg px-2 py-1 text-base leading-none"
         >
@@ -71,14 +65,14 @@ export function MailboxPanelHeader({
             {t.schedule}
           </button>
         </nav>
-      ) : section === 'history' ? (
+      ) : section === 'history' || section === 'ignored' ? (
         <button
           type="button"
           onClick={onBack}
           data-testid="mailbox-handled-back"
           className="shell-nav-row shell-focusable mt-3 rounded-lg px-2 py-1 text-xs"
         >
-          ‹ 返回待办
+          ‹ {t.back}
         </button>
       ) : null}
     </header>

@@ -6,6 +6,8 @@ export interface PendingComposerSelection {
   text: string;
   start: number;
   end: number;
+  direction?: 'forward' | 'backward' | 'none';
+  focus?: boolean;
 }
 
 export function usePendingComposerSelection(
@@ -24,12 +26,14 @@ export function usePendingComposerSelection(
     const applySelection = () => {
       const current = textareaRef.current;
       if (!current) return;
-      current.focus();
-      current.setSelectionRange(selection.start, selection.end);
+      if (current.value !== selection.text) return;
+      if (selection.focus !== false) current.focus();
+      current.setSelectionRange(selection.start, selection.end, selection.direction);
     };
     applySelection();
-    const timer = window.setTimeout(applySelection, 0);
     pendingSelectionRef.current = null;
+    if (selection.focus === false) return;
+    const timer = window.setTimeout(applySelection, 0);
     return () => window.clearTimeout(timer);
   }, [contextAttachmentCount, input, pendingSelectionRef, textareaRef]);
 }

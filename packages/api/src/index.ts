@@ -4372,11 +4372,15 @@ async function main(): Promise<void> {
     isLiveConfigChangePending: (userId) => liveCompanionSessions.isChangingPreferences(userId),
   });
   const { companionDecisionRoutes } = await import('./routes/companion-decision-routes.js');
+  const { readIgnoredItemPreferences } = await import('./config/user-preferences-ignored-items.js');
+  const ignoredItemPreferenceProjectRoot = resolveActiveProjectRoot();
   await app.register(companionDecisionRoutes, {
     ownerUserId: privateUserId,
     messageStore,
     threadStore,
     runtimeInteractionStore: runtimeInteractionRuntime.store,
+    readIgnoredItemPreferences: (ownerUserId) =>
+      readIgnoredItemPreferences(ignoredItemPreferenceProjectRoot, ownerUserId),
     onResolved: (ownerUserId) =>
       socketManager?.emitToUser(ownerUserId, 'entrusted_work_projection_invalidated', { ownerUserId }),
   });

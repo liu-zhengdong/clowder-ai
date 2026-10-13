@@ -11,13 +11,15 @@ const data = vi.hoisted(() => ({
     refetch: vi.fn(),
     nextPage: vi.fn(),
     previousPage: vi.fn(),
+    setPersonalView: vi.fn(),
+    setMentionPeriod: vi.fn(),
     readsStarted: () => 1,
     resultGeneration: 1 as number | null,
   },
   pathname: '/thread/current',
   push: vi.fn(),
   mode: vi.fn(),
-  approvalRefresh: vi.fn(),
+  approvalRefresh: vi.fn(async () => undefined),
   navigate: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => data.pathname, useRouter: () => ({ push: data.push }) }));
@@ -56,6 +58,8 @@ const approvalItem = (id: string, summary = `审批 ${id}`): UnifiedAttentionIte
   approval: {
     proposalId: id,
     sourceFeatureId: 'F128',
+    resolution: 'open',
+    materialization: { state: 'not_started' },
     requesterCatId: 'opus',
     summary,
     detail: {},
@@ -124,6 +128,63 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
     act(() => root.unmount());
     host.remove();
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  it('separates waiting decisions from mentions without hiding other existing work', () => {
+    show(
+      ok({
+        items: [
+          approvalItem('group-approval'),
+          judgmentItem('repair', 'repair'),
+          {
+            decisionRef: 'mention:group',
+            kind: 'user_mention',
+            summary: '@you',
+            linkedNeedsMe: [],
+            userMention: {
+              threadId: 'thread_group',
+              messageId: 'message-group',
+              catId: 'codex61-sol',
+              content: 'Please look here',
+              timestamp: 2,
+              expectedRevision: 0,
+            },
+          },
+        ],
+        totalCount: 3,
+        attentionCount: 1,
+      }),
+    );
+    render();
+    open();
+    const decisions = document.querySelector('[data-testid="mailbox-group-decisions"]');
+    const mentions = document.querySelector('[data-testid="mailbox-group-mentions"]');
+    expect(decisions?.textContent).toContain('等你决定');
+    expect(mentions?.textContent).toContain('@你');
+    expect(decisions?.querySelectorAll('[data-testid="mailbox-item"]').length).toBe(1);
+    expect(document.querySelector('[data-testid="mailbox-group-other"]')?.textContent).toContain('需要修复');
+    expect(mentions?.querySelectorAll('[data-testid="mailbox-item"]').length).toBe(1);
+  });
+
+  it('puts each proven empty state inside its own group', () => {
+    show(ok({ items: [], totalCount: 0, attentionCount: 0 }));
+    render();
+    open();
+    expect(document.querySelector('[data-testid="mailbox-group-decisions"]')?.textContent).toContain(
+      '暂无等你决定的事',
+    );
+    expect(document.querySelector('[data-testid="mailbox-group-mentions"]')?.textContent).toContain('暂无 @你 请求');
+  });
+
+  it('keeps a recovery entrance even when no current item is ignored', () => {
+    show(ok({ items: [], totalCount: 0, attentionCount: 0 }));
+    render();
+    open();
+    const ignored = document.querySelector<HTMLButtonElement>('[data-testid="mailbox-open-ignored"]');
+    expect(ignored).not.toBeNull();
+    act(() => ignored?.click());
+    expect(data.view.setPersonalView).toHaveBeenCalledWith('ignored', 'week');
+    expect(text('mailbox-title')).toBe('已忽略');
   });
 
   it('opens Schedule from the second mailbox tab through the original Workspace destination and closes the panel', () => {
@@ -212,7 +273,11 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
       expect(button().getAttribute('title')).toBeNull();
       expect(badgeOf()?.getAttribute('data-testid') ?? null).toBe(badge ? `rail-badge-${badge}` : null);
       open();
-      expect(text('mailbox-state-text')).toBe(panelState === '暂无' ? '暂无待办' : panelState);
+      if (panelState === '暂无')
+        expect(document.querySelector('[data-testid="mailbox-group-decisions"]')?.textContent).toContain(
+          '暂无等你决定的事',
+        );
+      else expect(text('mailbox-state-text')).toBe(panelState);
       expect(text('mailbox-title')).toBe('待办');
       expect(document.querySelector('[data-testid="mailbox-panel"] [title]')).toBeNull();
     });
@@ -693,7 +758,7 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
       render();
       open();
       expect(text('mailbox-state-text')).toBe('仅部分读取');
-      expect(text('mailbox-partial-note')).toBe('审批和待处理是分开读的，这次没能确认两边对得上');
+      expect(text('mailbox-partial-note')).toBe('这次没能确认各项读取对得上');
       expect(document.querySelector('[data-testid="mailbox-empty"]')).toBeNull();
     });
 
@@ -724,7 +789,10 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
       show(ok({ items: [], totalCount: 0 }));
       render();
       open();
-      expect(text('mailbox-empty')).toBe('暂无待办');
+      expect(document.querySelector('[data-testid="mailbox-group-decisions"]')?.textContent).toContain(
+        '暂无等你决定的事',
+      );
+      expect(document.querySelector('[data-testid="mailbox-group-mentions"]')?.textContent).toContain('暂无 @你 请求');
       expect(document.querySelector('[data-testid="mailbox-retry"]')).toBeNull();
     });
 

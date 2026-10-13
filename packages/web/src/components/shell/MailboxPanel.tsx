@@ -1,93 +1,28 @@
-import type { UnifiedAttentionReadV1 } from '@cat-cafe/shared';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ApprovalSessions } from './mailbox/approval-sessions';
 import { MailboxApprovalTools, MailboxSecondLayer } from './mailbox/MailboxApprovalTools';
+import { MailboxItemGroups } from './mailbox/MailboxItemGroups';
 import { MailboxMentionControls } from './mailbox/MailboxMentionControls';
 import { MailboxMentionUndo } from './mailbox/MailboxMentionUndo';
 import { MailboxPagination } from './mailbox/MailboxPagination';
 import { MailboxPanelHeader } from './mailbox/MailboxPanelHeader';
+import { MailboxPeriodFilter } from './mailbox/MailboxPeriodFilter';
+import { MailboxPersonalNotice } from './mailbox/MailboxPersonalNotice';
+import { MailboxReadNotes } from './mailbox/MailboxReadNotes';
 import { MailboxRow } from './mailbox/MailboxRow';
+import { mailboxEntryCopy } from './mailbox/mailbox-entry.shell-copy';
 import type { MailboxSection } from './mailbox/mailbox-navigation';
-import { useMailboxRows } from './mailbox/mailbox-rows';
+import { type MailboxDisplayRow, useMailboxRows } from './mailbox/mailbox-rows';
 import type { OriginalPlace } from './mailbox/original-place';
 import { RetainedResult } from './mailbox/RetainedResults';
-import {
-  MAILBOX_NAME,
-  type MailboxState,
-  mailboxPartialNote,
-  mailboxStateText,
-  sourceStatusText,
-} from './unified-mailbox-state';
+import { useMailboxPersonalPreferences } from './mailbox/use-mailbox-personal-preferences';
+import { useShellCopy } from './shell-copy';
+import type { MailboxState } from './unified-mailbox-state';
 import type { UnifiedAttentionView } from './use-unified-attention';
 
 const RAIL_WIDTH_FALLBACK = 52;
 const PANEL_WIDTH = 440;
-const MUTED = { color: 'var(--shell-muted)' } as const;
-
-function SourceNotes({ read }: { read: UnifiedAttentionReadV1 }) {
-  const notes = [
-    { id: 'approvals', label: '审批', text: sourceStatusText(read.sources.approvals) },
-    { id: 'needs-me', label: '等你判断或修复', text: sourceStatusText(read.sources.needsMe) },
-    ...(read.sources.userMentions
-      ? [{ id: 'user-mentions', label: '@你', text: sourceStatusText(read.sources.userMentions) }]
-      : []),
-  ].filter((note) => note.text !== null);
-  if (notes.length === 0) return null;
-  return (
-    <ul className="m-0 mb-1 list-none px-1 p-0 text-xs" style={MUTED}>
-      {notes.map((note) => (
-        <li key={note.id} data-testid={`mailbox-source-note-${note.id}`}>
-          {note.label}：{note.text}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** What the read says about itself above the rows: its state, which side is missing, and that rows may be the previous read. */
-function ReadNotes({
-  state,
-  read,
-  stale,
-}: {
-  state: MailboxState;
-  read: UnifiedAttentionReadV1 | null;
-  stale: boolean;
-}) {
-  const scopedKind =
-    read?.mentionPeriod === 'handled' ? '已处理请求' : read?.mentionPeriod === 'earlier' ? '更早的请求' : null;
-  const emptyPending = state.kind === 'empty' && read?.mentionPeriod !== 'handled' && (read?.totalCount ?? 0) === 0;
-  const label = scopedKind
-    ? `${read?.totalCount === undefined ? '部分' : read.totalCount} 条${scopedKind}`
-    : mailboxStateText(state);
-  const partialNote = read && state.kind === 'partial' ? mailboxPartialNote(read) : null;
-  return (
-    <>
-      <div className="pb-1.5 text-xs" style={MUTED} data-testid="mailbox-state-text">
-        {emptyPending ? (
-          <p className="m-0 py-2 text-sm" data-testid="mailbox-empty">
-            暂无待办
-          </p>
-        ) : (
-          label
-        )}
-      </div>
-      {read ? <SourceNotes read={read} /> : null}
-      {partialNote ? (
-        <p className="m-0 pb-1 text-xs" style={MUTED} data-testid="mailbox-partial-note">
-          {partialNote}
-        </p>
-      ) : null}
-      {stale ? (
-        <p className="m-0 pb-1 text-xs" style={MUTED} data-testid="mailbox-stale-note">
-          上次读到的内容，正在更新
-        </p>
-      ) : null}
-    </>
-  );
-}
-
 /** The panel docks against the rail's right edge; without a rail in the tree (a bare unit render) it uses the rail's width. */
 function useRailEdge(anchor: React.RefObject<HTMLElement | null>): number | null {
   const [edge, setEdge] = useState<number | null>(null);
@@ -175,6 +110,8 @@ export function MailboxPanel({
   selectedProposalId?: string | null;
   onOpenSchedule?: () => void;
 }) {
+  const t = useShellCopy(mailboxEntryCopy);
+  const personal = useMailboxPersonalPreferences(view);
   const panelRef = useRef<HTMLDivElement>(null);
   const left = useRailEdge(anchor);
 
@@ -190,7 +127,7 @@ export function MailboxPanel({
   const canRetry =
     state.kind === 'unavailable' || state.kind === 'partial' || (state.kind === 'has-items' && state.partial);
   // The panel counts the entire authoritative read; the rail separately counts only decisions.
-  const total = state.kind === 'has-items' ? state.count : null;
+  const total = state.kind === 'empty' ? 0 : state.kind === 'has-items' ? state.count : null;
 
   // A hidden element can't take focus, so move focus in only once the panel is positioned and visible.
   useEffect(() => {
@@ -215,11 +152,39 @@ export function MailboxPanel({
     }
   }, [selectedProposalId, rows, openKey, toggle]);
 
+  const completePage = Boolean(
+    read &&
+      read.status === 'available' &&
+      read.consistency.state === 'verified' &&
+      read.totalCount !== undefined &&
+      Object.values(read.sources).every(
+        (source) => source.status === 'available' && source.exhaustiveness === 'complete',
+      ) &&
+      read.page.offset === 0 &&
+      !read.page.hasMore,
+  );
+  const renderRow = (row: MailboxDisplayRow) =>
+    row.kind === 'retained' ? (
+      <RetainedResult key={row.key} session={row.session} sessions={sessions} />
+    ) : (
+      <MailboxRow
+        key={row.key}
+        item={row.item}
+        rowKey={row.key}
+        stale={staleRead !== null}
+        expanded={openKey === row.key}
+        onToggle={() => toggle(row.key)}
+        onOpen={onOpenPlace}
+        hosted={hosted}
+        personal={section === 'pending' || section === 'ignored' ? personal.actions : undefined}
+        readCurrent={read !== null && view.resultGeneration === view.readsStarted()}
+      />
+    );
   return createPortal(
     <div
       ref={panelRef}
       role="dialog"
-      aria-label={MAILBOX_NAME}
+      aria-label={t.title}
       tabIndex={-1}
       data-testid="mailbox-panel"
       className="shell-slide-in fixed bottom-0 top-0 z-[90] flex flex-col outline-none"
@@ -236,7 +201,6 @@ export function MailboxPanel({
       <MailboxPanelHeader
         section={section}
         total={total}
-        handled={read?.mentionCounts?.handled ?? null}
         onClose={onClose}
         onBack={() => onSectionChange?.('pending')}
         onOpenSchedule={onOpenSchedule}
@@ -256,33 +220,33 @@ export function MailboxPanel({
           aria-labelledby="mailbox-tab-needs-me"
           className="flex min-h-0 flex-1 flex-col overflow-y-auto px-[22px] pb-4"
         >
-          <MailboxMentionUndo
-            key={mentionOwner.current}
-            owner={mentionOwner.current ?? undefined}
-            visible={ownerUserId !== null && ownerUserId === mentionOwner.current}
-            disabled={read === null}
-          />
-          {section === 'pending' ? <MailboxMentionControls key={mentionOwner.current} read={read} view={view} /> : null}
-          <ReadNotes state={state} read={read} stale={staleRead !== null} />
-          {rows.length > 0 ? (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
-              {rows.map((row) =>
-                row.kind === 'retained' ? (
-                  <RetainedResult key={row.key} session={row.session} sessions={sessions} />
-                ) : (
-                  <MailboxRow
-                    key={row.key}
-                    item={row.item}
-                    rowKey={row.key}
-                    stale={staleRead !== null}
-                    expanded={openKey === row.key}
-                    onToggle={() => toggle(row.key)}
-                    onOpen={onOpenPlace}
-                    hosted={hosted}
-                  />
-                ),
-              )}
-            </ul>
+          {section === 'history' ? (
+            <MailboxMentionUndo
+              key={mentionOwner.current}
+              owner={mentionOwner.current ?? undefined}
+              visible={ownerUserId !== null && ownerUserId === mentionOwner.current}
+              disabled={read === null}
+            />
+          ) : null}
+          {section === 'ignored' ? <MailboxPeriodFilter read={read} view={view} /> : null}
+          <MailboxPersonalNotice personal={personal} />
+          <MailboxReadNotes state={state} read={read} stale={staleRead !== null} />
+          {section === 'pending' || section === 'ignored' ? (
+            <MailboxItemGroups
+              section={section}
+              rows={rows}
+              readKnown={read !== null}
+              complete={completePage}
+              decisionsComplete={completePage && read?.mentionPeriod !== 'earlier' && read?.mentionPeriod !== 'handled'}
+              mentionControls={
+                section === 'pending' ? (
+                  <MailboxMentionControls key={mentionOwner.current} read={read} view={view} personal={personal} />
+                ) : undefined
+              }
+              renderRow={renderRow}
+            />
+          ) : rows.length ? (
+            <ul className="m-0 flex list-none flex-col gap-2 p-0">{rows.map(renderRow)}</ul>
           ) : null}
           <MailboxPagination read={read} onNextPage={view.nextPage} onPreviousPage={view.previousPage} />
           {canRetry ? (
@@ -293,9 +257,19 @@ export function MailboxPanel({
                 data-testid="mailbox-retry"
                 className="shell-nav-row shell-focusable rounded-lg px-2 py-1 text-xs"
               >
-                重试
+                {t.retry}
               </button>
             </div>
+          ) : null}
+          {onSectionChange && section === 'pending' ? (
+            <button
+              type="button"
+              data-testid="mailbox-open-ignored"
+              className="shell-nav-row shell-focusable mt-4 self-start rounded-lg px-2 py-1 text-xs"
+              onClick={() => onSectionChange('ignored')}
+            >
+              {t.ignored}
+            </button>
           ) : null}
           {onSectionChange && section === 'pending' ? (
             <MailboxSecondLayer disabled={read === null} onNavigate={onSectionChange} />
