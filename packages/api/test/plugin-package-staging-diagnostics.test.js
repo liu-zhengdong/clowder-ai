@@ -10,16 +10,21 @@ import { promisify } from 'node:util';
 const apiRoot = fileURLToPath(new URL('..', import.meta.url));
 const childScript = String.raw`
 import { createHash } from 'node:crypto';
-import { harness } from './test/plugin-official-package-installer.fixture.js';
+import { harness, catalogEntry } from './test/plugin-official-package-installer.fixture.js';
+import { OfficialPluginPackageInstaller } from './dist/domains/plugin/official-package-installer.js';
 import { logger } from './dist/infrastructure/logger.js';
 const bytes = Buffer.from('invalid gzip fixture; archive contents must not be logged');
 const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
-const { installer, packagesRoot } = await harness({ bytes, integrity });
+const fixture = await harness({ bytes, integrity });
+const { packagesRoot, inventory } = fixture;
+let installer = fixture.installer;
 const earlyFailure = process.argv[1] === 'admission';
 if (earlyFailure) {
   const blocked = packagesRoot + '/not-a-directory';
   await (await import('node:fs/promises')).writeFile(blocked, 'fixture');
-  installer.packagesRoot = blocked;
+  installer = new OfficialPluginPackageInstaller({
+    inventory, packagesRoot: blocked, catalog: [catalogEntry(integrity)], fetchArchive: async () => bytes,
+  });
 }
 try {
   await installer.install('feishu-meeting-intake', { version: '0.1.0-alpha.1', packageDigest: integrity });

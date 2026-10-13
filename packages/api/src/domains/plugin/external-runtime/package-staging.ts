@@ -201,11 +201,15 @@ export async function stageVerifiedPackageArchive(
     phase = 'list';
     const archiveEnvironment = { PATH: process.env.PATH ?? '/usr/bin:/bin', LC_ALL: 'C' };
     const [list, verboseList] = await Promise.all([
-      execFileAsync(input.tarBin, ['-tzf', sealedArchivePath], {
+      // GNU tar interprets the colon in Windows drive paths as host:file.
+      // Resolve the sealed archive within this Host-owned staging directory.
+      execFileAsync(input.tarBin, ['-tzf', PACKAGE_ARCHIVE_FILENAME], {
+        cwd: stageParent,
         env: archiveEnvironment,
         maxBuffer: 8 * 1024 * 1024,
       }),
-      execFileAsync(input.tarBin, ['-tvzf', sealedArchivePath], {
+      execFileAsync(input.tarBin, ['-tvzf', PACKAGE_ARCHIVE_FILENAME], {
+        cwd: stageParent,
         env: archiveEnvironment,
         maxBuffer: 8 * 1024 * 1024,
       }),
@@ -214,7 +218,8 @@ export async function stageVerifiedPackageArchive(
     validateArchiveMemberTypes(verboseList.stdout, members.length);
     phase = 'extract';
     await mkdir(partialRoot);
-    await execFileAsync(input.tarBin, ['-xzf', sealedArchivePath, '-C', partialRoot, '--strip-components=1'], {
+    await execFileAsync(input.tarBin, ['-xzf', PACKAGE_ARCHIVE_FILENAME, '-C', 'partial', '--strip-components=1'], {
+      cwd: stageParent,
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin' },
       maxBuffer: 8 * 1024 * 1024,
     });
