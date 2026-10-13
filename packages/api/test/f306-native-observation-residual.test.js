@@ -19,24 +19,45 @@ after(() => rmSync(root, { recursive: true, force: true }));
 const noHost = { selfHost: () => ({ confidence: 'none' }) };
 const publicGuard = fileURLToPath(new URL('../scripts/public-test-external-resource-guard.mjs', import.meta.url));
 
-function classifyCleanLoaderFixture(payload) {
-  const inheritedOptions = process.env.NODE_OPTIONS;
-  // Model a clean loader for this synchronous, non-executing classifier call.
-  // Ignore only the exact public harness preload; hostile loader fixtures remain
-  // inputs. Installed network guards stay active, and every spawn inherits the
-  // original preload restored in finally.
-  if (inheritedOptions === `--import=${publicGuard}`) delete process.env.NODE_OPTIONS;
+// These are inputs to the observation fixture, independent of the test launcher.
+// The classifier itself never executes a command; real hook children below keep
+// the original public isolation environment.
+const fixtureEnvironment = {
+  PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+  NODE_OPTIONS: undefined,
+  NODE_PATH: undefined,
+  LD_PRELOAD: undefined,
+  LD_LIBRARY_PATH: undefined,
+  DYLD_INSERT_LIBRARIES: undefined,
+  DYLD_LIBRARY_PATH: undefined,
+  DYLD_FRAMEWORK_PATH: undefined,
+  BASH_ENV: undefined,
+  ENV: undefined,
+  CAT_CAFE_REAL_GH_PATH: undefined,
+  F306_OBSERVATION_TOOL: undefined,
+  F306_OBSERVATION_SOURCE: undefined,
+  F306_OBSERVATION_PULL: undefined,
+};
+
+function classifyObservationFixture(payload) {
+  const inherited = Object.fromEntries(Object.keys(fixtureEnvironment).map((key) => [key, process.env[key]]));
+  const apply = (environment) => {
+    for (const [key, value] of Object.entries(environment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
   try {
+    apply(fixtureEnvironment);
     return decideNativeHookPayload(payload, noHost);
   } finally {
-    if (inheritedOptions === undefined) delete process.env.NODE_OPTIONS;
-    else process.env.NODE_OPTIONS = inheritedOptions;
+    apply(inherited);
   }
 }
 function parity(command, decision, cwd = main) {
   const results = [];
   for (const tool_name of ['Bash', 'exec_command']) {
-    const result = classifyCleanLoaderFixture({
+    const result = classifyObservationFixture({
       tool_name,
       cwd,
       tool_input: { command, cmd: command },
@@ -100,28 +121,62 @@ test('comparison cannot erase unknown options, output writes or executable segme
   parity(`${guardedBin}/diff -qr ${runtime} ${ordinary}`, 'deny');
 });
 
+test('explicit inherited loader inputs remain unproved', () => {
+  for (const key of [
+    'NODE_OPTIONS',
+    'NODE_PATH',
+    'LD_PRELOAD',
+    'LD_LIBRARY_PATH',
+    'DYLD_INSERT_LIBRARIES',
+    'DYLD_LIBRARY_PATH',
+    'DYLD_FRAMEWORK_PATH',
+    'BASH_ENV',
+    'ENV',
+  ]) {
+    const saved = fixtureEnvironment[key];
+    try {
+      fixtureEnvironment[key] = key === 'NODE_OPTIONS' ? `--require ${runtime}/loader.js` : `${runtime}/loader`;
+      parity(`diff -qr ${runtime} ${ordinary}`, 'deny');
+    } finally {
+      fixtureEnvironment[key] = saved;
+    }
+  }
+});
+
+test('a failed classification restores the launcher environment before any later hook', () => {
+  const inherited = () => Object.fromEntries(Object.keys(fixtureEnvironment).map((key) => [key, process.env[key]]));
+  const before = inherited();
+  assert.throws(
+    () =>
+      classifyObservationFixture({
+        get hook_event_name() {
+          throw new Error('fixture classification failed');
+        },
+      }),
+    /fixture classification failed/,
+  );
+  assert.deepEqual(inherited(), before);
+});
+
 test('comparison reads require the observed system program and unchanged earlier selection', () => {
-  const savedPath = process.env.PATH;
-  const savedTool = process.env.F306_OBSERVATION_TOOL;
-  const savedSource = process.env.F306_OBSERVATION_SOURCE;
+  const savedPath = fixtureEnvironment.PATH;
+  const savedTool = fixtureEnvironment.F306_OBSERVATION_TOOL;
+  const savedSource = fixtureEnvironment.F306_OBSERVATION_SOURCE;
   writeFileSync(join(guardedBin, 'diff'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
   try {
-    process.env.PATH = `${guardedBin}:/usr/bin:/bin`;
+    fixtureEnvironment.PATH = `${guardedBin}:/usr/bin:/bin`;
     parity(`diff -qr ${runtime} ${ordinary}`, 'deny');
-    process.env.F306_OBSERVATION_TOOL = 'diff';
-    process.env.F306_OBSERVATION_SOURCE = runtime;
+    fixtureEnvironment.F306_OBSERVATION_TOOL = 'diff';
+    fixtureEnvironment.F306_OBSERVATION_SOURCE = runtime;
     parity(`"$F306_OBSERVATION_TOOL" -qr ${runtime} ${ordinary}`, 'deny');
     parity(`diff -qr "$F306_OBSERVATION_SOURCE" ${ordinary}`, 'deny');
-    process.env.PATH = '/usr/bin:/bin';
+    fixtureEnvironment.PATH = '/usr/bin:/bin';
     parity(`export PATH=${guardedBin}:/usr/bin:/bin; diff -qr ${runtime} ${ordinary}`, 'deny');
     parity(`export PATH=${guardedBin}:/usr/bin:/bin; /usr/bin/diff -qr ${runtime} ${ordinary}`, 'deny');
   } finally {
-    if (savedPath === undefined) delete process.env.PATH;
-    else process.env.PATH = savedPath;
-    if (savedTool === undefined) delete process.env.F306_OBSERVATION_TOOL;
-    else process.env.F306_OBSERVATION_TOOL = savedTool;
-    if (savedSource === undefined) delete process.env.F306_OBSERVATION_SOURCE;
-    else process.env.F306_OBSERVATION_SOURCE = savedSource;
+    fixtureEnvironment.PATH = savedPath;
+    fixtureEnvironment.F306_OBSERVATION_TOOL = savedTool;
+    fixtureEnvironment.F306_OBSERVATION_SOURCE = savedSource;
   }
 });
 
@@ -132,10 +187,10 @@ test('absolute pinned gh wrapper retains the PR/API read contract', () => {
   const wrapper = readFileSync(new URL('../../../scripts/guarded-bin/gh', import.meta.url));
   writeFileSync(gh, wrapper, { mode: 0o700 });
   writeFileSync(delegate, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
-  const savedPath = process.env.PATH;
-  const savedDelegate = process.env.CAT_CAFE_REAL_GH_PATH;
-  process.env.PATH = `${guardedBin}:${dirname(process.execPath)}:${ordinary}:/usr/bin:/bin`;
-  process.env.CAT_CAFE_REAL_GH_PATH = delegate;
+  const savedPath = fixtureEnvironment.PATH;
+  const savedDelegate = fixtureEnvironment.CAT_CAFE_REAL_GH_PATH;
+  fixtureEnvironment.PATH = `${guardedBin}:${dirname(process.execPath)}:${ordinary}:/usr/bin:/bin`;
+  fixtureEnvironment.CAT_CAFE_REAL_GH_PATH = delegate;
   try {
     parity(`${gh} pr view 5346 --repo zts212653/cat-cafe --json state,mergeCommit,headRefOid`, 'allow');
     parity(`${gh} pr checks 5346 --repo zts212653/cat-cafe --json name,state`, 'allow');
@@ -147,30 +202,26 @@ test('absolute pinned gh wrapper retains the PR/API read contract', () => {
     parity(`export NODE_OPTIONS='--require ${runtime}/loader.js'; ${gh} pr view 5346`, 'deny');
     parity(`export CAT_CAFE_REAL_GH_PATH=${runtime}/unreviewed-gh; ${gh} pr view 5346`, 'deny');
     parity(`export PATH=${guardedBin}:/usr/bin:/bin; ${gh} pr view 5346`, 'deny');
-    const savedOptions = process.env.NODE_OPTIONS;
+    const savedOptions = fixtureEnvironment.NODE_OPTIONS;
     try {
-      process.env.NODE_OPTIONS = `--require ${runtime}/loader.js`;
+      fixtureEnvironment.NODE_OPTIONS = `--require ${runtime}/loader.js`;
       parity(`${gh} pr view 5346`, 'deny');
       parity('/usr/bin/gh pr view 5346', 'deny', runtime);
-      const savedPull = process.env.F306_OBSERVATION_PULL;
+      const savedPull = fixtureEnvironment.F306_OBSERVATION_PULL;
       try {
-        process.env.F306_OBSERVATION_PULL = '5346';
+        fixtureEnvironment.F306_OBSERVATION_PULL = '5346';
         parity('/usr/bin/gh pr view "$F306_OBSERVATION_PULL"', 'deny', runtime);
       } finally {
-        if (savedPull === undefined) delete process.env.F306_OBSERVATION_PULL;
-        else process.env.F306_OBSERVATION_PULL = savedPull;
+        fixtureEnvironment.F306_OBSERVATION_PULL = savedPull;
       }
     } finally {
-      if (savedOptions === undefined) delete process.env.NODE_OPTIONS;
-      else process.env.NODE_OPTIONS = savedOptions;
+      fixtureEnvironment.NODE_OPTIONS = savedOptions;
     }
     writeFileSync(gh, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
     parity(`${gh} pr view 5346`, 'deny');
   } finally {
-    if (savedPath === undefined) delete process.env.PATH;
-    else process.env.PATH = savedPath;
-    if (savedDelegate === undefined) delete process.env.CAT_CAFE_REAL_GH_PATH;
-    else process.env.CAT_CAFE_REAL_GH_PATH = savedDelegate;
+    fixtureEnvironment.PATH = savedPath;
+    fixtureEnvironment.CAT_CAFE_REAL_GH_PATH = savedDelegate;
   }
 });
 
@@ -182,16 +233,16 @@ test('gh read proof distinguishes inherited lookup from inline selection in all 
   writeFileSync(join(evilBin, 'node'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
   writeFileSync(gh, readFileSync(new URL('../../../scripts/guarded-bin/gh', import.meta.url)), { mode: 0o700 });
   writeFileSync(delegate, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
-  const savedPath = process.env.PATH;
-  const savedDelegate = process.env.CAT_CAFE_REAL_GH_PATH;
-  process.env.PATH = `${guardedBin}:${dirname(process.execPath)}:${ordinary}:/usr/bin:/bin`;
-  process.env.CAT_CAFE_REAL_GH_PATH = delegate;
+  const savedPath = fixtureEnvironment.PATH;
+  const savedDelegate = fixtureEnvironment.CAT_CAFE_REAL_GH_PATH;
+  fixtureEnvironment.PATH = `${guardedBin}:${dirname(process.execPath)}:${ordinary}:/usr/bin:/bin`;
+  fixtureEnvironment.CAT_CAFE_REAL_GH_PATH = delegate;
   const inline = [
-    `PATH=${evilBin}:${process.env.PATH} ${gh} pr view 5346`,
+    `PATH=${evilBin}:${fixtureEnvironment.PATH} ${gh} pr view 5346`,
     `CAT_CAFE_REAL_GH_PATH=${delegate} ${gh} pr view 5346`,
-    `env PATH=${evilBin}:${process.env.PATH} ${gh} pr view 5346`,
+    `env PATH=${evilBin}:${fixtureEnvironment.PATH} ${gh} pr view 5346`,
     `env CAT_CAFE_REAL_GH_PATH=${delegate} ${gh} pr view 5346`,
-    `env PATH=${evilBin}:${process.env.PATH} CAT_CAFE_REAL_GH_PATH=${delegate} ${gh} pr view 5346`,
+    `env PATH=${evilBin}:${fixtureEnvironment.PATH} CAT_CAFE_REAL_GH_PATH=${delegate} ${gh} pr view 5346`,
   ];
   try {
     for (const [role, cwd] of [
@@ -217,10 +268,8 @@ test('gh read proof distinguishes inherited lookup from inline selection in all 
       });
     }
   } finally {
-    if (savedPath === undefined) delete process.env.PATH;
-    else process.env.PATH = savedPath;
-    if (savedDelegate === undefined) delete process.env.CAT_CAFE_REAL_GH_PATH;
-    else process.env.CAT_CAFE_REAL_GH_PATH = savedDelegate;
+    fixtureEnvironment.PATH = savedPath;
+    fixtureEnvironment.CAT_CAFE_REAL_GH_PATH = savedDelegate;
   }
 });
 

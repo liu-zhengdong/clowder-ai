@@ -134,27 +134,29 @@ export function CloudConversationLink({ threadId, compact = false }: { threadId:
             {binding.conversationId}
           </code>
         ) : (
-          <span>{status}</span>
+          <span className="status-v2-cloud-id">{status}</span>
         )}
-        {(binding.kind === 'bound' || binding.kind === 'empty') && (
-          <a
-            href={binding.kind === 'bound' ? binding.chatUrl : 'https://chatgpt.com/'}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {t.openChatGPT}
-          </a>
-        )}
-        {binding.kind === 'bound' && (
-          <button type="button" aria-label={t.copyLabel} onClick={() => void copyLink()} aria-live="polite">
-            {copyState === 'copied' ? t.copied : copyState === 'failed' ? t.copyFailed : t.copyLink}
-          </button>
-        )}
-        {binding.kind !== 'loading' && binding.kind !== 'unauthorized' && (
-          <a href={settingsHref} title={t.instructions}>
-            {binding.kind === 'bound' ? t.change : binding.kind === 'empty' ? t.select : t.check}
-          </a>
-        )}
+        <span className="status-v2-info-actions">
+          {(binding.kind === 'bound' || binding.kind === 'empty') && (
+            <a
+              href={binding.kind === 'bound' ? binding.chatUrl : 'https://chatgpt.com/'}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t.openChatGPT}
+            </a>
+          )}
+          {binding.kind === 'bound' && (
+            <button type="button" aria-label={t.copyLabel} onClick={() => void copyLink()} aria-live="polite">
+              {copyState === 'copied' ? t.copied : copyState === 'failed' ? t.copyFailed : t.copyLink}
+            </button>
+          )}
+          {binding.kind !== 'loading' && binding.kind !== 'unauthorized' && (
+            <a href={settingsHref} title={t.instructions}>
+              {binding.kind === 'bound' ? t.change : binding.kind === 'empty' ? t.select : t.check}
+            </a>
+          )}
+        </span>
       </div>
     );
   }
