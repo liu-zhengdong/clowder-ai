@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import type {
+  RichInteractiveBlock,
   RuntimeInteractionRecord,
   UnifiedAttentionChoiceRequest,
   UnifiedAttentionItemV1,
@@ -10,22 +11,37 @@ function decisionRef(record: RuntimeInteractionRecord): string {
   return `f306.runtime_interaction:${record.request.interactionId}`;
 }
 
-/** Keep updatedAt as the published witness until Task655 explicitly migrates the canonical record revision. */
+/** Provider receipts already publish updatedAt; conversation writers require the monotonic record CAS revision. */
 function runtimeRevision(record: RuntimeInteractionRecord): number {
-  return record.updatedAt;
+  return record.request.kind === 'conversation_decision' ? record.revision : record.updatedAt;
 }
 
-function projectRuntimeInteraction(record: RuntimeInteractionRecord): UnifiedAttentionRuntimeInteraction | null {
+function projectRuntimeInteraction(
+  record: RuntimeInteractionRecord,
+  presentation: RichInteractiveBlock | undefined,
+): UnifiedAttentionRuntimeInteraction | null {
   if (record.status !== 'pending' || !record.cardRef) return null;
-  return {
+  const base = {
     interactionId: record.request.interactionId,
     revision: runtimeRevision(record),
-    kind: record.request.kind,
     requesterCatId: record.request.owner.catId,
     createdAt: record.request.createdAt,
     title: record.request.title,
     cardRef: record.cardRef,
   };
+  if (record.request.kind === 'conversation_decision') {
+    if (record.source.kind !== 'conversation_decision' || !presentation) return null;
+    return {
+      ...base,
+      sourceKind: 'conversation_decision',
+      kind: 'conversation_decision',
+      presentation,
+      allowTextResponse: record.request.allowTextResponse,
+      ...(record.request.deadlineAt !== undefined ? { deadlineAt: record.request.deadlineAt } : {}),
+    };
+  }
+  if (record.source.kind !== 'provider_request') return null;
+  return { ...base, sourceKind: 'provider_request', kind: record.request.kind };
 }
 
 function projectChoice(record: RuntimeInteractionRecord): UnifiedAttentionChoiceRequest | undefined {
@@ -107,10 +123,14 @@ export function mergeStructuredChoices(
   records: RuntimeInteractionRecord[],
   reasons: Set<string>,
   ownerUserId: string,
+  conversationPresentations: ReadonlyMap<string, RichInteractiveBlock> = new Map(),
 ): UnifiedAttentionItemV1[] {
   for (const record of records) {
-    const runtime = projectRuntimeInteraction(record);
-    if (!runtime) continue;
+    const runtime = projectRuntimeInteraction(record, conversationPresentations.get(record.request.interactionId));
+    if (!runtime) {
+      if (record.request.kind === 'conversation_decision') reasons.add('runtime_interaction_presentation_unverified');
+      continue;
+    }
     const choice = projectChoice(record);
     const ref = decisionRef(record);
     const sameIdentity = items.filter((item) => item.decisionRef === ref);

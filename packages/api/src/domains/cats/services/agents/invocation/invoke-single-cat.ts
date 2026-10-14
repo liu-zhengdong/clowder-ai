@@ -1710,6 +1710,19 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     | undefined;
   const resolveInvocationMemoryCues = async (): Promise<void> => {
     invocationPromptAdditions.length = 0;
+    if (deps.runtimeInteractionPort && params.ownerAuthProvenance === 'strict') {
+      try {
+        const pendingDecisionPrompt = await deps.runtimeInteractionPort.pendingConversationDecisionPrompt(
+          userId,
+          threadId,
+          catId,
+          originTriggerMessageId,
+        );
+        if (pendingDecisionPrompt) invocationPromptAdditions.push(pendingDecisionPrompt);
+      } catch (err) {
+        log.warn({ err, invocationId, threadId, catId }, '[F306] Pending conversation decision prompt failed closed');
+      }
+    }
     memoryCuePresentationEnvelopes = [];
     omittedMemoryCueOpportunityIds = [];
     const serverScope = { ownerUserId: userId, threadId, invocationId };

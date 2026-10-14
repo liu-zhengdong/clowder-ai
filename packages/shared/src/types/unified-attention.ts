@@ -8,8 +8,12 @@ import {
   approvalResolutionSchema,
 } from './approval-lifecycle.js';
 import { preparedArtifactSnapshotV1Schema } from './growing-artifact.js';
-import type { RichCardBlock } from './rich.js';
-import { type RuntimeInteractionRequest, runtimeQuestionSchema } from './runtime-interaction.js';
+import type { RichCardBlock, RichInteractiveBlock } from './rich.js';
+import {
+  type RuntimeInteractionCardRef,
+  type RuntimeInteractionRequest,
+  runtimeQuestionSchema,
+} from './runtime-interaction.js';
 
 export type UnifiedAttentionApproval = ApprovalHubItem;
 /** Canonical renderer fields; bind the read's verified identity.ownerUserId when rendering ApprovalItemCard. */
@@ -156,17 +160,36 @@ export interface UnifiedAttentionOriginalApprovalCard {
   block: RichCardBlock;
 }
 
-/** One canonical pending F306 record. Question keeps choiceRequest as a compatibility projection. */
-export interface UnifiedAttentionRuntimeInteraction {
+interface UnifiedAttentionRuntimeInteractionBase {
   interactionId: string;
-  /** F306's current exact version witness. Task655 may migrate this field from updatedAt to monotonic revision. */
+  /** Provider records retain their published witness; conversation records expose the monotonic CAS revision. */
   revision: number;
-  kind: RuntimeInteractionRequest['kind'];
   requesterCatId: string;
   createdAt: number;
   title: string;
-  cardRef: { threadId: string; messageId: string; blockId: string };
+  cardRef: RuntimeInteractionCardRef;
 }
+
+type ProviderRuntimeInteractionKind = Exclude<RuntimeInteractionRequest['kind'], 'conversation_decision'>;
+
+/** One canonical pending F306 record. Question keeps choiceRequest as a compatibility projection. */
+export type UnifiedAttentionRuntimeInteraction = UnifiedAttentionRuntimeInteractionBase &
+  (
+    | {
+        /** Omitted only by pre-Task655 provider snapshots. New projections always populate it. */
+        sourceKind?: undefined;
+        kind: ProviderRuntimeInteractionKind;
+      }
+    | { sourceKind: 'provider_request'; kind: ProviderRuntimeInteractionKind }
+    | {
+        sourceKind: 'conversation_decision';
+        kind: 'conversation_decision';
+        /** Exact original block, emitted only after the canonical message passes live-card validation. */
+        presentation: RichInteractiveBlock;
+        allowTextResponse: boolean;
+        deadlineAt?: number;
+      }
+  );
 
 /** Host-only source DTO. Packaged renderers receive their separately fenced presentation. */
 export interface UnifiedAttentionItemV1 {

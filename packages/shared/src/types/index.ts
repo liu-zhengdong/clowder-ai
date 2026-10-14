@@ -1505,6 +1505,7 @@ export type {
 export { isPersonMemoryProposalCardBlock, isValidRichBlock, normalizeRichBlock } from './rich.js';
 // F293 Phase A: durable routing truth and pure advisory projection contracts.
 export * from './routing-context.js';
+export * from './runtime-conversation-decision.js';
 // F306 Phase B: provider-neutral mid-run request ↔ human response contract.
 export * from './runtime-interaction.js';
 // F246 Phase I Wave 1: F139 schedule mutation proposal + audit contract

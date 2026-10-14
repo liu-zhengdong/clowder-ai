@@ -1,4 +1,5 @@
 import type {
+  RichInteractiveBlock,
   RuntimeInteractionRecord,
   UnifiedAttentionItemV1,
   UnifiedAttentionReadV1,
@@ -112,6 +113,7 @@ export function projectCompanionDecisions(
   structuredChoices: RuntimeInteractionRecord[] = [],
   personal?: DecisionPersonalViewInput,
   originalApprovalCards?: OriginalApprovalCardRead,
+  conversationPresentations?: ReadonlyMap<string, RichInteractiveBlock>,
 ) {
   const approvalRead = approvalsSourceSchema.parse(approvalsSource);
   const workRead = needsMeSourceSchema.parse(needsMeSource);
@@ -125,7 +127,7 @@ export function projectCompanionDecisions(
     const proof = originalApprovalCards?.proofs.get(originalApprovalCardKey(item.approval));
     if (proof) item.originalApprovalCard = proof;
   }
-  mergeStructuredChoices(unified.items, structuredChoices, reasons, userId);
+  mergeStructuredChoices(unified.items, structuredChoices, reasons, userId, conversationPresentations);
   const canonicalDecisionItems = unified.items;
   const personalProjection = selectDecisionPersonalItems({
     canonicalItems: canonicalDecisionItems,

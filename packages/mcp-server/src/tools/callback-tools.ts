@@ -1857,6 +1857,51 @@ export const createRichBlockInputSchema = {
     .min(1)
     .optional()
     .describe('Target thread ID. Required for agent-key auth because persistent MCP has no invocation thread.'),
+  awaitResponseV1: z
+    .object({
+      mode: z.literal('once').describe('Create exactly one durable decision lifecycle for this block.'),
+      allowTextResponse: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Allow a deliberately bound text answer in addition to the rendered options.'),
+      deadlineAt: z.number().int().positive().optional().describe('Optional absolute epoch-ms deadline.'),
+      defaultResponse: z
+        .discriminatedUnion('kind', [
+          z
+            .object({
+              kind: z.literal('selection').describe('Apply one declared option selection at the deadline.'),
+              selectedIds: z
+                .array(z.string().min(1))
+                .min(1)
+                .describe('One or more option IDs from the published interactive block.'),
+              customInput: z
+                .string()
+                .trim()
+                .min(1)
+                .max(100_000)
+                .optional()
+                .describe('Optional declared custom-input value for the selected option.'),
+            })
+            .strict(),
+          z
+            .object({
+              kind: z.literal('text').describe('Apply one declared free-text response at the deadline.'),
+              text: z
+                .string()
+                .trim()
+                .min(1)
+                .max(100_000)
+                .describe('Declared deadline response text, up to 100,000 characters.'),
+            })
+            .strict(),
+        ])
+        .optional()
+        .describe('Optional declared response applied by Host at deadline; requires deadlineAt.'),
+    })
+    .strict()
+    .optional()
+    .describe('Explicitly create one durable conversation decision. Never inferred from block shape or prose.'),
 };
 
 /**
@@ -1871,6 +1916,15 @@ export async function handleCreateRichBlock(input: {
   block: string;
   threadId?: string | undefined;
   agentKeyCatId?: string | undefined;
+  awaitResponseV1?: {
+    mode: 'once';
+    allowTextResponse?: boolean | undefined;
+    deadlineAt?: number | undefined;
+    defaultResponse?:
+      | { kind: 'selection'; selectedIds: string[]; customInput?: string }
+      | { kind: 'text'; text: string }
+      | undefined;
+  };
 }): Promise<ToolResult> {
   let parsed: unknown;
   try {
@@ -1891,6 +1945,21 @@ export async function handleCreateRichBlock(input: {
   const block = parsed;
   const hasInvocationCreds = getInvocationAuthSignal().hasFullCredentials;
   const hasAgentKeyCreds = hasUsableAgentKeyCredentials(process.env);
+
+  if (input.awaitResponseV1) {
+    if (!hasInvocationCreds) {
+      return errorResult('awaitResponseV1 requires the current authenticated invocation; no text fallback is allowed.');
+    }
+    return callbackPost(
+      '/api/callbacks/create-rich-block',
+      {
+        block,
+        awaitResponseV1: input.awaitResponseV1,
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+      },
+      { enableOutbox: true, agentKeyCatId: input.agentKeyCatId },
+    );
+  }
 
   const ccRichText = `\`\`\`cc_rich\n${JSON.stringify({ v: 1, blocks: [block] })}\n\`\`\``;
   // Inline TTS is a long-running, non-idempotent server operation. The voice
@@ -4350,7 +4419,7 @@ export const callbackTools = [
       runtimeProfiles: ['full'],
     },
   }),
-  defineTool({
+  defineCanonicalTool({
     name: 'cat_cafe_create_rich_block',
     description:
       'Create a rich block (card, diff, checklist, file, media_gallery, audio, interactive, or html_widget) attached to the current message. ' +
@@ -4364,7 +4433,8 @@ export const callbackTools = [
       'GOTCHA: The block JSON must use "kind" (NOT "type") and include "v": 1 and a unique "id". ' +
       "GOTCHA: Call get_rich_block_rules first if you haven't loaded the full schema yet in this session. " +
       'GOTCHA: checklist kind is ephemeral inline content — for persistent cross-session work items, use create_task (毛线球) instead. ' +
-      'If callback auth fails, falls back to cc_rich text encoding automatically.',
+      'In an ordinary conversation, when the requester explicitly needs one later owner decision, pass awaitResponseV1={mode:"once"}; the Host publishes a durable RuntimeInteraction and returns immediately. Scoped work/read-only invocations cannot use this mode. This is never inferred from interactiveType or prose, and callback/guide/action options are rejected. ' +
+      'Ordinary rich blocks fall back to cc_rich text encoding when callback auth is unavailable. awaitResponseV1 always fails closed because a text fallback cannot create the durable decision lifecycle.',
     inputSchema: createRichBlockInputSchema,
     handler: handleCreateRichBlock,
     governance: {

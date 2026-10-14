@@ -286,6 +286,7 @@ import {
 } from './domains/runtime-deployment/RuntimeDeploymentBootstrap.js';
 import { runtimeDeploymentSubjectRef } from './domains/runtime-deployment/RuntimeDeploymentObservationProvider.js';
 import { readRuntimeServiceReadiness } from './domains/runtime-deployment/RuntimeDeploymentServiceReadiness.js';
+import { MessageQueueRuntimeConversationReturnGateway } from './domains/runtime-interaction/MessageQueueRuntimeConversationReturnGateway.js';
 import { createRuntimeInteractionRuntime } from './domains/runtime-interaction/runtime-interaction-composition.js';
 import { appendServiceLog } from './domains/services/service-lifecycle.js';
 import { createSignalArticleLookup } from './domains/signals/services/signal-thread-lookup.js';
@@ -1000,6 +1001,7 @@ async function main(): Promise<void> {
     ...(redis ? { redis } : {}),
     messageStore,
     socketManager,
+    onSweepError: (error) => app.log.warn({ error }, '[F306] Conversation decision recovery sweep failed'),
   });
   if (runtimeInteractionRuntime.startupInvalidated.length > 0) {
     app.log.warn(
@@ -2840,6 +2842,15 @@ async function main(): Promise<void> {
     ...(actionSuccessorLeaseStore ? { actionSuccessorLeaseStore } : {}),
     deliveryCursorStore,
   });
+  await runtimeInteractionRuntime.bindConversationReturnGateway(
+    new MessageQueueRuntimeConversationReturnGateway({
+      messageStore,
+      queue: invocationQueue,
+      socketManager,
+      tryAutoExecute: (threadId) => queueProcessor.tryAutoExecute(threadId),
+    }),
+  );
+  app.addHook('onClose', async () => runtimeInteractionRuntime.dispose());
   const deliverApprovedActionCarrier = async (
     proposal: import('@cat-cafe/shared').DispatchProposal,
     fence: import('./domains/ball-custody/ActionSuccessorAdmissionService.js').ActionSuccessorFence,
@@ -5249,6 +5260,7 @@ async function main(): Promise<void> {
         }
       : {}),
     ...(liveCompanionSessions ? { companionRuntimeInteractionStore: runtimeInteractionRuntime.store } : {}),
+    runtimeInteractionService: runtimeInteractionRuntime.service,
     ...(liveCompanionSessions
       ? { withLiveCarrierOperation: liveCompanionSessions.withCarrierOperation.bind(liveCompanionSessions) }
       : {}),
@@ -5420,6 +5432,7 @@ async function main(): Promise<void> {
   await app.register(callbackRuntimeInteractionRoutes, {
     registry,
     callbackAuthNotifier,
+    service: runtimeInteractionRuntime.service,
   });
 
   // F174 Phase D1 — callback auth failure telemetry debug endpoint (AC-D3).
