@@ -43,7 +43,9 @@ code_anchors:
   - packages/api/src/domains/runtime-interaction/RuntimeInteractionService.ts
   - packages/api/src/domains/cats/services/agents/providers/CodexAgentService.ts
   - packages/api/src/domains/cats/services/agents/providers/agy-native/AgyNativeAgentService.ts
-  - packages/api/src/domains/cats/services/agents/providers/agy-native/agy-native-coding-grant.ts
+  - packages/api/src/domains/cats/services/agents/providers/agy-native/agy-native-continuity.ts
+  - packages/api/src/domains/cats/services/agents/providers/agy-native/agy-native-skills.ts
+  - packages/api/src/domains/cats/services/agents/providers/agy-native/agy-native-profile-turn.ts
   - packages/web/src/components/HubCatEditor.tsx
   - packages/web/src/components/ThreadSidebar/ThreadSpeedSettings.tsx
   - packages/web/src/debug/bubbleIdentity.ts
@@ -77,8 +79,8 @@ code_anchors:
   - packages/api/src/routes/callback-runtime-session-routes.ts
   - packages/api/src/routes/external-runtime-sessions.ts
   - packages/mcp-server/src/tools/external-runtime-session-tools.ts
-  - packages/api/src/domains/cats/services/agents/providers/antigravity/AntigravityBridge.ts
-  - packages/api/src/domains/cats/services/agents/providers/antigravity/antigravity-runtime-session-import.ts
+  - packages/api/src/domains/cats/services/runtime-session/LegacyAntigravitySessionImport.ts
+  - packages/api/src/domains/cats/services/runtime-session/LegacyAntigravityLifecycle.ts
   - packages/shared/src/profile-contract.ts
   - packages/api/src/domains/cats/services/profile/ProfileRepository.ts
   - packages/api/src/domains/cats/services/profile/profile-migration-plan.ts
@@ -106,6 +108,7 @@ doc_anchors:
   - feature-discussions/2026-07-10-f231-profile-topology-convergence.md
 static_scan_hints: [catId, relationshipKey, AgentRegistry, cat-config, roster, ConnectorThreadBindingStore, bubbleIdentity, session, SessionChainStore, ContextEpochOwner, PresentationLedger, cliSessionId, cascadeId, runtimeSession, runtimeInteractionPort, interactionId, serviceTier, CodexSpeed, memberSpeed, capsule, CAT_CAFE_DATA_DIR, cat-cafe-profile, "private/profile"]
 cited_by:
+  - {feature: F325, date: 2026-10-14, delta: "Native binds the canonical session to L0/cwd/mode and seals/rebuilds on proven preflight mismatch; retires Gemini CLI/IDE execution while preserving historical imports"}
   - {feature: F247, date: 2026-10-10, delta: dot G1 source-bound Events and private original image consumer}
   - {feature: F320, date: 2026-10-06, delta: "P2a provider-account boundary: existing resolver/store supplies a credential-free launch snapshot; final OAuth environment and native capability launch share selected account input; original host/resource owners retain control authority. Managed layout remains disabled pending P2b fixture blockers."}
   - {feature: F325, date: 2026-09-29, delta: "P1 compiles owner-bound native L0 through the existing shared compiler on each turn, keeps dynamic pack prepend out of that slot, and scopes operator coding grants to the exact live entrusted Task"}
@@ -205,3 +208,9 @@ Watch for new or renamed `catId`, `relationshipKey`, `ProfileRepository`, `CAT_C
 The existing account store owns managed account metadata, immutable principal coordinates, notes, login attempt revisions and per-account read-only quota observations. Official Codex owns PKCE, callback validation and credential writing; `CodexLoginManager` only retains live carrier cancellation handles and persists facts through the existing store. Staged results require current attempt identity before adoption, and cannot replace an established principal silently. The running member catalog owns `selectedAccountRefs` and each member's follow/override intent; account metadata stays in its persistent workspace owner. A confirmed preview and one catalog write switch the enabled local Codex followers across families, with explicit inclusion of exceptions and exclusion of disabled/cloud members. Invocation, usage and realtime transcripts retain their accepted execution snapshot. Native default rows are read-only projections of the existing resolver and actual credential home; listing or logging into a backup account does not switch members.
 
 The measured first managed combination is macOS + official native Codex 0.159.0 + private file authentication, without forced MDM or legacy managed/requirements policy and without cloud-eligible enterprise/business/education plans. Native personal and team-like plans remain eligible. Unsupported combinations are rejected before credential-bearing launch; no policy is disabled. Shared session/SQLite/memory/image/config state has explicit roots, while auth, secrets, temporary/control state and plugin/browser authentication stay private. Installed-native layout and source-consumer fixtures cover this implementation; real OAuth and cross-account server compaction require owner authorization and remain unclaimed until exercised.
+
+## F325 Native continuity and retirement
+
+Native uses the existing SessionManager/SessionChainStore for durable resume bindings, not an in-memory session authority. A verified preflight L0/cwd/permission mismatch can seal the old session and rebuild from canonical history before starting a new one; partial output and exact imported-resume requests cannot silently fall back. Profile serialization protects per-turn credential/config binding. Skills come from the existing mount resolver. Historical Antigravity session import/lifecycle remain readable; Gemini CLI, IDE bridge and SQLite polling are no longer execution carriers.
+
+Official CLI init is verified before stdin delivery; only then does the existing F296 preflight settle the final generation and F299 record its bytes. A prior unsupported scope adopts a newly observed runtime through one unconsumed cold epoch; it becomes hot only after actual generation consumption and another verified resume. Compaction checkpoints advance the existing epoch owner. The raw cumulative result/error and transport diagnostics remain separate from current-turn completion evidence.

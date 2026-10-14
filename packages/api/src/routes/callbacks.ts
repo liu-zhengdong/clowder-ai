@@ -250,7 +250,6 @@ import { type CallbackMemoryCueDeps, registerCallbackMemoryCueRoutes } from './c
 import { registerCallbackMemoryRoutes } from './callback-memory-routes.js';
 import { projectCallbackMessageBody, projectQueuedCallbackMessageBody } from './callback-message-body.js';
 import { getMultiMentionOrchestrator, registerMultiMentionRoutes } from './callback-multi-mention-routes.js';
-import { registerCallbackNativeTestGrantRoute } from './callback-native-test-grant.js';
 import { registerNativeTurnAdmissionRoute } from './callback-native-turn-admission.js';
 import {
   appendDispatchNegativeAuthorizationBlockedAudit,
@@ -1555,7 +1554,12 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     ...(opts.admitDotReturn ? { allowDotSourceBoundReturn: true } : {}),
   });
   if (opts.companionProjectPath) {
-    registerCompanionWorkReadRoutes(app, opts.companionProjectPath, opts.companionRuntimeInteractionStore);
+    registerCompanionWorkReadRoutes(
+      app,
+      opts.companionProjectPath,
+      opts.companionRuntimeInteractionStore,
+      messageStore,
+    );
   }
   if (taskStore && opts.deploymentObservationProvider && opts.deploymentWaitLifecycleHolder) {
     registerCallbackDeploymentWaitRoutes(app, {
@@ -1570,11 +1574,6 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     });
   }
   registerNativeTurnAdmissionRoute(app);
-  registerCallbackNativeTestGrantRoute(app, {
-    ...(taskStore ? { taskStore } : {}),
-    ...(threadStore ? { threadStore } : {}),
-    getGrantConfig: (catId) => catRegistry.tryGet(catId as string)?.config.agyProfile?.nativeCodingGrant,
-  });
   if (opts.meetingArtifactReaderHolder) {
     registerCallbackMeetingArtifactRoutes(app, {
       readerHolder: opts.meetingArtifactReaderHolder,

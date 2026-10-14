@@ -14,6 +14,10 @@ import {
   type DecisionSourceRead,
   needsMeSourceSchema,
 } from './companion-decision-sources.js';
+import {
+  type OriginalApprovalCardMessageStore,
+  readOriginalApprovalCards,
+} from './companion-original-approval-cards.js';
 import { type MentionReadOptions, readUserMentionTodos } from './user-mention-todo-projection.js';
 
 export interface DecisionPersonalPreferenceReadOptions {
@@ -33,6 +37,7 @@ export async function readCompanionDecisionProjection(
   mentionOptions?: MentionReadOptions,
   runtimeInteractionStore?: RuntimeInteractionPendingReadSource,
   personalPreferences?: DecisionPersonalPreferenceReadOptions,
+  sourceMessageStore?: OriginalApprovalCardMessageStore,
 ) {
   const config = {
     approvals: {
@@ -88,6 +93,15 @@ export async function readCompanionDecisionProjection(
     runtimeInteractionStore ? readStructuredChoices(runtimeInteractionStore, userId) : undefined,
     personalPreferences ? readDecisionPersonalPreferences(personalPreferences, userId) : undefined,
   ]);
+  const approvalBody = approvals.body ? approvalsSourceSchema.parse(approvals.body) : undefined;
+  const originalApprovalCards = approvalBody
+    ? await readOriginalApprovalCards(
+        approvalBody.items,
+        userId,
+        sourceMessageStore ?? originalCardStoreFromMentionStore(messageStore),
+      )
+    : undefined;
+  if (originalApprovalCards) approvals.state.observedAt = Date.now();
   const projection = projectCompanionDecisions(
     approvals.body ?? { items: [] },
     needsMe.body ?? { ownerReads: [] },
@@ -104,6 +118,7 @@ export async function readCompanionDecisionProjection(
     personalPreferences && personal
       ? { mode: personalPreferences.mode, snapshot: personal.snapshot, state: personal.state }
       : undefined,
+    originalApprovalCards,
   );
   await Promise.all(
     projection.items.map(async (row) => {
@@ -118,6 +133,12 @@ export async function readCompanionDecisionProjection(
     }),
   );
   return projection;
+}
+
+function originalCardStoreFromMentionStore(value: unknown): OriginalApprovalCardMessageStore | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const getById = Reflect.get(value, 'getById');
+  return typeof getById === 'function' ? (value as OriginalApprovalCardMessageStore) : undefined;
 }
 
 export async function readDecisionPersonalPreferences(

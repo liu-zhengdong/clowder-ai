@@ -257,7 +257,6 @@ export * from './capability-evolution-preparation-review.js';
 export * from './capability-evolution-refs.js';
 // Cat types
 export type {
-  AgyNativeCodingGrantConfig,
   AgyProfileConfig,
   CatColor,
   CatConfig,
@@ -1534,6 +1533,7 @@ export type {
   ContextHealthConfig,
   ContextManagementHint,
   HybridProgress,
+  NativeSessionBinding,
   SealReason,
   SealResult,
   SessionCapacityPin,

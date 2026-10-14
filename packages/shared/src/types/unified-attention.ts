@@ -8,7 +8,8 @@ import {
   approvalResolutionSchema,
 } from './approval-lifecycle.js';
 import { preparedArtifactSnapshotV1Schema } from './growing-artifact.js';
-import { runtimeQuestionSchema } from './runtime-interaction.js';
+import type { RichCardBlock } from './rich.js';
+import { type RuntimeInteractionRequest, runtimeQuestionSchema } from './runtime-interaction.js';
 
 export type UnifiedAttentionApproval = ApprovalHubItem;
 /** Canonical renderer fields; bind the read's verified identity.ownerUserId when rendering ApprovalItemCard. */
@@ -88,12 +89,20 @@ export const unifiedAttentionWorkSourceSchema = z.object({
             .object({
               eligible: z.boolean(),
               producer: z
-                .object({ producerId: z.string(), subjectRef: z.string(), revision: z.number() })
+                .object({
+                  producerId: z.string(),
+                  ownerRef: z.string().optional(),
+                  subjectRef: z.string(),
+                  revision: z.number(),
+                })
                 .passthrough(),
               taskRef: z.object({ subjectRef: z.string(), observedRevision: z.number() }).passthrough(),
               kind: z.enum(['judgment', 'repair']).optional(),
+              reasonCode: z.string().optional(),
               recommendation: z.string().optional(),
+              salience: z.enum(['normal', 'near_deadline', 'high_risk']).optional(),
               action: z.object({ actionRef: z.string(), expectedProducerRevision: z.number() }).optional(),
+              reEvaluateActionRef: z.string().optional(),
             })
             .passthrough(),
         ),
@@ -141,6 +150,24 @@ export const unifiedAttentionChoiceRequestSchema = z
 
 export type UnifiedAttentionChoiceRequest = z.infer<typeof unifiedAttentionChoiceRequestSchema>;
 
+/** Verified source card for producers whose original writer lives on a RichCard. */
+export interface UnifiedAttentionOriginalApprovalCard {
+  cardRef: { threadId: string; messageId: string; blockId: string };
+  block: RichCardBlock;
+}
+
+/** One canonical pending F306 record. Question keeps choiceRequest as a compatibility projection. */
+export interface UnifiedAttentionRuntimeInteraction {
+  interactionId: string;
+  /** F306's current exact version witness. Task655 may migrate this field from updatedAt to monotonic revision. */
+  revision: number;
+  kind: RuntimeInteractionRequest['kind'];
+  requesterCatId: string;
+  createdAt: number;
+  title: string;
+  cardRef: { threadId: string; messageId: string; blockId: string };
+}
+
 /** Host-only source DTO. Packaged renderers receive their separately fenced presentation. */
 export interface UnifiedAttentionItemV1 {
   decisionRef: string;
@@ -162,7 +189,11 @@ export interface UnifiedAttentionItemV1 {
   };
   /** Present only for a canonical pending F306 question; ordinary rich interactive blocks never project here. */
   choiceRequest?: UnifiedAttentionChoiceRequest;
+  /** Present for every canonical pending F306 approval, question or elicitation. */
+  runtimeInteraction?: UnifiedAttentionRuntimeInteraction;
   approval?: UnifiedAttentionVisibleApproval;
+  /** Present only after the canonical live F225/F231 source message passes its closed producer validator. */
+  originalApprovalCard?: UnifiedAttentionOriginalApprovalCard;
   linkedNeedsMe: { ownerRead: UnifiedAttentionWork; receipt: UnifiedAttentionReceipt }[];
   /** Server-issued exact-version coordinate for the owner-private presentation preference writer. */
   preferenceCoordinate?: UnifiedAttentionPreferenceCoordinate;
@@ -170,7 +201,7 @@ export interface UnifiedAttentionItemV1 {
 
 /** Exact groups from the full selected response vector, before offset/limit is applied. */
 export interface UnifiedAttentionItemGroupCountsV1 {
-  /** Open approvals and canonical pending structured choices. */
+  /** Open approvals, canonical pending runtime interactions and exact named content reviews. */
   decisions: number;
   userMentions: number;
   /** Repairs, non-question judgments and every other non-mention item. */
@@ -215,7 +246,7 @@ export interface UnifiedAttentionReadV1 {
   items: UnifiedAttentionItemV1[];
   /** Present only for complete coverage with verified source identity and version deduplication, before paging. */
   totalCount?: number;
-  /** Exact open approvals + canonical pending structured choice requests; mentions, repairs and ordinary interactive are excluded. */
+  /** Exact open approvals + canonical pending F306 interactions + named content reviews. */
   attentionCount?: number;
   mentionCounts?: { today: number; week: number; earlier: number; handled: number };
   mentionPeriod?: 'recent' | 'today' | 'week' | 'earlier' | 'handled';
