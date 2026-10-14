@@ -338,7 +338,7 @@ import {
 } from './infrastructure/connectors/connector-gateway-bootstrap.js';
 import { restartConnectorGateway } from './infrastructure/connectors/connector-gateway-lifecycle.js';
 import { createConnectorReloadSubscriber } from './infrastructure/connectors/connector-reload-subscriber.js';
-import { fetchPrCiStatuses, type PrCiStatusTarget } from './infrastructure/email/ci-status-batch-fetcher.js';
+import { createCiCollectionReaders } from './infrastructure/email/ci-status-batch-fetcher.js';
 import { IssueCommentRouter } from './infrastructure/email/IssueCommentRouter.js';
 import {
   CiCdRouter,
@@ -8928,8 +8928,7 @@ async function main(): Promise<void> {
         taskStore,
         threadStore,
         cicdRouter,
-        fetchPrStatuses: (targets: readonly PrCiStatusTarget[], signal?: AbortSignal) =>
-          fetchPrCiStatuses(targets, app.log, { ghToken: getGitHubToken(), signal }),
+        ...createCiCollectionReaders(app.log, getGitHubToken),
         conflictRouter,
         reviewFeedbackRouter,
         invokeTrigger,
