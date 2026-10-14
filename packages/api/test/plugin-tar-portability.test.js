@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -77,7 +77,10 @@ test('local directory admission packages and verifies real bytes with the select
     const bytes = await readFile(join(packagesRoot, packageDirectoryName(result.packageDigest), 'package.tgz'));
     assert.equal(result.packageDigest, `sha512-${createHash('sha512').update(bytes).digest('base64')}`);
     assert.equal(await readFile(join(source, 'dist', 'entrypoint.js'), 'utf8'), entrypoint);
-    assert.equal((await readdir(packagesRoot)).some((name) => name.startsWith('.local-directory-')), false);
+    assert.equal(
+      (await readdir(packagesRoot)).some((name) => name.startsWith('.local-directory-')),
+      false,
+    );
   });
 });
 
@@ -109,14 +112,23 @@ test('connector installation and update accept an absolute archive path without 
     assert.deepEqual(await readFile(sourceArchive), bytes);
     assert.equal(await readFile(configPath, 'utf8'), '{"owner":"preserve"}');
     await access(join(resolvePluginsDir(projectRoot), 'portable-test', 'index.js'));
-    assert.equal((await readdir(resolvePluginsDir(projectRoot))).some((name) => name.startsWith('.tmp-install-')), false);
+    assert.equal(
+      (await readdir(resolvePluginsDir(projectRoot))).some((name) => name.startsWith('.tmp-install-')),
+      false,
+    );
   });
 });
 
 test('connector tar portability preserves archive-layout rejection and cleanup', async () => {
   await privateRoot(async (root) => {
     const sourceArchive = join(root, 'multiple roots.tgz');
-    await writeFile(sourceArchive, archive([['first/index.js', 'one'], ['second/index.js', 'two']]));
+    await writeFile(
+      sourceArchive,
+      archive([
+        ['first/index.js', 'one'],
+        ['second/index.js', 'two'],
+      ]),
+    );
     const projectRoot = join(root, 'project');
     const result = await installPlugin(projectRoot, sourceArchive, new Set());
     assert.equal(result.code, 'INVALID_ARCHIVE', JSON.stringify(result));
@@ -124,3 +136,49 @@ test('connector tar portability preserves archive-layout rejection and cleanup',
     assert.deepEqual(await readdir(resolvePluginsDir(projectRoot)), []);
   });
 });
+
+test(
+  'both consumers keep tar archive operands local to a private cwd',
+  { skip: process.platform === 'win32' },
+  async () => {
+    await privateRoot(async (root) => {
+      const probePath = join(root, 'tar-probe');
+      const recordedPath = join(root, 'tar-calls.jsonl');
+      // Delegate to real tar after enforcing its archive-coordinate contract.
+      // This makes the regression executable on BSD-only development machines;
+      // Windows separately runs these consumers against actual BSD and GNU tar.
+      await writeFile(
+        probePath,
+        `#!${process.execPath}\n` +
+          `const {spawnSync}=require('node:child_process');\n` +
+          `const {appendFileSync}=require('node:fs');\n` +
+          `const args=process.argv.slice(2);\n` +
+          `appendFileSync(${JSON.stringify(recordedPath)},JSON.stringify({args,cwd:process.cwd()})+'\\n');\n` +
+          `if(args[1].includes(':') || require('node:path').isAbsolute(args[1])) {process.stderr.write('archive operand is not local');process.exit(2);}\n` +
+          `const result=spawnSync('tar',args,{stdio:'inherit'});\n` +
+          `process.exit(result.status ?? 1);\n`,
+      );
+      await chmod(probePath, 0o700);
+      const source = join(root, 'local source');
+      await mkdir(join(source, 'dist'), { recursive: true });
+      await writeFile(join(source, 'manifest.json'), JSON.stringify(manifest({ signals: undefined })));
+      await writeFile(join(source, 'dist', 'entrypoint.js'), '// never executed');
+      const admission = new LocalPluginPackageAdmission({
+        inventory: new HostInventoryControlPlane(new MemoryPluginInventoryStore()),
+        packagesRoot: join(root, 'packages'),
+        grantPolicy: () => ['events.publish'],
+        tarBin: probePath,
+      });
+      const admitted = await admission.install({ kind: 'local-directory', path: source });
+      assert.equal(admitted.pluginId, 'official.test-source');
+      const sourceArchive = join(root, 'connector.tgz');
+      await writeFile(sourceArchive, connectorBytes('portable-test'));
+      const installed = await installPlugin(join(root, 'project'), sourceArchive, new Set(), { tarBin: probePath });
+      assert.equal(installed.action, 'installed', JSON.stringify(installed));
+      const calls = (await readFile(recordedPath, 'utf8')).trim().split('\n').map(JSON.parse);
+      assert.equal(calls.length, 5, 'local packing, three verified staging operations and connector extraction');
+      assert.match(calls[0].cwd, /\.local-directory-/);
+      assert.match(calls[4].cwd, /\.tmp-install-/);
+    });
+  },
+);
