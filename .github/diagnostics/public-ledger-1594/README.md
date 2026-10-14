@@ -6,8 +6,10 @@ The test and its 100ms ledger-write threshold remain unchanged. A passing diagno
 not erase the earlier CI failure or identify its historical cause.
 
 The archive contains three portable source files: `trace-original-test.mjs`, `trace-preload.mjs`
-and `io-probe.c`. The runner compiles a SQLite VFS observation extension, initializes it before
-measured calls, and invokes the exact original test once. No delay injection is enabled.
+and `io-probe.c`. The current driver replays the original lane's first 287 test files using the
+unchanged public shard runner, then compiles a SQLite VFS observation extension and invokes
+the original target once with its original guard, registry preload and concurrency setting.
+The diagnostic import is not propagated through NODE_OPTIONS. No delay injection is enabled.
 It records VFS read/write/sync, lock failure, SQLite sleep, resource use and Linux main-thread
 scheduler timing, plus runner/storage context and original test hashes before/after execution.
 
@@ -18,3 +20,8 @@ on pushes to this diagnostic branch. It is not intended for merge.
 
 Archive SHA256: `85f8588ac26daba2f2906a6e2f2ac372f0f93a8d3b5489fcc751fa92324ff552`.
 The entire result, including any failure or absence of a slow sample, is retained for diagnosis.
+
+This is one bounded context experiment, with the same 20-minute job limit and no retries.
+Any predecessor failure stops the experiment before the target; setup failure is inconclusive.
+A passing target ends dedicated sampling of this frozen candidate and leaves the historical
+failure unresolved. It does not waive CI or enable scheduling.

@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/daily-ledger-trace.yml'
       - '.github/diagnostics/public-ledger-1594/probe.tar.gz'
+      - '.github/diagnostics/public-ledger-1594/replay-original-prefix.mjs'
+      - '.github/diagnostics/public-ledger-1594/original-plan.json'
 
 permissions:
   contents: read
@@ -71,7 +73,7 @@ jobs:
             printf 'RUNNER_OS=%s RUNNER_ARCH=%s ImageOS=%s ImageVersion=%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
           } > "$RUNNER_TEMP/ledger-trace/runner-context.txt"
           cat /proc/diskstats > "$RUNNER_TEMP/ledger-trace/diskstats-before.txt"
-      - name: Trace original single-file regression without external network
+      - name: Replay original 287-file prefix and trace target once
         run: |
           set -euo pipefail
           runner_uid="$(id -u)"
@@ -83,8 +85,9 @@ jobs:
             .github/scripts/run-public-test-distributable.sh \
             "$runner_uid" "$runner_gid" "$runner_path" \
             bash packages/api/scripts/with-test-home.sh \
-            "$node_path" "$RUNNER_TEMP/ledger-probe/trace-original-test.mjs" \
+            "$node_path" "$GITHUB_WORKSPACE/driver/.github/diagnostics/public-ledger-1594/replay-original-prefix.mjs" \
             "$GITHUB_WORKSPACE/public" "$RUNNER_TEMP/ledger-trace" \
+            "$RUNNER_TEMP/ledger-probe" "$GITHUB_WORKSPACE/driver/.github/diagnostics/public-ledger-1594/original-plan.json" \
             2>&1 | tee "$RUNNER_TEMP/ledger-trace/original-test.log"
           trace_exit=${PIPESTATUS[0]}
           set -e
@@ -96,10 +99,14 @@ jobs:
         env:
           DEFAULT_OWNER_USER_ID: default-user
           CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT: '1'
+          GIT_AUTHOR_NAME: CI Runner
+          GIT_AUTHOR_EMAIL: ci@clowder-ai.dev
+          GIT_COMMITTER_NAME: CI Runner
+          GIT_COMMITTER_EMAIL: ci@clowder-ai.dev
       - name: Upload original result and native trace
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: public-1594-ledger-trace-${{ github.run_id }}
+          name: public-1594-prefix-ledger-trace-${{ github.run_id }}
           path: ${{ runner.temp }}/ledger-trace/
           if-no-files-found: error
