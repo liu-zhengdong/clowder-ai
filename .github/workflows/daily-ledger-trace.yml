@@ -1,0 +1,105 @@
+name: Diagnostic public ledger trace
+
+on:
+  push:
+    branches: [diag/ledger-trace-1594]
+    paths:
+      - '.github/workflows/daily-ledger-trace.yml'
+      - '.github/diagnostics/public-ledger-1594/probe.tar.gz'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnostic-public-ledger-trace
+  cancel-in-progress: false
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: public
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: zts212653/clowder-ai
+          ref: 66316ad7dcad3c8b8faf44250913d92f5dbe9ec0
+          path: public
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: public/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+          cache-dependency-path: public/pnpm-lock.yaml
+      - name: Freeze source and diagnostic identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 66316ad7dcad3c8b8faf44250913d92f5dbe9ec0
+          mkdir -p "$RUNNER_TEMP/ledger-probe" "$RUNNER_TEMP/ledger-trace"
+          bundle="$GITHUB_WORKSPACE/driver/.github/diagnostics/public-ledger-1594/probe.tar.gz"
+          echo "85f8588ac26daba2f2906a6e2f2ac372f0f93a8d3b5489fcc751fa92324ff552  $bundle" | sha256sum --check
+          tar -xzf "$bundle" -C "$RUNNER_TEMP/ledger-probe"
+          sha256sum packages/api/test/memory/entity-projection-liveness.test.js > "$RUNNER_TEMP/ledger-trace/original-test.sha256"
+          git status --porcelain > "$RUNNER_TEMP/ledger-trace/source-status-before.txt"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cat-cafe/shared build
+      - run: pnpm --filter @cat-cafe/mcp-server build
+      - run: pnpm --filter @cat-cafe/api build
+      - name: Record Linux runner context
+        run: |
+          set -euo pipefail
+          {
+            date --utc --iso-8601=seconds
+            uname -a
+            cat /etc/os-release
+            lscpu
+            df -T . /tmp
+            lsblk -o NAME,TYPE,SIZE,ROTA,MOUNTPOINTS
+            node --version
+            pnpm --version
+            cc --version
+            printf 'RUNNER_OS=%s RUNNER_ARCH=%s ImageOS=%s ImageVersion=%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${ImageOS:-unknown}" "${ImageVersion:-unknown}"
+          } > "$RUNNER_TEMP/ledger-trace/runner-context.txt"
+          cat /proc/diskstats > "$RUNNER_TEMP/ledger-trace/diskstats-before.txt"
+      - name: Trace original single-file regression without external network
+        run: |
+          set -euo pipefail
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+          runner_path="$PATH"
+          node_path="$(command -v node)"
+          set +e
+          sudo --preserve-env unshare --net -- \
+            .github/scripts/run-public-test-distributable.sh \
+            "$runner_uid" "$runner_gid" "$runner_path" \
+            bash packages/api/scripts/with-test-home.sh \
+            "$node_path" "$RUNNER_TEMP/ledger-probe/trace-original-test.mjs" \
+            "$GITHUB_WORKSPACE/public" "$RUNNER_TEMP/ledger-trace" \
+            2>&1 | tee "$RUNNER_TEMP/ledger-trace/original-test.log"
+          trace_exit=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$trace_exit" > "$RUNNER_TEMP/ledger-trace/exit-code.txt"
+          cat /proc/diskstats > "$RUNNER_TEMP/ledger-trace/diskstats-after.txt"
+          sha256sum --check "$RUNNER_TEMP/ledger-trace/original-test.sha256"
+          git status --porcelain > "$RUNNER_TEMP/ledger-trace/source-status-after.txt"
+          exit "$trace_exit"
+        env:
+          DEFAULT_OWNER_USER_ID: default-user
+          CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT: '1'
+      - name: Upload original result and native trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-1594-ledger-trace-${{ github.run_id }}
+          path: ${{ runner.temp }}/ledger-trace/
+          if-no-files-found: error
