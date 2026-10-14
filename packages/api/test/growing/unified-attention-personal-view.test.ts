@@ -105,6 +105,11 @@ test('personal visibility filters the complete set before paging and publishes e
     originalAttentionCount: 25,
     visibleAttentionCount: 5,
     ignoredAttentionCount: 20,
+    groupCounts: {
+      original: { decisions: 25, userMentions: 0, other: 0 },
+      visible: { decisions: 5, userMentions: 0, other: 0 },
+      ignored: { decisions: 20, userMentions: 0, other: 0 },
+    },
   });
 
   const ignoredPage = project(
@@ -250,6 +255,7 @@ test('a failed preference read fails the personal view closed without turning un
   assert.equal(result.totalCount, undefined);
   assert.equal(result.attentionCount, undefined);
   assert.equal(result.personalView?.preferenceRevision, undefined);
+  assert.equal(result.personalView?.groupCounts, undefined);
   assert.equal(result.sources.personalPreferences?.status, 'unavailable');
 });
 

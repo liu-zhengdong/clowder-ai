@@ -1,6 +1,7 @@
 'use client';
 import type { ArtifactReviewAnnotation, ArtifactReviewView, PublicationReviewContext } from '@cat-cafe/shared';
-import { useLayoutEffect, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useState } from 'react';
+import { ContentLandingHeader } from '@/components/workbench/content-review/ContentLandingHeader';
 import { useWorkspaceContentReview } from '@/components/workbench/content-review/useWorkspaceContentReview';
 import { ArtifactRoundLanding, type ArtifactRoundProps } from './ArtifactRoundLanding';
 import { ReviewContextSelector } from './ReviewContextSelector';
@@ -13,23 +14,30 @@ export function ArtifactReviewSurface({
   initialRound,
   onVersionChange,
   onContextChange,
+  leadingAction,
+  titleInHost = false,
 }: {
   reviewId: string;
   onBack: () => void;
   initialRound?: number;
   onVersionChange?: (round: number) => void;
   onContextChange?: (context: PublicationReviewContext) => void;
+  leadingAction?: ReactNode;
+  titleInHost?: boolean;
 }) {
   const controller = useArtifactReview(reviewId);
   if (!controller.view)
     return (
       <section className="p-4" data-testid="artifact-review-surface">
-        <button type="button" onClick={onBack}>
-          返回
-        </button>
-        <button type="button" onClick={() => void controller.refresh()} className="ml-3">
-          刷新
-        </button>
+        <ContentLandingHeader
+          leadingAction={leadingAction}
+          onBack={onBack}
+          versionControl={
+            <button type="button" onClick={() => void controller.refresh()}>
+              刷新
+            </button>
+          }
+        />
         {controller.error ? <p role="alert">{controller.error}</p> : <p>正在从原任务恢复作品…</p>}
       </section>
     );
@@ -42,6 +50,8 @@ export function ArtifactReviewSurface({
       initialRound={initialRound}
       onVersionChange={onVersionChange}
       onContextChange={onContextChange}
+      leadingAction={leadingAction}
+      titleInHost={titleInHost}
     />
   );
 }
@@ -52,6 +62,8 @@ function AuthorizedReview({
   initialRound,
   onVersionChange,
   onContextChange,
+  leadingAction,
+  titleInHost,
 }: {
   view: ArtifactReviewView;
   controller: ReturnType<typeof useArtifactReview>;
@@ -59,6 +71,8 @@ function AuthorizedReview({
   initialRound?: number;
   onVersionChange?: (round: number) => void;
   onContextChange?: (context: PublicationReviewContext) => void;
+  leadingAction?: ReactNode;
+  titleInHost: boolean;
 }) {
   const latest = view.review.rounds.at(-1);
   const [selected, setSelected] = useState(initialRound ?? latest?.number ?? 1);
@@ -71,18 +85,26 @@ function AuthorizedReview({
     onVersionChange?.(number);
   };
   const round = view.review.rounds.find((item) => item.number === selected);
-  if (!latest) return null;
-  if (!round)
+  if (!latest || !round)
     return (
       <section className="p-4" data-testid="artifact-review-surface">
-        <h2>{view.review.title}</h2>
+        <ContentLandingHeader
+          title={titleInHost ? undefined : view.review.title}
+          leadingAction={leadingAction}
+          versionControl={
+            <>
+              <button type="button" onClick={onBack}>
+                返回来源
+              </button>
+              {latest ? (
+                <button type="button" className="text-cafe-accent" onClick={() => selectVersion(latest.number)}>
+                  查看当前第 {latest.number} 版
+                </button>
+              ) : null}
+            </>
+          }
+        />
         <p role="status">第 {selected} 版暂不可读取。</p>
-        <button type="button" onClick={onBack}>
-          返回来源
-        </button>
-        <button type="button" className="ml-3 text-cafe-accent" onClick={() => selectVersion(latest.number)}>
-          查看当前第 {latest.number} 版
-        </button>
       </section>
     );
   const prefix = reviewDraftPrefix(view.review.task.ownerUserId, view.review.reviewId);
@@ -107,7 +129,7 @@ function AuthorizedReview({
   return (
     <ArtifactRoundEntry
       key={round.number}
-      {...{ view, round, controller, onBack, prefix, notice }}
+      {...{ view, round, controller, onBack, prefix, notice, leadingAction, titleInHost }}
       onReanchor={reanchor}
       onVersion={selectVersion}
       contextControl={

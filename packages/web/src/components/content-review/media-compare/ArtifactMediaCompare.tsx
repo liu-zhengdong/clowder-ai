@@ -15,7 +15,9 @@ export function ArtifactMediaCompare({
   canWrite,
   onClose,
   onBack,
-}: Pick<ArtifactRoundProps, 'view' | 'round' | 'controller' | 'prefix' | 'onBack'> & {
+  leadingAction,
+  titleInHost = false,
+}: Pick<ArtifactRoundProps, 'view' | 'round' | 'controller' | 'prefix' | 'onBack' | 'leadingAction' | 'titleInHost'> & {
   canWrite: boolean;
   recovery?: Pick<ContentReviewController, 'pending' | 'busy' | 'error' | 'retryPending'>;
   onClose: () => void;
@@ -33,10 +35,11 @@ export function ArtifactMediaCompare({
   return (
     <section className="flex min-h-0 flex-1 flex-col" data-testid="artifact-media-compare">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-cafe-subtle px-3 py-2 text-xs">
+        {leadingAction}
         <button type="button" className={buttonClass} onClick={onClose}>
           返回作品
         </button>
-        <span className="min-w-0 flex-1 truncate">{view.review.title}</span>
+        {titleInHost ? null : <span className="min-w-0 flex-1 truncate">{view.review.title}</span>}
         <label>
           原版{' '}
           <select

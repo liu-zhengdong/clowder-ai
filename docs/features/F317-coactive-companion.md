@@ -4,12 +4,12 @@ related_features: [F229, F258, F195, F202, F246, F295, F306, F309, F310]
 topics: [coactive, realtime, desktop-companion, gpt-live]
 doc_kind: spec
 created: 2026-09-15
-updated: 2026-10-13
+updated: 2026-10-14
 description: "让具名家猫通过实时感知与交谈、持续深思和行动，陪人跨应用共看、共听、互相指点，并接续共同经历。"
 description_source: model
 description_author: codex-astra
 description_updated_at: 2026-09-15T08:29:30Z
-tips_exempt: "Renewed 2026-10-13: front-desk response quality, timing, bounded native subagents and late-result returns refine the existing companion entry. Development/package receipts do not prove natural voice, household or shared-perception acceptance; no new general desktop entry is advertised. The 13:36 UTC update records host boot25 loading, the existing alpha.21 recovery and the existing plugin-details upgrade to alpha.24 still awaiting the owner; it does not establish a new entry or completed human trial."
+tips_exempt: "Renewed 2026-10-14: front-desk response quality, timing, bounded native subagents and late-result returns refine the existing companion entry. Development/package receipts do not prove natural voice, household or shared-perception acceptance; no new general desktop entry is advertised. The 13:36 UTC update records host boot25 loading, the existing alpha.21 recovery and the existing plugin-details upgrade to alpha.24 still awaiting the owner; it does not establish a new entry or completed human trial. The public-test dependency audit adds no user operation and makes no new runtime or acceptance claim."
 mcp_admission_status: accepted
 mcp_admission_ref: "file:docs/features/F317-coactive-companion.md"
 mcp_admission_claims:
@@ -277,6 +277,17 @@ Sol6.1 在正常安装、构建、启动的命名 Alpha `f317-jev-spoken` / `4f7
 **验收场景**：后台同时有一份已完成的旧 SOP 和一份今天的新报告。主人只说一次"那个写完了吗"→ 很快得到有内容、与真实状态对得上的回应 → 说"我是说今天那份"后只改对象、后续不回到旧那份 → 换题后结果回来，在合适的停顿提一句 → 挂断再进来能接上 → 被打断不重复执行。只跑这一条自然旅程，不跑媒体回归。
 
 **未知**：快问交给 Luna / Sol6.1 是否更快尚无端到端数据；"十秒内首个有用回应"和"猫猫球两三秒"目前都是目标，不是保证。
+
+### 2026-10-14 公开测试分发缺口（未修复）
+
+每日同步 source367 转入的既有缺口已独立核实：当前源码有 11 个直接测试消费者依赖
+5 个未导出的页面实验 helper，另有间接 fixture/可选 lab 消费；公开 `.test.js` lane
+未执行这些 `.mjs`，其绿灯不证明该组可运行。lineage 测试还读取内部验收报告，浏览器
+loader 又借用未导出的 PPT workspace，不能整目录放开来补齐。
+历史报告验证明确留在 source；可移植的合成产品回归补真实导出与执行条件，保留同根因的
+间接消费者。原 F 现场由 Sol6.1 依 operator 的替代约定续接，A 保留共享 Host 单写；修复需
+非作者 review 和干净公开布局证明。Task239 原日更不等此独立缺口，不复用 #5511 批准，
+不改变下方 Phase/AC 或原真人验收。
 
 ## Acceptance Criteria
 

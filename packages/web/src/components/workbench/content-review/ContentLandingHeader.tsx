@@ -10,12 +10,14 @@ export function ContentLandingHeader({
   onBack,
   onOpenFileTools,
   versionControl,
+  leadingAction,
 }: {
-  readonly title: string;
+  readonly title?: string;
   readonly navigationOrigin?: WorkspaceFileNavigationOrigin;
   readonly onBack?: () => void;
   readonly onOpenFileTools?: () => void;
   readonly versionControl?: ReactNode;
+  readonly leadingAction?: ReactNode;
 }) {
   const t = useShellCopy(voiceMeetingCopy);
   const workspace = useShellCopy(workspaceChromeCopy);
@@ -23,10 +25,13 @@ export function ContentLandingHeader({
     // In a narrow column (side-by-side panes, 390px) the controls wrap onto a second line so the
     // title keeps at least ~8rem instead of shrinking to a single character.
     <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-cafe-subtle px-3 py-2">
-      <h2 className="min-w-[8rem] flex-1 truncate text-sm font-semibold" title={title}>
-        {title}
-      </h2>
+      {title ? (
+        <h2 className="min-w-[8rem] flex-1 truncate text-sm font-semibold" title={title}>
+          {title}
+        </h2>
+      ) : null}
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+        {leadingAction}
         {versionControl}
         {onOpenFileTools ? (
           <button

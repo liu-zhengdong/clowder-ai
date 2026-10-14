@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import type { ArtifactReviewAnchor } from '@cat-cafe/shared';
+import { useEffect, useRef, useState } from 'react';
 import { addMediaSelectionToChat, addMediaWorkToChat } from '@/components/content-review/media-chat-composer';
 import {
   MEDIA_SELECTION_REFUSAL_COPY,
@@ -9,6 +10,7 @@ import {
 import type { PendingChatMark } from '@/components/content-review/ReviewPendingChatMarks';
 import { useComposerContextAttachments } from '@/components/useComposerContextAttachments';
 import { useChatStore } from '@/stores/chatStore';
+import { useWorkspaceSurfaceVisibility } from '../WorkspaceSurfaceVisibility';
 import type { ContentReviewView, ContentReviewWorkflow } from './content-review-contract';
 import type { WorkspaceAnnotationTarget } from './useWorkspaceContentReview';
 import { workspaceReviewRequestSource } from './workspace-modification-source';
@@ -26,6 +28,7 @@ export function useWorkspaceMediaChat({
   draft,
   setDraft,
   setTarget,
+  referenceOnOpen = false,
 }: {
   readonly view: ContentReviewView;
   readonly path: string;
@@ -34,8 +37,10 @@ export function useWorkspaceMediaChat({
   readonly draft: string;
   readonly setDraft: (draft: string) => void;
   readonly setTarget: (target: WorkspaceAnnotationTarget | null) => void;
+  readonly referenceOnOpen?: boolean;
 }) {
   const threadId = useChatStore((state) => state.currentThreadId);
+  const visible = useWorkspaceSurfaceVisibility();
   const composerDraft = useComposerContextAttachments(threadId ?? '');
   const [notice, setNotice] = useState<{ kind: 'selection' | 'whole'; message: string } | null>(null);
   const source = view.currentSource ?? view.review.source;
@@ -55,35 +60,50 @@ export function useWorkspaceMediaChat({
     pending && chatMedia && sameMediaSource(pending, chatMedia)
       ? pending.selections.map((item) => ({ id: item.id, anchor: item.selection }))
       : undefined;
-  const add = () => {
-    if (target?.kind !== 'media_anchor') return;
+  const addSelection = (anchor: ArtifactReviewAnchor) => {
     if (!chatMedia) {
       setNotice({
         kind: 'selection',
         message: MEDIA_SELECTION_REFUSAL_COPY[mime && mime !== 'image/png' ? 'not_image' : 'invalid'],
       });
-      return;
+      return false;
     }
-    const result = addMediaSelectionToChat(threadId ?? null, chatMedia, target.anchor, draft);
+    const result = addMediaSelectionToChat(threadId ?? null, chatMedia, anchor, draft, referenceOnOpen);
     if (result.kind === 'refused') {
       setNotice({ kind: 'selection', message: MEDIA_SELECTION_REFUSAL_COPY[result.reason] });
-      return;
+      return false;
     }
     setNotice(null);
     setDraft('');
     setTarget(null);
+    return true;
+  };
+  const add = () => {
+    if (target?.kind === 'media_anchor') addSelection(target.anchor);
   };
   const addWork = () => {
     if (!chatMedia) return;
-    const result = addMediaWorkToChat(threadId ?? null, chatMedia);
+    const result = addMediaWorkToChat(threadId ?? null, chatMedia, referenceOnOpen);
     setNotice(
       result.kind === 'refused' ? { kind: 'whole', message: MEDIA_SELECTION_REFUSAL_COPY[result.reason] } : null,
     );
   };
+  const addWorkRef = useRef(addWork);
+  addWorkRef.current = addWork;
+  const referenceKey = JSON.stringify(chatMedia);
+  const mayReference = visible && referenceOnOpen && !!chatMedia && view.canWrite && view.sourceState === 'current';
+  useEffect(() => {
+    // A retained hidden owner restoring beside another work is not an explicit image open.
+    // Opening the visible work references it; an unselected message names this whole work;
+    // the existing composer operation preserves its draft, existing regions and admission fences.
+    if (mayReference) addWorkRef.current();
+  }, [mayReference, referenceKey, threadId]);
   return {
+    target: chatMedia,
     offered: target?.kind === 'media_anchor',
     wholeWorkOffered: mime === 'image/png' && !!chatMedia && view.canWrite && view.sourceState === 'current',
     add,
+    addSelection,
     addWork,
     notice: notice && (notice.kind === 'whole' || target?.kind === 'media_anchor') ? notice.message : null,
     clearNotice: () => setNotice(null),

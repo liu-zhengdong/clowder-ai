@@ -119,7 +119,7 @@ function RowBody({
       ) : item.approval || item.choiceRequest ? null : (
         <MailboxWorkDetails item={item} />
       )}
-      {personal && !hostable ? (
+      {personal && !hostable && !item.userMention ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <MailboxItemPersonalAction item={item} personal={personal} />
         </div>
@@ -142,7 +142,7 @@ function RowBody({
           onOpen={onOpen}
           readCurrent={readCurrent}
         />
-      ) : (
+      ) : item.userMention && personal ? null : (
         <PlaceAction quiet={Boolean(item.approval)} place={place} onOpen={onOpen} />
       )}
     </section>
@@ -197,75 +197,86 @@ export function MailboxRow({
         background: 'var(--shell-paper)',
       }}
     >
-      <button
-        type="button"
-        data-testid="mailbox-item-toggle"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        disabled={stale}
-        onClick={onToggle}
-        className="shell-nav-row shell-focusable flex w-full flex-col gap-1.5 rounded-[14px] px-4 py-3 text-left text-sm"
-      >
-        {item.userMention ? (
-          <>
-            <span className="flex w-full items-start gap-2">
-              <span className="min-w-0 flex-1 text-sm font-medium">{title}</span>
-              <span className="flex-none text-xs" style={{ color: 'var(--shell-muted)' }}>
-                {time}
-              </span>
-              <Chevron open={open} />
-            </span>
-            <span className="flex w-full items-start gap-2">
-              {catId ? (
-                <span className="mt-px flex-none" data-testid="mailbox-item-avatar">
-                  <ShellCatAvatar catId={catId} size={24} />
+      <div className={item.userMention && personal ? 'flex items-start gap-2 px-3 py-3' : undefined}>
+        <button
+          type="button"
+          data-testid="mailbox-item-toggle"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          disabled={stale}
+          onClick={onToggle}
+          className={`shell-nav-row shell-focusable flex min-w-0 flex-1 flex-col gap-1.5 rounded-[14px] text-left text-sm ${item.userMention && personal ? '' : 'w-full px-4 py-3'}`}
+        >
+          {item.userMention ? (
+            <>
+              <span className="flex w-full items-start gap-2">
+                {catId ? (
+                  <span className="mt-px flex-none" data-testid="mailbox-item-avatar">
+                    <ShellCatAvatar catId={catId} size={24} />
+                  </span>
+                ) : null}
+                <span
+                  data-testid="mailbox-mention-preview"
+                  className="line-clamp-2 min-w-0 break-words text-sm"
+                  style={{ color: 'var(--shell-body)' }}
+                >
+                  {source}：{item.userMention.content}
                 </span>
-              ) : null}
+              </span>
               <span
-                data-testid="mailbox-mention-preview"
-                className="line-clamp-2 min-w-0 break-words text-sm"
-                style={{ color: 'var(--shell-body)' }}
+                className="flex w-full min-w-0 items-center gap-2 pl-8 text-xs"
+                style={{ color: 'var(--shell-muted)' }}
               >
-                {source}：{item.userMention.content}
+                <span className="min-w-0 flex-1 truncate">
+                  {title}
+                  {time ? ` · ${time}` : ''}
+                </span>
+                <Chevron open={open} />
               </span>
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="flex w-full items-center gap-2">
-              <span
-                className="flex-none rounded px-1.5 text-micro"
-                style={{ background: 'var(--shell-selected)', color: 'var(--shell-muted)' }}
-              >
-                {t.kinds[item.kind]}
+            </>
+          ) : (
+            <>
+              <span className="flex w-full items-center gap-2">
+                <span
+                  className="flex-none rounded px-1.5 text-micro"
+                  style={{ background: 'var(--shell-selected)', color: 'var(--shell-muted)' }}
+                >
+                  {t.kinds[item.kind]}
+                </span>
+                <span className="flex-1" />
+                {time ? (
+                  <span className="text-xs" style={{ color: 'var(--shell-muted)' }}>
+                    {time}
+                  </span>
+                ) : null}
+                <Chevron open={open} />
               </span>
-              <span className="flex-1" />
-              {time ? (
-                <span className="text-xs" style={{ color: 'var(--shell-muted)' }}>
-                  {time}
+              <span className="flex w-full items-start gap-2">
+                {catId ? (
+                  <span className="mt-px flex-none" data-testid="mailbox-item-avatar">
+                    <ShellCatAvatar catId={catId} size={24} />
+                  </span>
+                ) : null}
+                <span className={`${open ? 'block' : 'line-clamp-2 block'} min-w-0 flex-1`}>
+                  {lead ? <span className="font-semibold">{lead} </span> : null}
+                  {title}
+                </span>
+              </span>
+              {source ? (
+                <span className="block truncate text-xs" style={{ color: 'var(--shell-muted)' }}>
+                  {source}
                 </span>
               ) : null}
-              <Chevron open={open} />
-            </span>
-            <span className="flex w-full items-start gap-2">
-              {catId ? (
-                <span className="mt-px flex-none" data-testid="mailbox-item-avatar">
-                  <ShellCatAvatar catId={catId} size={24} />
-                </span>
-              ) : null}
-              <span className={`${open ? 'block' : 'line-clamp-2 block'} min-w-0 flex-1`}>
-                {lead ? <span className="font-semibold">{lead} </span> : null}
-                {title}
-              </span>
-            </span>
-            {source ? (
-              <span className="block truncate text-xs" style={{ color: 'var(--shell-muted)' }}>
-                {source}
-              </span>
-            ) : null}
-          </>
-        )}
-      </button>
+            </>
+          )}
+        </button>
+        {item.userMention && personal ? (
+          <div className="flex flex-none items-center gap-1" data-testid="mailbox-row-actions">
+            <MailboxItemPersonalAction item={item} personal={personal} />
+            <PlaceAction quiet compact place={resolveOriginalPlace(item)} onOpen={onOpen} />
+          </div>
+        ) : null}
+      </div>
       <RowSessionLine open={open} hosted={hosted} approval={item.approval} />
       {open ? (
         <RowBody

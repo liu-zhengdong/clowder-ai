@@ -50,7 +50,7 @@ export async function readJ3Attention(url, now, snapshot, messageStore) {
 }
 
 export async function assertQualifiedMailboxCounts(page, language, mentionCount) {
-  const expected = String(mentionCount + 1);
+  const expected = '1';
   const countLabel = language === 'en' ? /1 items/ : /1 件/;
   const button = page.getByTestId('mailbox-button');
   const count = page.getByTestId('mailbox-tab-count');
@@ -65,19 +65,32 @@ export async function assertQualifiedMailboxCounts(page, language, mentionCount)
   assert.match(await button.getAttribute('aria-label'), countLabel);
   assert.equal(await count.innerText(), expected);
   const filters = page.getByTestId('mailbox-mention-controls');
-  await filters.getByTestId('mailbox-period-earlier').press('Enter');
-  await page.waitForFunction(() => document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent === '0');
+  const period = filters.getByRole('combobox', { name: language === 'en' ? 'Request date filter' : '请求时间筛选' });
+  await period.selectOption('earlier');
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="mailbox-group-mentions"]')
+      ?.textContent?.match(/暂无 @你 请求|No @you requests/),
+  );
   assert.match(await page.getByTestId('mailbox-group-mentions').innerText(), /暂无 @你 请求|No @you requests/);
   assert.equal(
     await count.innerText(),
-    '0',
-    'the complete personal page proves an exact zero while keeping the global decision badge',
+    '1',
+    'the identically named Needs me tab keeps the global qualified decision count across request periods',
   );
   assert.match(await button.getAttribute('aria-label'), countLabel);
-  await filters.getByTestId('mailbox-period-week').press('Enter');
+  await period.selectOption('week');
   await page.waitForFunction(
     (value) => document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent === value,
     expected,
   );
   assert.match(await button.getAttribute('aria-label'), countLabel);
+  await page.getByTestId('mailbox-has-more').waitFor();
+  assert.match(await filters.locator('h3').innerText(), new RegExp(String(mentionCount)));
+  assert.doesNotMatch(
+    await filters.locator('h3').innerText(),
+    /本页|on this page/,
+    'the group uses the original full-vector count',
+  );
+  assert.ok(mentionCount > 20, 'this original journey must keep crossing the mailbox page boundary');
 }

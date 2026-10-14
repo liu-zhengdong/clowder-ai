@@ -18,7 +18,7 @@ import type { OriginalPlace } from './mailbox/original-place';
 import { RetainedResult } from './mailbox/RetainedResults';
 import { useMailboxPersonalPreferences } from './mailbox/use-mailbox-personal-preferences';
 import { useShellCopy } from './shell-copy';
-import type { MailboxState } from './unified-mailbox-state';
+import { deriveMailboxState, type MailboxState } from './unified-mailbox-state';
 import type { UnifiedAttentionView } from './use-unified-attention';
 
 const RAIL_WIDTH_FALLBACK = 52;
@@ -126,8 +126,9 @@ export function MailboxPanel({
   const { openKey, toggle } = useOpenRow(keys, view.result.kind === 'loading');
   const canRetry =
     state.kind === 'unavailable' || state.kind === 'partial' || (state.kind === 'has-items' && state.partial);
-  // The panel counts the entire authoritative read; the rail separately counts only decisions.
-  const total = state.kind === 'empty' ? 0 : state.kind === 'has-items' ? state.count : null;
+  // The identically named Needs me tab and rail count the same qualified decisions, never @you requests.
+  const decisionState = deriveMailboxState(view.result);
+  const total = decisionState.kind === 'empty' ? 0 : decisionState.kind === 'has-items' ? decisionState.count : null;
 
   // A hidden element can't take focus, so move focus in only once the panel is positioned and visible.
   useEffect(() => {
@@ -152,17 +153,18 @@ export function MailboxPanel({
     }
   }, [selectedProposalId, rows, openKey, toggle]);
 
-  const completePage = Boolean(
+  const completeRead = Boolean(
     read &&
       read.status === 'available' &&
       read.consistency.state === 'verified' &&
       read.totalCount !== undefined &&
       Object.values(read.sources).every(
         (source) => source.status === 'available' && source.exhaustiveness === 'complete',
-      ) &&
-      read.page.offset === 0 &&
-      !read.page.hasMore,
+      ),
   );
+  const completePage = Boolean(completeRead && read?.page.offset === 0 && !read.page.hasMore);
+  const personalRead = read?.personalView;
+  const groupCounts = completeRead && personalRead ? personalRead.groupCounts?.[personalRead.mode] : undefined;
   const renderRow = (row: MailboxDisplayRow) =>
     row.kind === 'retained' ? (
       <RetainedResult key={row.key} session={row.session} sessions={sessions} />
@@ -205,7 +207,7 @@ export function MailboxPanel({
         onBack={() => onSectionChange?.('pending')}
         onOpenSchedule={onOpenSchedule}
       />
-      {section === 'tools' && read !== null ? (
+      {(section === 'tools' || section === 'records') && read !== null ? (
         <MailboxApprovalTools
           section={section}
           view={view}
@@ -237,10 +239,24 @@ export function MailboxPanel({
               rows={rows}
               readKnown={read !== null}
               complete={completePage}
-              decisionsComplete={completePage && read?.mentionPeriod !== 'earlier' && read?.mentionPeriod !== 'handled'}
+              groupCounts={groupCounts}
               mentionControls={
                 section === 'pending' ? (
-                  <MailboxMentionControls key={mentionOwner.current} read={read} view={view} personal={personal} />
+                  <MailboxMentionControls
+                    key={mentionOwner.current}
+                    read={read}
+                    view={view}
+                    personal={personal}
+                    count={
+                      !read
+                        ? t.state.unconfirmed
+                        : groupCounts
+                          ? String(groupCounts.userMentions)
+                          : t.pageItems(
+                              rows.filter((row) => row.kind === 'item' && row.item.kind === 'user_mention').length,
+                            )
+                    }
+                  />
                 ) : undefined
               }
               renderRow={renderRow}

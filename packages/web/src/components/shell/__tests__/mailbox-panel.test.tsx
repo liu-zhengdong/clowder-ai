@@ -213,7 +213,7 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
     render();
     expect(host.querySelector('[data-testid="rail-badge-count"]')).toBeNull();
     open();
-    expect(text('mailbox-tab-count')).toBe('1');
+    expect(text('mailbox-tab-count')).toBe('0');
     expect(rows()).toHaveLength(1);
     expect(text('mailbox-state-text')).toContain('1 件');
   });
@@ -222,7 +222,13 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
     const badgeOf = () => host.querySelector('[data-testid^="rail-badge-"]');
     const cases: [string, MailboxRead, string, string | null, string?][] = [
       ['first read in flight', { kind: 'loading' }, '读取中', 'loading'],
-      ['proven total of 3', ok({ items: [approvalItem('a'), approvalItem('b')], totalCount: 3 }), '3 件', 'count'],
+      [
+        'proven total of 3',
+        ok({ items: [approvalItem('a'), approvalItem('b')], totalCount: 3 }),
+        '3 件',
+        'count',
+        '当前范围共 3 件',
+      ],
       [
         'rows but no total',
         ok({ items: [approvalItem('a')], consistency: { state: 'uncertain', reasons: ['x'] } }),
@@ -665,8 +671,8 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
         act(() => toggle(0)?.click());
         expect(text('mailbox-place-note')).toBeNull();
         expect(openOriginal()).toHaveLength(0);
-        expect(text('mailbox-history')).toBe('已处理的');
-        expect(text('mailbox-filter-batch')).toBe('审批记录');
+        expect(text('mailbox-history')).toBe('已处理的 @你');
+        expect(text('mailbox-records')).toBe('审批记录');
       });
 
       it.each([

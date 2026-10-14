@@ -3,6 +3,7 @@
 import { type ReactNode, useCallback } from 'react';
 import { EvolutionProgramSurface } from '@/components/capability-evolution/solution-gate/SolutionGateHost';
 import { ArtifactReviewSurface } from '@/components/content-review/ArtifactReviewSurface';
+import { useShellPresentation } from '@/components/shell/shell-presentation';
 import { TheaterReplayContent } from '@/components/story-player/TheaterReplayContent';
 import type { WorkspaceSurfaceDescriptor } from '@/components/workbench/workbench-contract';
 import { BrowserPanel } from '@/components/workspace/BrowserPanel';
@@ -86,7 +87,9 @@ function F307OwnerSurfaceContent({
   onRefreshSurface,
   onRequestDetach,
   onReturnToFileOrigin,
-}: Omit<F307OwnerSurfaceRendererProps, 'surfaceVisible'>) {
+  leadingAction,
+}: Omit<F307OwnerSurfaceRendererProps, 'surfaceVisible'> & { leadingAction?: ReactNode }) {
+  const isV2 = useShellPresentation() === 'v2';
   const browserTarget = resolveBrowserTarget(surface);
   const returnToOrigin = () =>
     surface.navigationOrigin && onReturnToFileOrigin
@@ -182,6 +185,8 @@ function F307OwnerSurfaceContent({
       <ArtifactReviewSurface
         reviewId={target.reviewId}
         initialRound={target.round}
+        leadingAction={leadingAction}
+        titleInHost={isV2}
         onContextChange={(context) =>
           useF307ExperienceWorkbenchStore.getState().dispatch({
             type: 'resolve-content-surface',
@@ -249,6 +254,7 @@ function F307OwnerSurfaceContent({
         <PublicationLandingResolver
           sourceSurface={surface}
           target={target}
+          leadingAction={leadingAction}
           onBack={returnToOrigin}
           onResolved={(resolved) =>
             useF307ExperienceWorkbenchStore
@@ -258,6 +264,7 @@ function F307OwnerSurfaceContent({
         >
           <PublicationContentReviewSurface
             {...target}
+            leadingAction={leadingAction}
             title={surface.title}
             navigationOrigin={surface.navigationOrigin}
             onVersionChange={(ownerRevision) =>
@@ -333,7 +340,7 @@ export function F307OwnerSurfaceRenderer({ surfaceVisible = true, ...props }: F3
     <WorkspaceSurfaceVisibilityProvider visible={surfaceVisible}>
       <WorkspacePreviewIntentProvider surfaceId={props.surface.id}>
         <ContentPublicationNavigator key={props.surface.id} surface={props.surface}>
-          <F307OwnerSurfaceContent {...props} />
+          {(leadingAction) => <F307OwnerSurfaceContent {...props} leadingAction={leadingAction} />}
         </ContentPublicationNavigator>
       </WorkspacePreviewIntentProvider>
     </WorkspaceSurfaceVisibilityProvider>

@@ -8,8 +8,10 @@ import { chromium } from '../../../ppt-forge/node_modules/playwright/index.mjs';
 import { registerDefaultEntryJourney } from './default-entry-journey.harness.mjs';
 import { availablePort, stopChild, waitForHttp } from './f290-runtime-journey.harness.mjs';
 import { CALENDAR_THREAD, createCalendarFixture } from './f310-work-calendar.fixture.mjs';
+import { assertApprovalHistoryJourney } from './f322-j3-approval-history.mjs';
 import { assertQualifiedMailboxCounts } from './f322-j3-attention.fixture.mjs';
 import { assertPersonalMailboxJourney } from './f322-j3-personal-mailbox.mjs';
+import { assertPersonalMailboxRaces } from './f322-j3-personal-races.mjs';
 import { assertPersonalScheduleJourney } from './f322-j3-personal-schedule.mjs';
 import {
   assertDifferentArtifactReadFailure,
@@ -336,7 +338,9 @@ registerDefaultEntryJourney(
       assert.equal(await composer.inputValue(), 'J3 原 Chat 草稿和选择位置');
       assert.deepEqual(await composer.evaluate((input) => [input.selectionStart, input.selectionEnd]), [3, 8]);
       await assertPersonalScheduleJourney(page, fixture, language, evidence);
+      await assertPersonalMailboxRaces(page, fixture, language, evidence);
       await assertPersonalMailboxJourney(page, fixture, language, evidence);
+      await assertApprovalHistoryJourney(page, fixture, language, evidence);
       t.diagnostic(
         JSON.stringify({
           baseUrl: base,
@@ -354,6 +358,21 @@ registerDefaultEntryJourney(
       if (!page.isClosed()) {
         await writeReadingFailure(page, evidence);
       }
+      await writeFile(
+        path.join(evidence, 'j3-failure-state.json'),
+        JSON.stringify(
+          {
+            sourceHead: process.env.F322_J3_SOURCE_HEAD ?? null,
+            controlled: true,
+            language,
+            preferenceSnapshot: fixture.preferenceSnapshot(),
+            mutations: fixture.mutations,
+            targetDraft: fixture.getDraft(fixture.progress.threadId),
+          },
+          null,
+          2,
+        ),
+      );
       throw error;
     }
   },

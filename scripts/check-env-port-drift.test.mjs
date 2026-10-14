@@ -233,9 +233,6 @@ function buildExportedRootScripts(sourceScripts) {
     // F267 component hashes resolve private home certificate revisions and must
     // be removed from both the exported script table and check:features chain.
     'check:measurement-component-hashes',
-    // F286 bootstrap attestation is bound to cat-cafe origin/main; the public checkout has a
-    // different protected history. Mirrors sync-to-opensource.sh internalScripts.
-    'check:mcp-surface-governance',
     // F251 sibling guard hard-depends on sync-manifest.yaml (not exported). Mirrors the shell list.
     'check:sync-docs-runtime-assets',
     // F238 Phase D: reverse-sanitizer detect-only CLI — internal boundary tooling
@@ -1347,7 +1344,10 @@ excluded:
       const managedScripts = new Set(readYamlTopLevelList('sync-manifest.yaml', 'managed_scripts'));
       const webBuild = readJsonFile('packages/web/package.json').scripts?.build;
 
-      assert.equal(webBuild, 'node ../../scripts/run-preserving-signal-exit.mjs next build');
+      assert.equal(
+        webBuild,
+        'node ../../scripts/run-preserving-signal-exit.mjs node ./node_modules/next/dist/bin/next build',
+      );
       assert.ok(
         managedScripts.has('scripts/run-preserving-signal-exit.mjs'),
         'the exported Web build must not reference an adapter omitted from the public sync closure',

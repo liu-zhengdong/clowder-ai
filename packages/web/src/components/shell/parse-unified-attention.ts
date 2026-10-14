@@ -135,9 +135,39 @@ const PERSONAL_COUNT_FIELDS = [
   'ignoredAttentionCount',
 ] as const;
 
+const PERSONAL_GROUPS = ['decisions', 'userMentions', 'other'] as const;
+const PERSONAL_PARTITIONS = ['original', 'visible', 'ignored'] as const;
+
+function hasValidPersonalGroupCounts(
+  value: unknown,
+  totals: { original: number; visible: number; ignored: number },
+): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  const counts: Record<(typeof PERSONAL_PARTITIONS)[number], Record<(typeof PERSONAL_GROUPS)[number], number>> = {
+    original: { decisions: 0, userMentions: 0, other: 0 },
+    visible: { decisions: 0, userMentions: 0, other: 0 },
+    ignored: { decisions: 0, userMentions: 0, other: 0 },
+  };
+  for (const partition of PERSONAL_PARTITIONS) {
+    const group = value[partition];
+    if (!isRecord(group)) return false;
+    let sum = 0;
+    for (const key of PERSONAL_GROUPS) {
+      const count = group[key];
+      if (!Number.isSafeInteger(count) || (count as number) < 0) return false;
+      counts[partition][key] = count as number;
+      sum += count as number;
+    }
+    if (sum !== totals[partition]) return false;
+  }
+  return PERSONAL_GROUPS.every((key) => counts.original[key] === counts.visible[key] + counts.ignored[key]);
+}
+
 function hasValidPersonalCounts(view: Record<string, unknown>, body: Record<string, unknown>): boolean {
   const present = PERSONAL_COUNT_FIELDS.filter((field) => view[field] !== undefined);
-  if (present.length === 0) return body.totalCount === undefined && body.attentionCount === undefined;
+  if (present.length === 0)
+    return view.groupCounts === undefined && body.totalCount === undefined && body.attentionCount === undefined;
   if (present.length !== PERSONAL_COUNT_FIELDS.length || view.preferenceRevision === undefined) return false;
   const counts = PERSONAL_COUNT_FIELDS.map((field) => view[field]);
   if (counts.some((value) => !Number.isSafeInteger(value) || (value as number) < 0)) return false;
@@ -148,6 +178,11 @@ function hasValidPersonalCounts(view: Record<string, unknown>, body: Record<stri
   const selectedTotal = view.mode === 'visible' ? visibleTotal : ignoredTotal;
   const selectedAttention = view.mode === 'visible' ? visibleAttention : ignoredAttention;
   return (
+    hasValidPersonalGroupCounts(view.groupCounts, {
+      original: originalTotal,
+      visible: visibleTotal,
+      ignored: ignoredTotal,
+    }) &&
     body.totalCount === selectedTotal &&
     (body.attentionCount === undefined || body.attentionCount === selectedAttention)
   );

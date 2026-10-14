@@ -1,6 +1,6 @@
 ---
 feature_ids: [F325]
-tips_exempt: "Renewed 2026-10-10: Task-bound native coding, notification and test-runner scope remain explicit operator grants; production authentication, parity and migration still require acceptance before advertising a general user entry."
+tips_exempt: "Renewed 2026-10-14: This records repair toward normal member capability parity and still-incomplete acceptance, not a newly usable public entry. The former Task-only tool/file restrictions are not the product goal; add user-facing discovery when the complete working path is delivered and verified."
 related_features: [F053, F061, F143, F149, F161, F174, F178, F194, F201, F203, F210, F211, F241, F254, F261, F286, F296, F299, F306, F318, F320, F323, F324]
 topics: [antigravity, acp, native-carrier, parity, migration, managed-job]
 doc_kind: spec
@@ -22,6 +22,10 @@ description_updated_at: 2026-09-29T06:01:16Z
 # F325: Antigravity Native Parity｜Siamese的新猫爬架与旧接入收归
 
 > **Status**: in-progress | **Owner**: 小星星·Maine Coon (@codex-astra, gpt-6-astra) | **Priority**: P1
+
+**我们要的结果**：You 从家里正常入口叫出Siamese，便能对话、创作、查记忆、用工具、读改代码与测试、接 review、接住插话、停止和续接；长任务独立持久、重启可恢复，历史与身份保留，过时入口退役。以家里 Codex app-server / Claude 已落地的实际能力为参照，在相同授权与受保护目标边界下可用。普通工作不能要求人为维护 Native 专属的短工具清单或只为验收准备的空目录。任何真实上游限制须有当前证据和可用替代；本地尚未接线不能冒充不支持。
+
+**现状声明**：#5505 修的是已复现收尾回调缺口，未交付上述整套能力。当前下述代码定位描述的是现有实现，包含本次待纠正的 Task-only coding 与逐工具 callback 表，不是新的产品需求。原 A–E、F261 有效需求和迁移/历史边界继续被承接，不因一个 PR 的新安排而删除。
 
 Architecture cell: `identity-session`, `transport`, `callback-auth`, `bubble-pipeline`, `action-plane`, `mcp-surface-governance`, `dispatch`
 
@@ -63,6 +67,7 @@ AGY plainText + SQLite/protobuf 生产旁路。新接入必须完整验证后切
 
 ## Current State / 现状基线
 
+- 2026-10-13：[PR #5492](https://github.com/zts212653/clowder-ai/pull/5492) 已合入 `26843eaeed201fc0bb89c7c8a966cb35c9fb7908`。沿 You 在 `[thread-id]#private-source-id` 的明确指令，Native 增加显式自动批准选择，使用官方 `--dangerously-skip-permissions`，允许原生文件/命令操作且无需批准目录列表；默认受限模式及 host `read_only` 优先级保留。仓库 hooks/agents/plugins/skills/MCP 配置仍在启动前拒绝，`.env` 不能遮蔽这类拒绝。非作者 Sol 5.6 对最终 `f249436fe6` 放行；API 81/81、Web 101/101、Chromium 3/3 与固定 AGY 1.3.4 的隔离假模型资格覆盖保存/回读和实际 CLI 读写/测试，不代表真实 OAuth coding 验收。当前 runtime boot27/revision `1a13a3f7` 尚未加载；原 Task2347 已登记 deployment generation 2，等待 API/Web 包含该 merge revision 后续办普通招呼。旧 A+B 预算 3/3、三条 A init/cancel 投影红、served-model、principal、压缩、真实 coding 与整体 P1 验收仍未完成。
 - 官方独立 ACP server `1.2.1` 已在隔离 HOME 完成个人 OAuth，真实 prompt、MCP 及权限允许/拒绝可行；但主 agent 原生 L0 无受支持通道，Rules/AGENTS.md 也未送进模型，不能拿它直接做 P1 身份载体。You 在执行现场 `[thread-id]#private-source-id` 选择保留个人 OAuth 与原生 L0，要求检查 CLI。
 - 家内通用 ACP（F149/F161）已有进程池/session lease，但 L0 仍 prepend，默认 permission handler 会选允许。
   不能仅换 executable 就宣称与 Codex/Claude 平权。
@@ -73,6 +78,12 @@ AGY plainText + SQLite/protobuf 生产旁路。新接入必须完整验证后切
   当前 `durable-managed-gate-*`、`ManagedCommandWakeRecoverySweep` 与取消测试是可复用资产，
   不等于通用 AGY job、12B dogfood、全套 F261 AC 已完成。
 - 两个现场反例已由Siamese的 raw invocation 分别定位：cursor 400 是复用 `limit=40` 的 cursor 时改成 `limit=50`，服务端 scope 拒绝正确，本分支已补调用提示和同参/变参回归；DONE-kill 是上游 `manage_task` 的自然退出与 kill 竞态，并非家内 Cancel。新载体仍需独立验证完成后停止与前端诊断。
+
+### 2026-10-14 runtime 激活与普通招呼复核
+
+You 在执行现场 `[thread-id]#private-source-id` 确认重启并要求自行测试、叫Siamese。API/Web 的原 Task2347 deployment g2 已 matched：boot28、revision `237a5a9de17e5e311f67a6b8e6ad2475e85db813` 包含 PR #5492。正常 API 保存 `autoApprove=true` / `trustedWorkspaces=[]` 返回 200，回读一致，账号/Profile/模型和其他成员未变；上文 boot27 待加载是合入时的历史快照。
+
+普通招呼52实际启动一次真实模型：线程 MCP 读取与 README 原生读取成功，随后模型按家规调用自身完成回执和摩擦登记，却被 Native 默认 callback scope 拒绝 403，宿主以 `AGY_UNEXPECTED_TOOL` 拒绝交付自然 final。因此不宣称已经稳定聊天。修复 [PR #5505](https://github.com/zts212653/clowder-ai/pull/5505) 补齐既有 invocation-fenced 生命周期 producer 的精确准入，保留 host `read_only`、显式窄 scope 和其他未授权 MCP 拒绝。非作者 Sol 5.6 的 durable local fact `private-source-id` 批准 exact HEAD `a3a53d44a6f8b5fb39b365605ae17da1476e492c`，并独立覆盖最新 F167 #5501 的合并态回归；2026-10-14T01:43:08Z 已合入 `e65a13c2908006d7fb02cdcd5516372ede308f1d`，七份 landed source blob 与 reviewed manifest 完全一致。隔离 API/control/auth 112/112、routing/coding/source 175 passed（1 个既有 Redis 重启案例未启隔离故跳过）、官方 AGY 1.3.4 假模型十模式通过；修复验证没有追加真实启动。
 
 ## Legacy Disposition / 前置收归
 
@@ -127,11 +138,7 @@ provider background task、模型说“做完了”、进程退出均不替代 d
 非作者观察普通聊天、创作、记忆翻页、工具、插话、停止、压缩、恢复、双猫及长任务的完整用户路径。
 完整交付包含实际运行版本下的结果回流，不能停在合入或协议测试。
 
-### Delivery Batches / 三单施工
-
-P1 把官方契约探针、安全接入与真实 coding 一起交；P2 三猫使用新载体补齐平权与持久长任务；
-P3 全面迁移、删旧入口与终态验收。首单不能只交 adapter、等最后才让Siamese入住。
-早期仅单猫受控试用，全成员 production cutover 仍需最终相应验收；不以一个 PR 代表全部 Phase 完成。
+### Delivery / 当前单 PR 完整交付
 
 ## User Journey
 

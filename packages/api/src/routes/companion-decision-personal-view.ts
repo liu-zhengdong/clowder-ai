@@ -3,6 +3,7 @@ import {
   type IgnoredItemSnapshot,
   ignoredItemKey,
   type UnifiedAttentionItemV1,
+  type UnifiedAttentionPersonalGroupCountsV1,
   type UnifiedAttentionPersonalViewV1,
   type UnifiedAttentionPreferenceCoordinate,
   type UnifiedAttentionSourceRead,
@@ -16,7 +17,31 @@ export interface DecisionPersonalViewInput {
 }
 
 function decisionQualifiedItems(items: UnifiedAttentionItemV1[]): UnifiedAttentionItemV1[] {
-  return items.filter((item) => item.approval?.resolution === 'open' || item.choiceRequest !== undefined);
+  return items.filter(decisionQualified);
+}
+
+function decisionQualified(item: UnifiedAttentionItemV1): boolean {
+  return item.approval?.resolution === 'open' || item.choiceRequest !== undefined;
+}
+
+function groupCounts(items: UnifiedAttentionItemV1[]): UnifiedAttentionPersonalGroupCountsV1['original'] {
+  const counts = { decisions: 0, userMentions: 0, other: 0 };
+  for (const item of items) {
+    if (item.kind === 'user_mention') counts.userMentions++;
+    else if (decisionQualified(item)) counts.decisions++;
+    else counts.other++;
+  }
+  return counts;
+}
+
+interface ExactPersonalCounts {
+  originalTotalCount: number;
+  visibleTotalCount: number;
+  ignoredTotalCount: number;
+  originalAttentionCount: number;
+  visibleAttentionCount: number;
+  ignoredAttentionCount: number;
+  groupCounts: UnifiedAttentionPersonalGroupCountsV1;
 }
 
 interface PersonalProjection {
@@ -24,7 +49,7 @@ interface PersonalProjection {
   attentionItems: UnifiedAttentionItemV1[];
   sourceExact: boolean;
   view?: UnifiedAttentionPersonalViewV1;
-  counts?: Required<Omit<UnifiedAttentionPersonalViewV1, 'mode' | 'preferenceRevision'>>;
+  counts?: ExactPersonalCounts;
 }
 
 function canonical(value: unknown): string {
@@ -155,6 +180,11 @@ export function projectDecisionPersonalView(input: {
     originalAttentionCount: attentionItems.length,
     visibleAttentionCount: attention.visible.length,
     ignoredAttentionCount: attention.ignored.length,
+    groupCounts: {
+      original: groupCounts(pageItems),
+      visible: groupCounts(page.visible),
+      ignored: groupCounts(page.ignored),
+    },
   };
   return {
     pageItems: mode === 'visible' ? page.visible : page.ignored,

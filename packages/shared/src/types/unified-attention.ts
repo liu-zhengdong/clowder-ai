@@ -165,6 +165,21 @@ export interface UnifiedAttentionItemV1 {
   preferenceCoordinate?: UnifiedAttentionPreferenceCoordinate;
 }
 
+/** Exact groups from the full selected response vector, before offset/limit is applied. */
+export interface UnifiedAttentionItemGroupCountsV1 {
+  /** Open approvals and canonical pending structured choices. */
+  decisions: number;
+  userMentions: number;
+  /** Repairs, non-question judgments and every other non-mention item. */
+  other: number;
+}
+
+export interface UnifiedAttentionPersonalGroupCountsV1 {
+  original: UnifiedAttentionItemGroupCountsV1;
+  visible: UnifiedAttentionItemGroupCountsV1;
+  ignored: UnifiedAttentionItemGroupCountsV1;
+}
+
 export interface UnifiedAttentionPersonalViewV1 {
   mode: 'visible' | 'ignored';
   preferenceRevision?: number;
@@ -175,6 +190,8 @@ export interface UnifiedAttentionPersonalViewV1 {
   originalAttentionCount?: number;
   visibleAttentionCount?: number;
   ignoredAttentionCount?: number;
+  /** Exact full-vector presentation groups. Omitted whenever the exact personal counts are omitted. */
+  groupCounts?: UnifiedAttentionPersonalGroupCountsV1;
 }
 
 export interface UnifiedAttentionReadV1 {

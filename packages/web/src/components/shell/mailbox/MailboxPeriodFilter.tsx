@@ -8,13 +8,34 @@ export function MailboxPeriodFilter({
   read,
   view,
   busy = false,
+  compact = false,
 }: {
   read: UnifiedAttentionReadV1 | null;
   view: UnifiedAttentionView;
   busy?: boolean;
+  compact?: boolean;
 }) {
   const t = useShellCopy(mailboxEntryCopy);
   const period = read?.mentionPeriod === 'recent' ? 'week' : (read?.mentionPeriod ?? 'week');
+  if (compact) {
+    return (
+      <select
+        aria-label={t.periods}
+        value={period}
+        disabled={busy || !read}
+        className="shell-focusable min-w-0 rounded px-1 py-1 text-xs disabled:opacity-50"
+        style={{ background: 'transparent', color: 'var(--shell-body)' }}
+        onChange={(event) => {
+          const value = event.target.value;
+          if (value === 'today' || value === 'week' || value === 'earlier') view.setMentionPeriod?.(value);
+        }}
+      >
+        <option value="today">{t.today}</option>
+        <option value="week">{t.week}</option>
+        <option value="earlier">{t.earlierPeriod}</option>
+      </select>
+    );
+  }
   return (
     <div className="flex flex-col gap-2 text-xs">
       <div role="group" aria-label={t.periods} className="flex flex-wrap gap-1">

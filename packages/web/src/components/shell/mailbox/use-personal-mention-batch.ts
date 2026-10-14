@@ -28,15 +28,38 @@ export function usePersonalMentionBatch(
       alive.current = false;
     };
   }, []);
-  const owner = read?.identity.ownerUserId;
+  // A verified stale read can identify the same owner during refresh, but never authorize a write.
+  const owner = read?.identity.ownerUserId ?? view.staleRead?.identity.ownerUserId;
+  const confirmedOwner = read?.identity.ownerUserId;
+  const lastVerifiedOwner = useRef(confirmedOwner);
   useEffect(() => {
-    setSnapshot(null);
-    setNotice(null);
-  }, [owner]);
+    // Re-verifying the same session briefly withdraws identity. Hide its notice during that gap, then restore it;
+    // only a different verified owner clears it. Otherwise the reread after a refused confirmation eats its explanation.
+    if (confirmedOwner && lastVerifiedOwner.current !== confirmedOwner) {
+      lastVerifiedOwner.current = confirmedOwner;
+      setSnapshot(null);
+      setNotice(null);
+    }
+  }, [confirmedOwner]);
   const current = (expectedOwner: string) =>
     alive.current &&
     latest.current.read?.identity.ownerUserId === expectedOwner &&
     latest.current.view.resultGeneration === latest.current.view.readsStarted();
+  const withdraw = () => {
+    if (!alive.current) return;
+    setSnapshot(null);
+    setNotice('changed');
+  };
+  useEffect(() => {
+    if (
+      snapshot &&
+      !running.current &&
+      (read?.identity.ownerUserId !== snapshot.ownerUserId || view.resultGeneration !== view.readsStarted())
+    ) {
+      setSnapshot(null);
+      setNotice('changed');
+    }
+  }, [snapshot, read, view]);
   const prepare = async (period: MentionIgnorePeriod) => {
     if (!owner || personal.actions?.disabled !== false || running.current) return;
     running.current = true;
@@ -44,7 +67,10 @@ export function usePersonalMentionBatch(
     setNotice(null);
     try {
       const preview = await readPersonalMentionPreview(owner, period);
-      if (!current(owner)) return;
+      if (!current(owner)) {
+        withdraw();
+        return;
+      }
       if (preview.personalView.preferenceRevision !== latest.current.read?.personalView?.preferenceRevision) {
         setNotice('changed');
         view.refetch();
@@ -53,20 +79,27 @@ export function usePersonalMentionBatch(
       if (!preview.requests.length) setNotice('empty');
       else setSnapshot(preview);
     } catch {
-      if (current(owner)) setNotice('unavailable');
+      if (alive.current) setNotice(current(owner) ? 'unavailable' : 'changed');
     } finally {
       running.current = false;
       if (alive.current) setBusy(false);
     }
   };
   const confirm = async () => {
-    if (!snapshot || running.current || !current(snapshot.ownerUserId) || personal.actions?.disabled !== false) return;
+    if (!snapshot || running.current) return;
+    if (!current(snapshot.ownerUserId) || personal.actions?.disabled !== false) {
+      withdraw();
+      return;
+    }
     running.current = true;
     setBusy(true);
     setNotice(null);
     try {
       const fresh = await readPersonalMentionPreview(snapshot.ownerUserId, snapshot.period);
-      if (!current(snapshot.ownerUserId)) return;
+      if (!current(snapshot.ownerUserId)) {
+        withdraw();
+        return;
+      }
       if (personalMentionPreviewKey(fresh) !== personalMentionPreviewKey(snapshot)) {
         setNotice('changed');
         view.refetch();
@@ -75,14 +108,10 @@ export function usePersonalMentionBatch(
       const coordinates = fresh.requests
         .map((request) => request.preferenceCoordinate)
         .filter((coordinate): coordinate is UnifiedAttentionPreferenceCoordinate => coordinate.kind === 'mailbox');
-      const saved = await latest.current.personal.ignoreBatch(
-        coordinates,
-        fresh.ownerUserId,
-        fresh.personalView.preferenceRevision,
-      );
-      if (!saved && current(fresh.ownerUserId)) setNotice('changed');
+      await latest.current.personal.ignoreBatch(coordinates, fresh.ownerUserId, fresh.personalView.preferenceRevision);
+      // The writer exposes the actual failure (CAS conflict or unavailable); do not relabel every failure as a changed item.
     } catch {
-      if (current(snapshot.ownerUserId)) setNotice('unavailable');
+      if (alive.current) setNotice(current(snapshot.ownerUserId) ? 'unavailable' : 'changed');
     } finally {
       setSnapshot(null);
       running.current = false;
@@ -92,7 +121,7 @@ export function usePersonalMentionBatch(
   return {
     snapshot: snapshot?.ownerUserId === owner ? snapshot : null,
     busy,
-    notice,
+    notice: owner && owner === lastVerifiedOwner.current ? notice : null,
     prepare,
     confirm,
     cancel: () => {

@@ -123,6 +123,11 @@ test('personal mention preview is full-set, versioned, period-exact and fails cl
     headers: { 'x-test-session': 'owner' },
   });
   assert.equal(decisionRead.statusCode, 200);
+  assert.deepEqual(decisionRead.json().personalView.groupCounts, {
+    original: { decisions: 0, userMentions: 2, other: 0 },
+    visible: { decisions: 0, userMentions: 2, other: 0 },
+    ignored: { decisions: 0, userMentions: 0, other: 0 },
+  });
   const decisionCoordinates = new Map(
     decisionRead
       .json()

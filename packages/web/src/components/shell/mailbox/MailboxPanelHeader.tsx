@@ -17,7 +17,15 @@ export function MailboxPanelHeader({
 }) {
   const t = useShellCopy(mailboxEntryCopy);
   const title =
-    section === 'history' ? t.history : section === 'ignored' ? t.ignored : section === 'tools' ? t.records : t.title;
+    section === 'history'
+      ? t.history
+      : section === 'ignored'
+        ? t.ignored
+        : section === 'records'
+          ? t.records
+          : section === 'tools'
+            ? t.approvalTools
+            : t.title;
   return (
     <header className="flex-none px-[22px] pb-3 pt-3">
       <div className="flex items-center justify-between gap-2">

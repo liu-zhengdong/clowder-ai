@@ -76,7 +76,7 @@ export function MailboxButton() {
   useEffect(() => {
     const navigate = (event: Event) => {
       const input = (event as CustomEvent<MailboxNavigation>).detail;
-      if (!input || !['pending', 'history', 'tools', 'ignored'].includes(input.section)) return;
+      if (!input || !['pending', 'history', 'tools', 'records', 'ignored'].includes(input.section)) return;
       changeSection(input.section);
       setSelectedProposalId(input.proposalId ?? null);
       setOpen(true);

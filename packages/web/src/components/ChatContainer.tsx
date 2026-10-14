@@ -65,6 +65,7 @@ import { WorkspacePanel } from './WorkspacePanel';
 import { DEFAULT_ARTIFACT_WORK_CHAT_BASIS } from './workbench/artifact-work-presentation';
 import { useF307ExperienceWorkbenchStore } from './workbench/experience-workbench-store';
 import { useArtifactWorkHostPresentation } from './workbench/useArtifactWorkHostPresentation';
+import { WorkspaceChatRevealProvider } from './workbench/WorkspaceChatReveal';
 import { ContextualWorkspaceChrome } from './workspace/ContextualWorkspaceChrome';
 import { FloatingTranscriptContainer } from './workspace/FloatingTranscriptContainer';
 import { ResizeHandle } from './workspace/ResizeHandle';
@@ -326,6 +327,25 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     mainAreaAttentionSurfaceId !== null &&
     (attentionPresentation.kind !== 'chat-workspace' || attentionPresentation.threadId === threadId);
   const mainAreaOverlayActive = mainAreaAttentionActive && attentionPresentation.kind === 'overlay';
+  const revealWorkspaceChat = useCallback(() => {
+    if (!isV2 || useChatStore.getState().currentThreadId !== threadId) return;
+    // Full-window Artifact work leaves room for the original composer; the other overlay hosts cover it.
+    if (
+      statusPanelOpen &&
+      rightPanelMode === 'workspace' &&
+      (!isDesktop || (mainAreaOverlayActive && !artifactFullWindowActive))
+    )
+      closeStatusPanel();
+  }, [
+    isV2,
+    threadId,
+    statusPanelOpen,
+    rightPanelMode,
+    isDesktop,
+    mainAreaOverlayActive,
+    artifactFullWindowActive,
+    closeStatusPanel,
+  ]);
   const messageSearchAvailable = isV2 && viewMode === 'single' && !artifactFullWindowActive && !mainAreaOverlayActive;
   const messageSearch = useMessageSearchHost({
     threadId,
@@ -1315,26 +1335,28 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
                 className={rightPanelMode === 'workspace' ? 'flex min-h-0 min-w-0 flex-1' : 'hidden'}
                 data-testid="workspace-host-pane"
               >
-                <WorkspacePanel
-                  threadId={threadId}
-                  projectPath={isV2 ? workspaceProjectPath : undefined}
-                  defaultCatId={targetCats[0] || 'opus'}
-                  visible={statusPanelOpen && rightPanelMode === 'workspace' && documentVisible}
-                  artifactWorkHostAvailable
-                  statusSurface={
-                    <StatusPresentation
-                      intentMode={intentMode}
-                      targetCats={targetCats}
-                      catStatuses={catStatuses}
-                      catInvocations={catInvocations}
-                      activeInvocations={activeInvocations}
-                      hasActiveInvocation={hasActiveInvocation}
-                      threadId={threadId}
-                      messageSummary={messageSummary}
-                      width="100%"
-                    />
-                  }
-                />
+                <WorkspaceChatRevealProvider threadId={threadId} onReveal={revealWorkspaceChat}>
+                  <WorkspacePanel
+                    threadId={threadId}
+                    projectPath={isV2 ? workspaceProjectPath : undefined}
+                    defaultCatId={targetCats[0] || 'opus'}
+                    visible={statusPanelOpen && rightPanelMode === 'workspace' && documentVisible}
+                    artifactWorkHostAvailable
+                    statusSurface={
+                      <StatusPresentation
+                        intentMode={intentMode}
+                        targetCats={targetCats}
+                        catStatuses={catStatuses}
+                        catInvocations={catInvocations}
+                        activeInvocations={activeInvocations}
+                        hasActiveInvocation={hasActiveInvocation}
+                        threadId={threadId}
+                        messageSummary={messageSummary}
+                        width="100%"
+                      />
+                    }
+                  />
+                </WorkspaceChatRevealProvider>
               </div>
             )}
             {rightPanelMode === 'transcript' && statusPanelOpen && <TranscriptPanel />}

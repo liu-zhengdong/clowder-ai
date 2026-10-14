@@ -12,10 +12,12 @@ export function PlaceAction({
   place,
   onOpen,
   quiet = false,
+  compact = false,
 }: {
   place: OriginalPlace;
   onOpen: (place: OriginalPlace) => void;
   quiet?: boolean;
+  compact?: boolean;
 }) {
   const t = useShellCopy(mailboxEntryCopy);
   const listLabel = { approval: t.approvalList, 'needs-me': t.workList };
@@ -34,6 +36,8 @@ export function PlaceAction({
         type="button"
         data-testid="mailbox-open-original"
         data-place={place.kind}
+        aria-label={compact && place.kind === 'exact' ? t.originalCompact : undefined}
+        title={compact && place.kind === 'exact' ? t.originalCompact : undefined}
         onClick={() => onOpen(place)}
         className="shell-focusable inline-flex items-center gap-1.5 flex-none rounded-lg px-3 py-1.5 text-sm font-medium"
         style={
@@ -46,8 +50,23 @@ export function PlaceAction({
             : { background: 'var(--shell-primary)', color: 'var(--shell-primary-on)' }
         }
       >
-        <ShellGlyph name="chevronRight" className="h-4 w-4" />
-        {place.kind === 'exact' ? (quiet ? t.originalQuiet : t.original) : listLabel[place.destination]}
+        {compact && place.kind === 'exact' ? (
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.75}
+            className="h-4 w-4"
+          >
+            <path d="M14 3h7v7M21 3l-9 9M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" />
+          </svg>
+        ) : (
+          <>
+            <ShellGlyph name="chevronRight" className="h-4 w-4" />
+            {place.kind === 'exact' ? (quiet ? t.originalCompact : t.original) : listLabel[place.destination]}
+          </>
+        )}
       </button>
     </div>
   );

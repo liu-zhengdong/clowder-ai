@@ -20,6 +20,7 @@ import { configIgnoredItemRoutes } from '../../../api/dist/routes/config-ignored
 import { registerEntrustedWorkReadRoutes } from '../../../api/dist/routes/entrusted-work-read-routes.js';
 import { registerUserMentionHandlingRoutes } from '../../../api/dist/routes/user-mention-handling-routes.js';
 import { fixedFixture, realSurfaceApiResponse } from './f307-real-surface-fixtures.mjs';
+import { registerControlledApprovalHistory } from './f322-j3-approval-history.fixture.mjs';
 import { readJ3Attention } from './f322-j3-attention.fixture.mjs';
 
 export const CALENDAR_THREAD = 'thread-f310-calendar-contract';
@@ -42,10 +43,12 @@ export async function createCalendarFixture() {
     threadId: CALENDAR_THREAD,
     threadTitle: '工作日历',
   });
+  let approvalHistory;
   const messages = {
     async getByThread() {
       const p = publication();
       return [
+        ...(approvalHistory?.messages ?? []),
         ...Array.from({ length: 36 }, (_, index) => ({
           id: `j3-controlled-reading-${index}`,
           threadId: CALENDAR_THREAD,
@@ -192,6 +195,7 @@ export async function createCalendarFixture() {
   await native.register(cookie);
   await native.register(sessionAuthPlugin);
   await native.register(sessionRoute);
+  approvalHistory = await registerControlledApprovalHistory(native, CALENDAR_THREAD);
   await configIgnoredItemRoutes(native, { projectRoot: preferencesRoot });
   registerUserMentionHandlingRoutes(native, {
     ownerUserId: 'default-user',
@@ -211,6 +215,7 @@ export async function createCalendarFixture() {
   registerEntrustedWorkReadRoutes(native, { service: reader, callbackRegistry: new InvocationRegistry() });
   let readsUnavailable = false;
   let catalogForbidden = false;
+  let failPreferenceWrite = false;
   const thread = {
     id: CALENDAR_THREAD,
     userId: 'default-user',
@@ -232,7 +237,14 @@ export async function createCalendarFixture() {
     }
     try {
       if (req.method !== 'GET') mutations.push({ method: req.method, path: url.pathname });
+      if (failPreferenceWrite && url.pathname === '/api/config/ignored-items' && req.method === 'PATCH') {
+        failPreferenceWrite = false;
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Controlled write failure; preferences remain unchanged' }));
+        return;
+      }
       if (
+        url.pathname.startsWith('/api/approval-hub/') ||
         url.pathname.startsWith('/api/entrusted-work/') ||
         url.pathname === '/api/session' ||
         url.pathname === '/api/config/ignored-items' ||
@@ -332,6 +344,20 @@ export async function createCalendarFixture() {
   return {
     progress: { threadId: PROGRESS_THREAD, title: progressTitle, taskId: progressId, originalDraft: targetDraft },
     mutations,
+    preferenceSnapshot: () => readIgnoredItemPreferences(preferencesRoot, 'default-user'),
+    failNextPreferenceWrite() {
+      failPreferenceWrite = true;
+    },
+    appendMention() {
+      return mentions.append({
+        userId: 'default-user',
+        threadId: 'thread-j3-controlled-mention-0',
+        catId: 'codex61-sol',
+        mentionsUser: true,
+        timestamp: now,
+        content: 'Controlled newer request, same conversation, different message',
+      });
+    },
     getDraft: (threadId) => drafts.getOwnerComposerDraft('default-user', threadId),
     readPreferences: async () =>
       JSON.parse(await readFile(path.join(preferencesRoot, '.cat-cafe/user-preferences.json'), 'utf8')),
@@ -340,6 +366,7 @@ export async function createCalendarFixture() {
     sentinel,
     mentionCount,
     handledHistory,
+    approvalHistory,
     readHandledMentions: () => mentions.listHandledUserMentions('default-user'),
     artifactUrl,
     taskId,

@@ -9,10 +9,33 @@ export async function assertPersonalMailboxJourney(page, fixture, language, evid
   await composer.evaluate((input) => input.setSelectionRange(3, 8));
   await page.getByTestId('mailbox-button').click();
   await page.getByTestId('mailbox-mentions-ignore-all').waitFor();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.waitForFunction(() => {
+      const panel = document.querySelector('[data-testid="mailbox-panel"]');
+      return (
+        panel &&
+        getComputedStyle(panel).opacity === '1' &&
+        panel.getAnimations().every((animation) => animation.playState === 'finished')
+      );
+    });
+    await page.screenshot({ path: path.join(evidence, `j3-pending-${language}-${width}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByTestId('mailbox-mentions-ignore-all').click();
   const confirm = page.getByTestId('mailbox-mentions-ignore-confirm');
   assert.match(await confirm.innerText(), new RegExp(String(fixture.mentionCount)));
+  const savedResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/config/ignored-items' && response.request().method() === 'PATCH',
+  );
   await confirm.click();
+  assert.equal((await savedResponse).status(), 200);
+  await page.getByTestId('mailbox-personal-undo').waitFor();
+  await page
+    .getByTestId('mailbox-group-mentions')
+    .getByText(language === 'en' ? 'No @you requests' : '暂无 @你 请求', { exact: true })
+    .waitFor();
   await page.waitForFunction(() => document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent === '1');
   const saved = await fixture.readPreferences();
   const entries = saved.ignoredItems.owners['default-user'].entries.filter(
@@ -21,7 +44,13 @@ export async function assertPersonalMailboxJourney(page, fixture, language, evid
   assert.equal(entries.length, fixture.mentionCount, 'all versions across the 20-row boundary were actually persisted');
   assert.equal(new Set(entries.map((entry) => entry.coordinate.decisionRef)).size, fixture.mentionCount);
   assert.match(await page.getByTestId('mailbox-button').getAttribute('aria-label'), /1 件|1 items/);
-  await page.getByTestId('mailbox-personal-dismiss-undo').click();
+  await page.getByTestId('mailbox-personal-undo').waitFor({ state: 'detached', timeout: 15000 });
+  assert.deepEqual(
+    await fixture.readPreferences(),
+    saved,
+    'recent UI receipt expiry never expires the actual TTL=0 preferences',
+  );
+  await page.getByTestId('mailbox-open-ignored').waitFor();
   await page.screenshot({ path: path.join(evidence, 'j3-inbox-bulk-ignore.png') });
   await page.reload();
   await page.getByTestId('file-block-open').waitFor();
@@ -30,24 +59,33 @@ export async function assertPersonalMailboxJourney(page, fixture, language, evid
   await page.getByTestId('mailbox-open-ignored').click();
   await page.waitForFunction(
     (value) => document.querySelector('[data-testid="mailbox-state-text"]')?.textContent === value,
-    language === 'en' ? `${fixture.mentionCount} items` : `${fixture.mentionCount} 件`,
+    language === 'en' ? `${fixture.mentionCount} items in this scope` : `当前范围共 ${fixture.mentionCount} 件`,
   );
   assert.match(await page.getByTestId('mailbox-button').getAttribute('aria-label'), /1 件|1 items/);
   assert.equal(await page.getByTestId('mailbox-mention-resolve').count(), 0);
-  await page.getByTestId('mailbox-item-toggle').first().click();
-  await page.getByTestId('mailbox-item-restore').click();
+  const recoveredCoordinate = entries[0].coordinate;
+  const recoveredRow = page.getByTestId('mailbox-item').first();
+  assert.ok((await recoveredRow.getAttribute('data-row-key')).includes(recoveredCoordinate.decisionRef));
+  await recoveredRow.getByTestId('mailbox-item-toggle').click();
+  await recoveredRow.getByTestId('mailbox-item-restore').click();
   await page.waitForFunction(
     (value) => document.querySelector('[data-testid="mailbox-state-text"]')?.textContent === value,
-    language === 'en' ? `${fixture.mentionCount - 1} items` : `${fixture.mentionCount - 1} 件`,
+    language === 'en' ? `${fixture.mentionCount - 1} items in this scope` : `当前范围共 ${fixture.mentionCount - 1} 件`,
   );
   const restored = await fixture.readPreferences();
   assert.equal(
     restored.ignoredItems.owners['default-user'].entries.filter((entry) => entry.coordinate.kind === 'mailbox').length,
     fixture.mentionCount - 1,
   );
+  assert.deepEqual(
+    restored.ignoredItems.owners['default-user'].entries.filter((entry) => entry.coordinate.kind === 'mailbox'),
+    entries.filter((entry) => JSON.stringify(entry.coordinate) !== JSON.stringify(recoveredCoordinate)),
+    'only the exact selected version is restored; the other 25 remain unchanged',
+  );
   await page.screenshot({ path: path.join(evidence, 'j3-inbox-ignored-recovery.png') });
   await page.getByTestId('mailbox-handled-back').click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent === '2');
+  await page.waitForFunction(() => document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent === '1');
+  await page.getByTestId('mailbox-mention-preview').waitFor();
   await page.getByTestId('mailbox-close').click();
   assert.equal(await composer.inputValue(), original);
   assert.deepEqual(await composer.evaluate((input) => [input.selectionStart, input.selectionEnd]), [3, 8]);

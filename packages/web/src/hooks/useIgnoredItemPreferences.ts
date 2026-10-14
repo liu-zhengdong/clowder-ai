@@ -12,6 +12,7 @@ import { apiFetch } from '@/utils/api-client';
 const PATH = '/api/config/ignored-items';
 const UPDATED = 'cat-cafe:ignored-item-preferences-updated';
 type PreferenceError = 'unavailable' | 'conflict' | null;
+type PreferenceChangeResult = { saved: true } | { saved: false; error: Exclude<PreferenceError, null> };
 
 /** One owner-fenced read of the existing UserPreferences lane. No work/approval mutation or second store. */
 export function useIgnoredItemPreferences(expectedOwnerUserId?: string, enabled = true) {
@@ -70,10 +71,10 @@ export function useIgnoredItemPreferences(expectedOwnerUserId?: string, enabled 
     };
   }, [refetch]);
 
-  const change = useCallback(
-    async (ignore: IgnoredItemCoordinate[], restore: IgnoredItemCoordinate[]) => {
+  const changeWithResult = useCallback(
+    async (ignore: IgnoredItemCoordinate[], restore: IgnoredItemCoordinate[]): Promise<PreferenceChangeResult> => {
       const before = current.current;
-      if (!before || writing.current || loading) return false;
+      if (!before || writing.current || loading) return { saved: false, error: 'conflict' };
       const requestGeneration = generation.current;
       writing.current = true;
       setSaving(true);
@@ -95,30 +96,36 @@ export function useIgnoredItemPreferences(expectedOwnerUserId?: string, enabled 
           generation.current !== requestGeneration ||
           current.current?.ownerUserId !== before.ownerUserId
         )
-          return false;
+          return { saved: false, error: 'conflict' };
         if (response.status === 409) {
           const server = body && typeof body === 'object' && 'snapshot' in body ? body.snapshot : null;
           const latest = ignoredItemSnapshotSchema.parse(server);
           if (latest.ownerUserId !== before.ownerUserId) throw new Error('Different owner');
           accept(latest);
           setError('conflict');
-          return false;
+          return { saved: false, error: 'conflict' };
         }
         if (!response.ok) throw new Error('Preferences were not saved');
         const saved = ignoredItemSnapshotSchema.parse(body);
         if (saved.ownerUserId !== before.ownerUserId) throw new Error('Different owner');
         accept(saved);
         window.dispatchEvent(new Event(UPDATED));
-        return true;
+        return { saved: true };
       } catch {
         if (alive.current && generation.current === requestGeneration) setError('unavailable');
-        return false;
+        return { saved: false, error: 'unavailable' };
       } finally {
         writing.current = false;
         if (alive.current) setSaving(false);
       }
     },
     [accept, loading],
+  );
+  // Existing consumers retain their boolean contract; callers that refresh immediately use the terminal outcome.
+  const change = useCallback(
+    async (ignore: IgnoredItemCoordinate[], restore: IgnoredItemCoordinate[]) =>
+      (await changeWithResult(ignore, restore)).saved,
+    [changeWithResult],
   );
 
   const keys = new Set(snapshot?.entries.map((entry) => ignoredItemKey(entry.coordinate)) ?? []);
@@ -130,6 +137,7 @@ export function useIgnoredItemPreferences(expectedOwnerUserId?: string, enabled 
     ready: snapshot !== null && !loading,
     refetch,
     change,
+    changeWithResult,
     isIgnored: (coordinate: IgnoredItemCoordinate) => keys.has(ignoredItemKey(coordinate)),
   };
 }

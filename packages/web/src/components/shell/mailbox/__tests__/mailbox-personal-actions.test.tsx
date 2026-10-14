@@ -45,6 +45,7 @@ let view: UnifiedAttentionView;
 let revision: number;
 let owner: string;
 let refuse: boolean;
+let unavailableSave: boolean;
 let previewReads: number;
 let changePreview: boolean;
 let previewPartial: boolean;
@@ -62,6 +63,7 @@ function Wrapper() {
       section={history ? 'history' : mode === 'ignored' ? 'ignored' : 'pending'}
       onOpenPlace={vi.fn()}
       onClose={vi.fn()}
+      onSectionChange={vi.fn()}
     />
   );
 }
@@ -72,6 +74,7 @@ function read() {
   const result = okRead([item]);
   if (result.kind !== 'ok') throw new Error('Fixture');
   result.read.sources.personalPreferences = source;
+  result.read.sources.structuredChoices = { ...source, coverage: 'pending_f306_structured_choices' };
   result.read.personalView = {
     mode,
     preferenceRevision: revision,
@@ -86,6 +89,17 @@ function read() {
   result.read.identity.ownerUserId = owner;
   view = { result, staleRead: null, refetch: vi.fn(), readsStarted: () => 1, resultGeneration: 1 };
 }
+function refetchThroughUnconfirmedOwner() {
+  view.refetch = vi.fn(() => {
+    view = { ...view, result: { kind: 'loading' }, staleRead: null, resultGeneration: null, readsStarted: () => 2 };
+    root.render(<Wrapper />);
+  });
+}
+async function settleSameOwnerRead() {
+  read();
+  view = { ...view, resultGeneration: 2, readsStarted: () => 2 };
+  await render();
+}
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   mode = 'visible';
@@ -94,6 +108,7 @@ beforeEach(() => {
   revision = 4;
   owner = OWNER;
   refuse = false;
+  unavailableSave = false;
   previewReads = 0;
   changePreview = false;
   previewPartial = false;
@@ -129,13 +144,15 @@ beforeEach(() => {
     }
     if (path === '/api/config/ignored-items') {
       if (init?.method === 'PATCH')
-        return refuse
-          ? Response.json({ snapshot: { ownerUserId: owner, revision: 5, entries: [] } }, { status: 409 })
-          : Response.json({
-              ownerUserId: owner,
-              revision: ++revision,
-              entries: mode === 'visible' ? [{ coordinate, ignoredAt: 20 }] : [],
-            });
+        return unavailableSave
+          ? Response.json({ error: 'Read-only controlled failure' }, { status: 503 })
+          : refuse
+            ? Response.json({ snapshot: { ownerUserId: owner, revision: 5, entries: [] } }, { status: 409 })
+            : Response.json({
+                ownerUserId: owner,
+                revision: ++revision,
+                entries: mode === 'visible' ? [{ coordinate, ignoredAt: 20 }] : [],
+              });
       return Response.json({ ownerUserId: owner, revision, entries: [] });
     }
     throw new Error(`Unexpected request ${path}`);
@@ -148,6 +165,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   mocks.apiFetch.mockReset();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   localStorage.clear();
 });
@@ -221,6 +239,30 @@ describe('Mailbox exact personal ignore actions through the original preference 
     expect(document.querySelector('[data-testid="mailbox-mention-resolve"]')).toBeNull();
     expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).not.toBeNull();
   });
+  it('expires only the recent undo receipt while persistent ignored recovery remains available', async () => {
+    await render();
+    vi.useFakeTimers();
+    await click('mailbox-item-ignore');
+    expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11999);
+    });
+    expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mailbox-open-ignored"]')).not.toBeNull();
+    expect(writes()).toHaveLength(1);
+    expect(JSON.parse(writes()[0][1].body).restore).toEqual([]);
+    vi.useRealTimers();
+    mode = 'ignored';
+    read();
+    await render();
+    await click('mailbox-item-restore');
+    expect(writes()).toHaveLength(2);
+    expect(JSON.parse(writes()[1][1].body).restore).toEqual([coordinate]);
+  });
   it('restores the exact ignored version using the same writer', async () => {
     mode = 'ignored';
     read();
@@ -264,6 +306,77 @@ describe('Mailbox exact personal ignore actions through the original preference 
     expect(body.restore).toEqual([]);
     expect(mocks.apiFetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
   });
+  it.each([
+    ['zh', 'batch'],
+    ['en', 'batch'],
+    ['zh', 'ignore'],
+    ['en', 'ignore'],
+    ['zh', 'restore'],
+    ['en', 'restore'],
+  ] as const)('retains the actual failed write across a real loading/owner-verification transition (%s/%s)', async (language, action) => {
+    writeShellLanguage(language);
+    if (action === 'restore') {
+      mode = 'ignored';
+      read();
+    }
+    refetchThroughUnconfirmedOwner();
+    unavailableSave = true;
+    await render();
+    if (action === 'batch') {
+      await click('mailbox-mentions-ignore-all');
+      await click('mailbox-mentions-ignore-confirm');
+    } else {
+      await click(action === 'restore' ? 'mailbox-item-restore' : 'mailbox-item-ignore');
+    }
+    expect(writes()).toHaveLength(1);
+    expect(view.result.kind).toBe('loading');
+    expect(document.querySelector('[data-testid="mailbox-personal-notice"]')).toBeNull();
+    await settleSameOwnerRead();
+    expect(document.querySelector('[data-testid="mailbox-personal-notice"]')?.textContent).toBe(
+      language === 'en'
+        ? 'Your ignore preferences could not be verified. Please retry.'
+        : '暂时无法确认你的忽略记录，请重试。',
+    );
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mailbox-mention-preview"]')?.textContent).toContain(
+      'Please look here',
+    );
+    expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).toBeNull();
+    owner = 'different-owner';
+    read();
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-personal-notice"]')).toBeNull();
+  });
+  it('retains a real CAS conflict after the same refetch transition without replaying the write', async () => {
+    refuse = true;
+    refetchThroughUnconfirmedOwner();
+    await render();
+    await click('mailbox-item-ignore');
+    expect(view.result.kind).toBe('loading');
+    revision = 5;
+    await settleSameOwnerRead();
+    expect(document.querySelector('[data-testid="mailbox-personal-notice"]')?.textContent).toBe(
+      '读取已更新或事项有变化；本次没有保存，请刷新后重新确认。',
+    );
+    expect(writes()).toHaveLength(1);
+  });
+  it('also preserves the failed recent-undo write without replacing its owner-fenced receipt', async () => {
+    await render();
+    await click('mailbox-item-ignore');
+    read();
+    refetchThroughUnconfirmedOwner();
+    await render();
+    unavailableSave = true;
+    await click('mailbox-personal-undo');
+    expect(view.result.kind).toBe('loading');
+    await settleSameOwnerRead();
+    expect(document.querySelector('[data-testid="mailbox-personal-notice"]')?.textContent).toBe(
+      '暂时无法确认你的忽略记录，请重试。',
+    );
+    expect(document.querySelector('[data-testid="mailbox-personal-undo"]')).not.toBeNull();
+    expect(writes()).toHaveLength(2);
+    expect(JSON.parse(writes()[1][1].body).restore).toEqual([coordinate]);
+  });
   it('does not hide a changed producer version between full-set preview and confirmation', async () => {
     changePreview = true;
     await render();
@@ -290,6 +403,143 @@ describe('Mailbox exact personal ignore actions through the original preference 
     await click('mailbox-mentions-ignore-confirm');
     expect(writes()).toHaveLength(0);
     expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('无法');
+  });
+  it('explains a preparation withdrawn by a newer read rather than silently doing nothing', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = mocks.apiFetch.getMockImplementation();
+    mocks.apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/concierge/work/mentions/handling-preview')) await pending;
+      return original?.(path, init);
+    });
+    await render();
+    await click('mailbox-mentions-ignore-all');
+    view = { ...view, readsStarted: () => 2 };
+    await render();
+    await act(async () => {
+      release();
+    });
+    expect(writes()).toHaveLength(0);
+    expect(document.querySelector('[data-testid="mailbox-mentions-ignore-confirm"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('有变化');
+  });
+  it('keeps a changed-set explanation across same-owner session verification, but never leaks it to another owner', async () => {
+    changePreview = true;
+    await render();
+    await click('mailbox-mentions-ignore-all');
+    await click('mailbox-mentions-ignore-confirm');
+    expect(writes()).toHaveLength(0);
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('有变化');
+    const previous = view.result.kind === 'ok' ? view.result.read : null;
+    view = { ...view, result: { kind: 'loading' }, staleRead: null, resultGeneration: null, readsStarted: () => 2 };
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-mentions-ignore-confirm"]')).toBeNull();
+    view = { ...view, staleRead: previous };
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('有变化');
+    read();
+    view = { ...view, resultGeneration: 2, readsStarted: () => 2 };
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('有变化');
+    expect(writes()).toHaveLength(0);
+    owner = 'different-owner';
+    read();
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')).toBeNull();
+  });
+  it('does not attach an old preparation failure to a newly verified owner', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = mocks.apiFetch.getMockImplementation();
+    mocks.apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/concierge/work/mentions/handling-preview')) await pending;
+      return original?.(path, init);
+    });
+    await render();
+    await click('mailbox-mentions-ignore-all');
+    owner = 'newly-verified-owner';
+    read();
+    await render();
+    await act(async () => {
+      release();
+    });
+    expect(writes()).toHaveLength(0);
+    expect(document.querySelector('[data-testid="mailbox-mentions-ignore-confirm"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')).toBeNull();
+  });
+  it('keeps a visible explanation when a read withdraws an open full-set confirmation', async () => {
+    await render();
+    await click('mailbox-mentions-ignore-all');
+    expect(document.querySelector('[data-testid="mailbox-mentions-ignore-confirm"]')).not.toBeNull();
+    const prior = view.result.kind === 'ok' ? view.result.read : null;
+    view = { ...view, result: { kind: 'loading' }, staleRead: prior, resultGeneration: null, readsStarted: () => 2 };
+    await render();
+    expect(writes()).toHaveLength(0);
+    expect(document.querySelector('[data-testid="mailbox-mentions-ignore-confirm"]')).toBeNull();
+    expect(document.querySelector('[data-testid="mailbox-bulk-ignore-notice"]')?.textContent).toContain('有变化');
+  });
+  it('uses the decision count for Needs me and exposes personal actions on the collapsed request row', async () => {
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent).toBe('0');
+    const row = document.querySelector('[data-testid="mailbox-item"]');
+    expect(row?.getAttribute('data-expanded')).toBe('false');
+    expect(row?.querySelector('[data-testid="mailbox-item-ignore"]')).not.toBeNull();
+    expect(row?.querySelector('[data-testid="mailbox-open-original"]')).not.toBeNull();
+    expect(document.querySelector('#mailbox-bulk-ignore-scope')).toBeNull();
+    expect(document.querySelectorAll('[data-testid="mailbox-mentions-ignore-all"]')).toHaveLength(1);
+  });
+  it.each([
+    'visible',
+    'ignored',
+  ] as const)('uses complete partition group counts across pages instead of total minus attention (%s)', async (selected) => {
+    mode = selected;
+    read();
+    if (view.result.kind !== 'ok' || !view.result.read.personalView) throw new Error('Fixture');
+    const readValue = view.result.read;
+    readValue.totalCount = selected === 'visible' ? 29 : 25;
+    readValue.attentionCount = 1;
+    readValue.page.hasMore = true;
+    readValue.personalView = {
+      mode,
+      preferenceRevision: revision,
+      originalTotalCount: 54,
+      visibleTotalCount: 29,
+      ignoredTotalCount: 25,
+      originalAttentionCount: 2,
+      visibleAttentionCount: 1,
+      ignoredAttentionCount: 1,
+      groupCounts: {
+        original: { decisions: 2, userMentions: 49, other: 3 },
+        visible: { decisions: 1, userMentions: 26, other: 2 },
+        ignored: { decisions: 1, userMentions: 23, other: 1 },
+      },
+    };
+    await render();
+    const groups = document.querySelector('[data-testid="mailbox-group-mentions"]');
+    expect(document.querySelector('[data-testid="mailbox-state-text"]')?.textContent).toBe(
+      `当前范围共 ${selected === 'visible' ? 29 : 25} 件`,
+    );
+    expect(groups?.querySelector('h3')?.textContent).toContain(selected === 'visible' ? '26' : '23');
+    expect(groups?.querySelector('h3')?.textContent).not.toContain('本页');
+    expect(document.querySelector('[data-testid="mailbox-group-decisions"] h3')?.textContent).toContain('1');
+    expect(document.querySelector('[data-testid="mailbox-group-other"] h3')?.textContent).toContain(
+      selected === 'visible' ? '2' : '1',
+    );
+    if (selected === 'visible')
+      expect(document.querySelector('[data-testid="mailbox-tab-count"]')?.textContent).toBe('1');
+  });
+  it('labels old complete bodies without group counts as page counts rather than exact totals', async () => {
+    if (view.result.kind !== 'ok') throw new Error('Fixture');
+    view.result.read.page.hasMore = true;
+    view.result.read.totalCount = 29;
+    await render();
+    expect(document.querySelector('[data-testid="mailbox-group-mentions"] h3')?.textContent).toContain('本页 1');
+    expect(document.querySelector('[data-testid="mailbox-group-decisions"] h3')?.textContent).toContain('本页 0');
+    expect(document.querySelector('[data-testid="mailbox-group-mentions"] h3')?.textContent).not.toContain('29');
   });
   it('does not reuse a partial confirmation read', async () => {
     await render();

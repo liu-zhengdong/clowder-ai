@@ -6,6 +6,12 @@ import { EVIDENCE } from './f309-ordinary-workspace-journey-chat-progress.mjs';
 import { REVIEW_ID, SOURCE_REVISION, THREAD_ID } from './f309-ordinary-workspace-journey-fixture.mjs';
 import { modelProjection } from './f309-ordinary-workspace-journey-text-quote.mjs';
 
+async function wholeImageAction(page) {
+  const action = page.getByTestId('workspace-media-chat-whole-work');
+  if (!(await action.isVisible())) await page.getByLabel('图片更多操作', { exact: true }).click();
+  return action;
+}
+
 /** Real Next/Chat/Workspace controls; intercepted sends are verified through the API schema and prompt projection. */
 export function registerWholeImageChatJourney(openWork) {
   for (const [slug, width, dark] of [
@@ -20,7 +26,7 @@ export function registerWholeImageChatJourney(openWork) {
         try {
           const composer = page.getByLabel('消息输入框');
           await composer.fill('原聊天里的整图修改想法');
-          const whole = page.getByTestId('workspace-media-chat-whole-work');
+          const whole = await wholeImageAction(page);
           await whole.waitFor({ timeout: 15_000 });
           assert.equal(await page.getByTestId('content-modification-entry').count(), 0);
           await whole.click();
@@ -82,7 +88,7 @@ export function registerWholeImageChatJourney(openWork) {
         await composer.press('Shift+Enter');
         await composer.pressSequentially('keep the gold star');
         assert.equal(await composer.inputValue(), words);
-        await page.getByTestId('workspace-media-chat-whole-work').click();
+        await (await wholeImageAction(page)).click();
         const chip = page.locator('[data-testid="context-attachment-list"] [data-context-kind="media"]');
         await chip.waitFor();
         await composer.dispatchEvent('compositionstart', { data: '绿' });

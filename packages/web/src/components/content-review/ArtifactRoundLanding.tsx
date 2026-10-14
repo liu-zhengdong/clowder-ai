@@ -27,6 +27,8 @@ export type ArtifactRoundProps = {
   onReanchor?: ((annotation: ArtifactReviewAnnotation) => void) | undefined;
   onVersion: (number: number) => void;
   contextControl?: ReactNode;
+  leadingAction?: ReactNode;
+  titleInHost?: boolean;
 };
 export function ArtifactRoundLanding({
   view,
@@ -38,6 +40,8 @@ export function ArtifactRoundLanding({
   onReanchor,
   onVersion,
   contextControl,
+  leadingAction,
+  titleInHost = false,
   linked,
 }: ArtifactRoundProps & { linked?: ReturnType<typeof useWorkspaceContentReview> }) {
   const draft = useReviewDraft(`${prefix}round:${round.number}:annotation`);
@@ -137,6 +141,8 @@ export function ArtifactRoundLanding({
           review={effective}
           path={view.review.title}
           title={view.review.title}
+          titleInHost={titleInHost}
+          leadingAction={comparing ? undefined : leadingAction}
           sourceText=""
           sourceTextRevision=""
           onBack={onBack}
@@ -299,6 +305,8 @@ export function ArtifactRoundLanding({
           canWrite={canWrite && !history}
           onClose={comparison.close}
           onBack={onBack}
+          leadingAction={leadingAction}
+          titleInHost={titleInHost}
         />
       ) : null}
     </section>

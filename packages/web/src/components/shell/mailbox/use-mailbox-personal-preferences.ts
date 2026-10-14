@@ -1,5 +1,5 @@
 import type { UnifiedAttentionPreferenceCoordinate } from '@cat-cafe/shared';
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIgnoredItemPreferences } from '@/hooks/useIgnoredItemPreferences';
 import type { UnifiedAttentionView } from '../use-unified-attention';
 
@@ -17,6 +17,17 @@ export function useMailboxPersonalPreferences(view: UnifiedAttentionView) {
   const currentView = useRef(view);
   currentView.current = view;
   const [undo, setUndo] = useState<{ owner: string; coordinates: UnifiedAttentionPreferenceCoordinate[] } | null>(null);
+  const [actionError, setActionError] = useState<{ owner: string; error: 'conflict' | 'unavailable' } | null>(null);
+  const displayOwner = (read ?? view.staleRead)?.identity.ownerUserId;
+  useEffect(() => {
+    if (displayOwner && actionError && displayOwner !== actionError.owner) setActionError(null);
+  }, [displayOwner, actionError]);
+  const dismissUndo = useCallback(() => setUndo(null), []);
+  const refuse = () => {
+    setActionError(displayOwner ? { owner: displayOwner, error: 'conflict' } : null);
+    currentView.current.refetch();
+    return false;
+  };
   const ready = Boolean(
     read &&
       personal &&
@@ -33,12 +44,19 @@ export function useMailboxPersonalPreferences(view: UnifiedAttentionView) {
   );
   const save = async (coordinates: UnifiedAttentionPreferenceCoordinate[], restore: boolean) => {
     const live = currentView.current;
-    if (!ready || !read || live.result !== view.result || live.resultGeneration !== live.readsStarted()) return false;
-    const success = await preferences.change(restore ? [] : coordinates, restore ? coordinates : []);
-    if (success && !restore) setUndo({ owner: read.identity.ownerUserId, coordinates });
-    if (success && restore) setUndo(null);
-    if (!success) live.refetch();
-    return success;
+    if (!ready || !read || live.result !== view.result || live.resultGeneration !== live.readsStarted()) {
+      return refuse();
+    }
+    setActionError(null);
+    const result = await preferences.changeWithResult(restore ? [] : coordinates, restore ? coordinates : []);
+    if (result.saved && !restore) setUndo({ owner: read.identity.ownerUserId, coordinates });
+    if (result.saved && restore) setUndo(null);
+    if (!result.saved) {
+      // Capture the write's terminal failure before refetch disables/reinitializes the preference read.
+      setActionError({ owner: read.identity.ownerUserId, error: result.error });
+      live.refetch();
+    }
+    return result.saved;
   };
   const actions: MailboxPersonalActions | undefined = personal
     ? {
@@ -49,7 +67,7 @@ export function useMailboxPersonalPreferences(view: UnifiedAttentionView) {
     : undefined;
   return {
     actions,
-    error: preferences.error,
+    error: actionError && actionError.owner === displayOwner ? actionError.error : preferences.error,
     loading: preferences.loading,
     saving: preferences.saving,
     undo:
@@ -59,8 +77,8 @@ export function useMailboxPersonalPreferences(view: UnifiedAttentionView) {
     ignoreBatch: (coordinates: UnifiedAttentionPreferenceCoordinate[], owner: string, revision: number) =>
       read?.identity.ownerUserId === owner && preferences.snapshot?.revision === revision
         ? save(coordinates, false)
-        : Promise.resolve(false),
-    dismissUndo: () => setUndo(null),
+        : Promise.resolve(refuse()),
+    dismissUndo,
     undoLast: () => (undo ? save(undo.coordinates, true) : Promise.resolve(false)),
   };
 }

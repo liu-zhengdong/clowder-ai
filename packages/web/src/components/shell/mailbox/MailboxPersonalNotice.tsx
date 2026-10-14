@@ -1,9 +1,16 @@
+import { useEffect } from 'react';
 import { useShellCopy } from '../shell-copy';
 import { mailboxEntryCopy } from './mailbox-entry.shell-copy';
 import type { useMailboxPersonalPreferences } from './use-mailbox-personal-preferences';
 
 export function MailboxPersonalNotice({ personal }: { personal: ReturnType<typeof useMailboxPersonalPreferences> }) {
   const t = useShellCopy(mailboxEntryCopy);
+  // Only the recent UI receipt expires; persistent ignored records remain reachable in the ignored view.
+  useEffect(() => {
+    if (!personal.undo) return;
+    const timer = window.setTimeout(personal.dismissUndo, 12000);
+    return () => window.clearTimeout(timer);
+  }, [personal.undo, personal.dismissUndo]);
   return (
     <>
       {personal.error ? (

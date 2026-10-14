@@ -13,6 +13,10 @@ export function MailboxReadNotes({
   stale: boolean;
 }) {
   const t = useShellCopy(mailboxEntryCopy);
+  const stateText =
+    state.kind === 'has-items' && !state.partial && state.count !== null
+      ? t.scopeTotal(state.count)
+      : mailboxStateText(state, t);
   const sources = read
     ? [
         { id: 'approvals', label: t.source.approvals, source: read.sources.approvals },
@@ -37,7 +41,7 @@ export function MailboxReadNotes({
     <>
       {state.kind !== 'empty' ? (
         <p className="m-0 pb-1.5 text-xs" style={{ color: 'var(--shell-muted)' }} data-testid="mailbox-state-text">
-          {mailboxStateText(state, t)}
+          {stateText}
         </p>
       ) : null}
       {sources.length ? (
