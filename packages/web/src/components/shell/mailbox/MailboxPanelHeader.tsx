@@ -43,13 +43,22 @@ export function MailboxPanelHeader({
         </button>
       </div>
       {section === 'pending' ? (
-        <nav aria-label={t.sections} className="mt-3 flex items-center gap-4 border-b border-[var(--shell-hairline)]">
+        <nav
+          aria-label={t.sections}
+          className="mt-3 flex items-center gap-1 rounded-lg p-1"
+          style={{ background: 'var(--shell-frame)' }}
+        >
           <button
             type="button"
             aria-current="page"
             onClick={onBack}
             id="mailbox-tab-needs-me"
-            className="shell-focusable flex items-center gap-2 border-b-2 border-[var(--shell-primary-text)] pb-2 text-sm font-medium"
+            className="shell-focusable flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium"
+            style={{
+              background: 'var(--shell-selected)',
+              borderColor: 'var(--shell-hairline-strong)',
+              color: 'var(--shell-ink)',
+            }}
             data-testid="mailbox-tab-needs-me"
           >
             {t.needsMe}
@@ -57,7 +66,7 @@ export function MailboxPanelHeader({
               <span
                 className="rounded-full px-[7px] text-label font-semibold"
                 data-testid="mailbox-tab-count"
-                style={{ background: 'var(--shell-primary-soft)', color: 'var(--shell-primary-text)' }}
+                style={{ background: 'var(--shell-paper)', color: 'var(--shell-ink)' }}
               >
                 {total}
               </span>
@@ -68,7 +77,8 @@ export function MailboxPanelHeader({
             onClick={onOpenSchedule}
             disabled={!onOpenSchedule}
             data-testid="mailbox-tab-schedule"
-            className="shell-nav-row shell-focusable pb-2 text-sm"
+            className="shell-nav-row shell-focusable min-w-0 flex-1 rounded-md border border-transparent px-3 py-1.5 text-sm disabled:opacity-50"
+            style={{ color: 'var(--shell-muted)' }}
           >
             {t.schedule}
           </button>

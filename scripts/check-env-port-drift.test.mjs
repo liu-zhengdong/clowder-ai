@@ -191,7 +191,7 @@ function buildExportedRootScripts(sourceScripts) {
   scripts['check:start-profile-isolation'] =
     'node --test scripts/start-dev-profile-isolation.test.mjs scripts/start-dev-named-alpha-redis-lease.test.mjs';
   scripts['check:pre-merge-gate'] =
-    'node --test scripts/pre-merge-check.test.mjs scripts/pre-merge-gate-guard.test.mjs scripts/pre-merge-gate-guard.alpha.test.mjs scripts/lib/alpha-redis-leases.test.mjs scripts/gate-resource-health-monitor.test.mjs scripts/lib/fseventsd-pressure.test.mjs scripts/lib/clowder-merge-check-evidence.test.mjs scripts/lib/git-patch-id.test.mjs scripts/test-bash-runtime.test.mjs scripts/check-worktree-dirty-ledger.test.mjs scripts/classify-merge-outcome.test.mjs scripts/clowder-merge-execution.test.mjs scripts/lib/gate-continuity-claim.test.mjs scripts/lib/gate-continuity-secret.test.mjs';
+    'node --test scripts/pre-merge-check.test.mjs scripts/pre-merge-gate-guard.test.mjs scripts/pre-merge-gate-guard.alpha.test.mjs scripts/lib/alpha-redis-leases.test.mjs scripts/gate-resource-health-monitor.test.mjs scripts/lib/fseventsd-pressure.test.mjs scripts/lib/clowder-merge-check-evidence.test.mjs scripts/lib/git-patch-id.test.mjs scripts/test-bash-runtime.test.mjs scripts/check-worktree-dirty-ledger.test.mjs scripts/classify-merge-outcome.test.mjs scripts/clowder-merge-execution.test.mjs scripts/lib/gate-continuity-claim.test.mjs scripts/lib/gate-continuity-secret.test.mjs scripts/run-preserving-signal-exit.test.mjs';
   // Mirrors sync-to-opensource.sh: membership looks through the check tiers.
   if (!rootCheckChain(scripts).split(' && ').includes('pnpm check:start-profile-isolation')) {
     scripts.check += ' && pnpm check:start-profile-isolation';

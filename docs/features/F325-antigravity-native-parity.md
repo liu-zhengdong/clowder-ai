@@ -25,7 +25,13 @@ description_updated_at: 2026-09-29T06:01:16Z
 
 **我们要的结果**：You 从家里正常入口叫出Siamese，便能对话、创作、查记忆、用工具、读改代码与测试、接 review、接住插话、停止和续接；长任务独立持久、重启可恢复，历史与身份保留，过时入口退役。以家里 Codex app-server / Claude 已落地的实际能力为参照，在相同授权与受保护目标边界下可用。普通工作不能要求人为维护 Native 专属的短工具清单或只为验收准备的空目录。任何真实上游限制须有当前证据和可用替代；本地尚未接线不能冒充不支持。
 
-**现状声明**：#5505 修的是已复现收尾回调缺口，未交付上述整套能力。当前下述代码定位描述的是现有实现，包含本次待纠正的 Task-only coding 与逐工具 callback 表，不是新的产品需求。原 A–E、F261 有效需求和迁移/历史边界继续被承接，不因一个 PR 的新安排而删除。
+**实现与验收进展（2026-10-14 09:10 UTC）**：[同一个 Draft PR #5510](https://github.com/zts212653/clowder-ai/pull/5510) 已推至 `872d186a03`。Astra 已实现普通 MCP/原生工具、共享 guard、流式输出/工具错误恢复、按当前回合计量、持久 Native 会话与显式配置变更接力、skills 挂载；原受限 Task/file grant 与旧 Gemini CLI/IDE execution 已从 PR 分支退役，历史 reader 保留。Action Plane 的通用 job 从既有 gate 底座提升，沿用 worker、lease、取消、日志和 wake owner；普通长命令已持久化。代码尚未合入，下面的旧 P1 定位仍是 main 基线，不能解释为新的产品限制。
+
+真实 worktree 使用已完成 Settings 保存/刷新、Gemini 本人写测试并消费 review、同一原生 session 续接、真实图片读取、原生 skill 读取、MCP 提交测试 job 及准确消费 managed-hold。真实 12B 下载在 API 停止/恢复后由同一 worker 运行约 28 分钟，最后远端断流（curl 18）；失败原样保留，未假称两片下载完成。20 轮真实进程故障注入记录了 20/20 终态投递、零重复执行、零用户消息误取消及零未交代后代。
+
+**当前真实缺口**：第 7 个主动实际回合及其第 8 个唤醒回合已产出有用回复，并完成图片、skills、真实测试与回执；官方 CLI 的唯一 `result` 仍报告 `ERROR: The stream was interrupted`，父 invocation 因而失败。保持 stdin 到 result 的修复虽过定向检查，尚未消除这一真实失败；Astra 已暂停新的真实模型复验，正用固定官方 CLI 与回环端点区分当前错误和恢复会话状态。不能把有文字/工具成功算作正常终态已通过。独立 review、最终观测/迁移材料、真实压缩后身份、实际 served-model、合入后 Alpha 与受权运行激活仍未结算。
+
+原 A–E、F261 有效需求与迁移/历史边界继续被同一 Task 承接；未以部分进度关闭 Feature，也未重启正式 runtime。
 
 Architecture cell: `identity-session`, `transport`, `callback-auth`, `bubble-pipeline`, `action-plane`, `mcp-surface-governance`, `dispatch`
 

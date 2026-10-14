@@ -109,7 +109,7 @@ function RowBody({
   return (
     <section
       id={id}
-      aria-label={`${t.kinds[item.kind]}：${heading}`}
+      aria-label={`${item.choiceRequest ? t.choice : t.kinds[item.kind]}：${heading}`}
       data-testid="mailbox-item-body"
       className="flex flex-col gap-3 px-3 pb-3 pt-1"
       style={{ color: 'var(--shell-ink)' }}
@@ -186,7 +186,7 @@ export function MailboxRow({
   return (
     <li
       data-testid="mailbox-item"
-      data-kind-label={t.kinds[item.kind]}
+      data-kind-label={item.choiceRequest ? t.choice : t.kinds[item.kind]}
       data-row-key={rowKey}
       data-stale={stale ? 'true' : undefined}
       data-expanded={open ? 'true' : 'false'}
@@ -194,7 +194,7 @@ export function MailboxRow({
       style={{
         opacity: stale ? 0.6 : undefined,
         border: `1px solid ${open ? 'var(--shell-hairline-strong)' : 'var(--shell-hairline)'}`,
-        background: 'var(--shell-paper)',
+        background: item.userMention ? 'var(--shell-work)' : 'var(--shell-paper)',
       }}
     >
       <div className={item.userMention && personal ? 'flex items-start gap-2 px-3 py-3' : undefined}>
@@ -227,10 +227,8 @@ export function MailboxRow({
                 className="flex w-full min-w-0 items-center gap-2 pl-8 text-xs"
                 style={{ color: 'var(--shell-muted)' }}
               >
-                <span className="min-w-0 flex-1 truncate">
-                  {title}
-                  {time ? ` · ${time}` : ''}
-                </span>
+                <span className={`min-w-0 flex-1 ${open ? 'break-words' : 'truncate'}`}>{title}</span>
+                {time && !personal ? <time className="flex-none whitespace-nowrap">{time}</time> : null}
                 <Chevron open={open} />
               </span>
             </>
@@ -241,7 +239,7 @@ export function MailboxRow({
                   className="flex-none rounded px-1.5 text-micro"
                   style={{ background: 'var(--shell-selected)', color: 'var(--shell-muted)' }}
                 >
-                  {t.kinds[item.kind]}
+                  {item.choiceRequest ? t.choice : t.kinds[item.kind]}
                 </span>
                 <span className="flex-1" />
                 {time ? (
@@ -271,9 +269,16 @@ export function MailboxRow({
           )}
         </button>
         {item.userMention && personal ? (
-          <div className="flex flex-none items-center gap-1" data-testid="mailbox-row-actions">
-            <MailboxItemPersonalAction item={item} personal={personal} />
-            <PlaceAction quiet compact place={resolveOriginalPlace(item)} onOpen={onOpen} />
+          <div className="flex flex-none flex-col items-end gap-1.5" data-testid="mailbox-row-actions">
+            <div className="flex items-center gap-1">
+              <MailboxItemPersonalAction item={item} personal={personal} />
+              <PlaceAction quiet compact place={resolveOriginalPlace(item)} onOpen={onOpen} />
+            </div>
+            {time ? (
+              <time className="whitespace-nowrap text-xs" style={{ color: 'var(--shell-muted)' }}>
+                {time}
+              </time>
+            ) : null}
           </div>
         ) : null}
       </div>

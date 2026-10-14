@@ -454,8 +454,8 @@ describe('F322 待办 (the mailbox) on the unified read', () => {
         expect(document.querySelector('[data-testid="mailbox-tab-needs-me"]')?.tagName).toBe('BUTTON');
         expect(document.querySelector('[data-testid="mailbox-tab-schedule"]')?.textContent).toBe('日程');
         const pill = document.querySelector<HTMLElement>('[data-testid="mailbox-tab-count"]');
-        expect(pill?.style.background).toBe('var(--shell-primary-soft)');
-        expect(pill?.style.color).toBe('var(--shell-primary-text)');
+        expect(pill?.style.background).toBe('var(--shell-paper)');
+        expect(pill?.style.color).toBe('var(--shell-ink)');
       });
 
       it('an approval row leads with the proposing cat’s avatar and bold name, then the title, then the feature', () => {
