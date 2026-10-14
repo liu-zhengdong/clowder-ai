@@ -64,3 +64,17 @@ it('keeps the existing wheel zoom for video and other artwork consumers', async 
   );
   expect(Number(container.querySelector<HTMLElement>('[data-testid="stage"]')!.dataset.scale)).toBeLessThan(1);
 });
+
+it('keeps a fitted landscape picture and its dock near the top of a tall image desk', async () => {
+  function Landscape() {
+    const ref = useRef<HTMLElement>(null);
+    const viewport = useArtworkViewport(ref, { width: 1200, height: 600 }, 1, true);
+    return (
+      <section ref={ref}>
+        <output>{viewport.mediaBottom}</output>
+      </section>
+    );
+  }
+  await act(async () => root.render(<Landscape />));
+  expect(Number(container.querySelector('output')?.textContent)).toBe(300);
+});

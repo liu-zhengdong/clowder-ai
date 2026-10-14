@@ -18,6 +18,7 @@ import { useArtworkSave } from '@/components/content-review/useArtworkSave';
 import { useArtworkViewport } from '@/components/content-review/useArtworkViewport';
 import { usePresentedVideoFrame } from '@/components/content-review/usePresentedVideoFrame';
 import { useReviewMediaSelection } from '@/components/content-review/useReviewMediaSelection';
+import { useShellPresentation } from '@/components/shell/shell-presentation';
 import { useF307ExperienceWorkbenchStore } from '@/components/workbench/experience-workbench-store';
 import { useWorkspacePreviewIntent } from '../WorkspacePreviewIntent';
 import { WorkspaceReviewMarkupToolbar } from './WorkspaceReviewMarkupToolbar';
@@ -57,13 +58,15 @@ export function WorkspaceContentReviewMedia({
   wholeWorkAction,
 }: WorkspaceReviewMediaProps) {
   const draftStarted = useWorkspacePreviewIntent();
+  const isV2 = useShellPresentation() === 'v2';
+  const chatSelection = imageChatPrimary && isV2;
   const artwork = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
   const [seconds, setSeconds] = useState(0);
   // Only a writable round reopens its composer; read-only history always starts in view mode.
-  const startsInComment = canWrite && Boolean(selected || restoreComment);
+  const startsInComment = (canWrite || chatSelection) && Boolean(selected || restoreComment);
   const [mode, setMode] = useState<ReviewCanvasMode>(startsInComment ? 'comment' : 'view');
   const lastModificationOpenRequest = useRef(modificationOpenRequest);
   useEffect(() => {
@@ -81,6 +84,7 @@ export function WorkspaceContentReviewMedia({
   const [loadError, setLoadError] = useState<string | null>(null);
   const error = sourceError ?? loadError;
   const writable = canWrite && Boolean(src) && !error;
+  const selectable = chatSelection ? Boolean(src) && !error : writable;
   useEffect(() => {
     setLoadError(null);
   }, [src]);
@@ -140,7 +144,7 @@ export function WorkspaceContentReviewMedia({
   const selection = useReviewMediaSelection({
     media,
     mode,
-    canAnnotate: writable,
+    canAnnotate: selectable,
     selected,
     onSelect: (anchor) => {
       setMode('comment');
@@ -283,7 +287,10 @@ export function WorkspaceContentReviewMedia({
         className={styles.media}
         aria-label="作品画面"
         {...viewport.handlers}
-        style={{ cursor: viewport.canPan ? 'grab' : undefined }}
+        style={{
+          cursor: viewport.canPan ? 'grab' : undefined,
+          alignItems: imageChatPrimary && viewport.fitsVertically ? 'start' : undefined,
+        }}
       >
         <div ref={stage} data-testid="review-media-stage" className={styles.stage} style={viewport.stageStyle}>
           <WorkspaceReviewMediaElement
@@ -303,7 +310,7 @@ export function WorkspaceContentReviewMedia({
       {imageChatPrimary ? (
         <ImageArtworkControls
           mode={mode}
-          canAnnotate={writable}
+          canAnnotate={selectable}
           canMarkup={writable && canMarkup && markup.canEdit}
           onModeChange={(next) => {
             if (next === 'markup') setTool('brush');

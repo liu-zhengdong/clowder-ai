@@ -61,6 +61,14 @@ beforeEach(() => {
   useChatStore.getState().setPendingChatInsert(null);
 });
 
+it('refreshes a same-version whole-work display name without changing its identity or ordering', () => {
+  addMediaWorkToChat(THREAD, TARGET);
+  const original = media(consumeLikeTheComposer())[0];
+  const renamed = { ...TARGET, title: '发布入口实看' };
+  expect(addMediaWorkToChat(THREAD, renamed, true).kind).toBe('added');
+  expect(media(consumeLikeTheComposer())[0]).toEqual({ ...original, title: renamed.title });
+});
+
 it('refreshes only an empty reference when its same content has a newer owner review', () => {
   addMediaWorkToChat(THREAD, TARGET);
   const original = media(consumeLikeTheComposer())[0];

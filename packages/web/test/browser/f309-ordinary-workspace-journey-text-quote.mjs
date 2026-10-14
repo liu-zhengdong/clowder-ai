@@ -22,6 +22,7 @@ const FILE_PATH = `packages/web/test/browser/fixtures/${FILE_NAME}`;
 // Crosses bold → soft line break → paragraph → emphasis: the rendered shape the retired composer lost (red banner).
 const FROM = '暮色里的灯塔';
 const TO = 'salt on the window';
+const DRAFT_REFERENCES = '[data-testid="context-annotations-summary"], [data-testid="context-file-quote-tags"]';
 const COMMENT = ['这里的灯塔意象要保留 · keep the lighthouse', '第二行：换一个动词 / change the verb'];
 
 /** The model-facing text the cat receives, through the API's own send schema and routing projection. */
@@ -68,7 +69,13 @@ async function selectRendered(page, from, to) {
 export function registerOrdinaryTextQuoteJourney(suite) {
   async function openFromHome({ viewport, prefix, run, draft, dark = false, shell }) {
     const evidence = await mkdtemp(`/tmp/${prefix}-`);
-    const owner = await startComposerWorkspaceOwner(path.join(evidence, 'data'));
+    const owner = await startComposerWorkspaceOwner(path.join(evidence, 'data'), {
+      configure: async ({ content, draftStore }) => {
+        const { ThreadStore } = await import('../../../api/dist/domains/cats/services/stores/ports/ThreadStore.js');
+        // The controlled sender has not appended any Human messages. Read that private canonical empty history honestly.
+        return { fileQuotes: { source: content.source, messages: draftStore, threads: new ThreadStore() } };
+      },
+    });
     const context = await suite().browser.newContext({ viewport });
     if (dark) await context.addInitScript(() => window.localStorage.setItem('theme', 'dark'));
     const errors = [];
@@ -185,7 +192,7 @@ export function registerOrdinaryTextQuoteJourney(suite) {
     await editor.press('Shift+Enter');
     await editor.pressSequentially(COMMENT[1]);
     await editor.press('Enter');
-    await page.getByTestId('context-annotations-summary').waitFor({ state: 'attached' });
+    await page.locator(DRAFT_REFERENCES).waitFor({ state: 'attached' });
     // Adding is not sending, not a Task and not a new F309 text annotation: nothing is written at all.
     assert.deepEqual(posts.slice(before), []);
     return editor;
@@ -211,7 +218,7 @@ export function registerOrdinaryTextQuoteJourney(suite) {
     }
     await editor.fill(words);
     await editor.press('Enter');
-    await page.getByTestId('context-annotations-summary').waitFor({ state: 'attached' });
+    await page.locator(DRAFT_REFERENCES).waitFor({ state: 'attached' });
     assert.deepEqual(posts.slice(before), [], 'adding a place writes nothing');
   }
 
@@ -224,10 +231,10 @@ export function registerOrdinaryTextQuoteJourney(suite) {
   registerFileQuotePersistenceJourneys({ openFromHome, addPlace, suite });
 
   async function askWithQueuedPlaces(page, surface, posts) {
-    const summary = page.getByTestId('context-annotations-summary');
+    const summary = page.locator(DRAFT_REFERENCES);
     const before = await summary.textContent();
     const places = page.locator('[data-testid^="context-annotation-item-"]');
-    // The narrow work surface covers the Chat. Read the existing draft identity without clicking behind it.
+    // Read the original draft identity; neither Ask nor a focus change may replace its saved places.
     const snapshot = () =>
       page.evaluate((threadId) => {
         const drafts = JSON.parse(sessionStorage.getItem('cat-cafe:thread-context-attachment-drafts') ?? '[]');
@@ -239,7 +246,14 @@ export function registerOrdinaryTextQuoteJourney(suite) {
     const input = page.locator('[data-guide-id="chat.input"] textarea');
     const draft = await input.inputValue();
     const caret = [Math.min(3, draft.length), Math.min(8, draft.length)];
-    await input.evaluate((node, range) => node.setSelectionRange(...range), caret);
+    // Attachment insertion restores its pending selection after commit. Establish the person's next selection
+    // with real input, rather than setting the DOM range before that insertion has finished restoring it.
+    await input.click({ timeout: 4000 });
+    await input.press('ControlOrMeta+KeyA');
+    await input.press('ArrowLeft');
+    for (let index = 0; index < caret[0]; index += 1) await input.press('ArrowRight');
+    for (let index = caret[0]; index < caret[1]; index += 1) await input.press('Shift+ArrowRight');
+    assert.deepEqual(await input.evaluate((node) => [node.selectionStart, node.selectionEnd]), caret);
     const ask = surface.getByRole('button', { name: /^(请猫修改|Ask a cat to edit)$/ });
     assert.equal(await ask.count(), 1, 'the original document offers one Chat request entry');
     await ask.click();
@@ -259,10 +273,19 @@ export function registerOrdinaryTextQuoteJourney(suite) {
     assert.deepEqual(await snapshot(), beforePlaces, 'the original IDs, words and comments are unchanged');
     // This must be a usable sole composer, including 390px where the work was a full-screen overlay.
     await input.click({ timeout: 4000 });
-    await summary.click();
-    await places.first().waitFor();
-    assert.equal(await places.count(), beforePlaces.length);
-    await summary.click();
+    const tags = page.getByTestId('context-file-quote-tag');
+    if (await tags.count()) {
+      assert.equal(await tags.count(), beforePlaces.length);
+      await tags.first().click();
+      await places.first().waitFor();
+      assert.equal(await places.count(), 1, 'only the explicitly chosen place opens its details');
+      await page.getByTestId('context-file-quote-close').click();
+    } else {
+      await summary.click();
+      await places.first().waitFor();
+      assert.equal(await places.count(), beforePlaces.length);
+      await summary.click();
+    }
   }
 
   test(
@@ -285,10 +308,10 @@ export function registerOrdinaryTextQuoteJourney(suite) {
           await surface.getByRole('button', { name: /^‹ (工具搜索|Tools)$/ }).click();
           await page.getByTestId('workspace-tools-content').waitFor();
           await page.reload({ waitUntil: 'domcontentloaded' });
-          const summary = page.getByTestId('context-annotations-summary');
+          const summary = page.locator(DRAFT_REFERENCES);
           await summary.waitFor();
           assert.equal(sent.length, 0);
-          await summary.click();
+          await page.getByTestId('context-file-quote-tag').first().click();
           const item = page.locator('[data-testid^="context-annotation-item-"]').first();
           await item.waitFor();
           const shown = await item.innerText();
@@ -296,7 +319,12 @@ export function registerOrdinaryTextQuoteJourney(suite) {
           assert.ok(shown.includes(COMMENT[0]) && shown.includes(COMMENT[1]), shown);
 
           await page.getByRole('button', { name: /^(Send message|发送消息)$/ }).click();
-          await page.waitForFunction(() => !document.querySelector('[data-testid="context-annotations-summary"]'));
+          await page.waitForFunction(
+            () =>
+              !document.querySelector(
+                '[data-testid="context-annotations-summary"], [data-testid="context-file-quote-tags"]',
+              ),
+          );
           assert.equal(sent.length, 1);
           const [quote] = sent[0].contextAttachments;
           assert.equal(quote.kind, 'quote');
@@ -346,23 +374,49 @@ export function registerOrdinaryTextQuoteJourney(suite) {
             await addPlace(page, posts, '暮色里的灯塔', '暮色里的灯塔', '这一处保留');
             await addPlace(page, posts, 'salt on the window', 'salt on the window', '这一处换个说法');
             await askWithQueuedPlaces(page, surface, posts);
-            const summary = page.getByTestId('context-annotations-summary');
-            assert.match((await summary.textContent()) ?? '', /2 annotations/);
-            await summary.click();
-            const items = page.locator('[data-testid^="context-annotation-item-"]');
-            assert.equal(await items.count(), 2, 'both places are in the draft, none replaced the other');
-            assert.match((await items.nth(0).innerText()) ?? '', /^第\s*1\s*处[\s\S]*暮色里的灯塔[\s\S]*这一处保留/);
-            assert.match(
-              (await items.nth(1).innerText()) ?? '',
-              /^第\s*2\s*处[\s\S]*salt on the window[\s\S]*这一处换个说法/,
-            );
+            const tags = page.getByTestId('context-file-quote-tag');
+            assert.equal(await tags.count(), 2, 'each original file place has its own visible numbered tag');
+            const words = [
+              ['暮色里的灯塔', '这一处保留'],
+              ['salt on the window', '这一处换个说法'],
+            ];
+            for (const [index, [excerpt, comment]] of words.entries()) {
+              await tags.nth(index).click();
+              const item = page.locator('[data-testid^="context-annotation-item-"]');
+              await item.waitFor();
+              assert.equal(await item.count(), 1);
+              const shown = await item.innerText();
+              assert.ok(
+                shown.includes(`第 ${index + 1} 处`) && shown.includes(excerpt) && shown.includes(comment),
+                shown,
+              );
+              const detailBox = await item.boundingBox();
+              const closeBox = await page.getByTestId('context-file-quote-close').boundingBox();
+              assert.ok(detailBox && closeBox);
+              assert.ok(
+                detailBox.x >= 0 && detailBox.x + detailBox.width <= presentation.viewport.width,
+                `quote details stay inside the actual viewport: ${JSON.stringify(detailBox)}`,
+              );
+              assert.ok(
+                closeBox.x >= detailBox.x && closeBox.x + closeBox.width <= detailBox.x + detailBox.width,
+                'the quote details collapse action remains fully visible',
+              );
+            }
             // Both were made in a version the owner named: nothing here says "cannot confirm where this place is".
             assert.equal(await page.getByText('无法确认当前位置').count(), 0);
             await mkdir(EVIDENCE, { recursive: true });
             await page.screenshot({ path: `${EVIDENCE}/text-quote-two-places-${presentation.name}.png` });
+            await page.getByTestId('context-file-quote-close').click();
+            await page.screenshot({ path: `${EVIDENCE}/text-quote-two-compact-${presentation.name}.png` });
+            assert.equal(await page.getByText('无法读取引用消息', { exact: true }).count(), 0);
 
             await page.getByRole('button', { name: /^(Send message|发送消息)$/ }).click();
-            await page.waitForFunction(() => !document.querySelector('[data-testid="context-annotations-summary"]'));
+            await page.waitForFunction(
+              () =>
+                !document.querySelector(
+                  '[data-testid="context-annotations-summary"], [data-testid="context-file-quote-tags"]',
+                ),
+            );
             assert.equal(sent.length, 1, 'one send');
             assert.equal(sent[0].content, '请一起修改这两处\n保留我的两行说明');
             const quotes = sent[0].contextAttachments;
@@ -431,7 +485,7 @@ export function registerOrdinaryTextQuoteJourney(suite) {
           const before = posts.length;
           await page.getByTestId('context-annotation-comment').fill('390 宽也能写 · narrow');
           await page.getByTestId('context-annotation-comment').press('Enter');
-          await page.getByTestId('context-annotations-summary').waitFor({ state: 'attached' });
+          await page.locator(DRAFT_REFERENCES).waitFor({ state: 'attached' });
           assert.deepEqual(posts.slice(before), []);
           assert.deepEqual(errors, []);
         },

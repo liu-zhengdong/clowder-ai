@@ -1,6 +1,6 @@
 import { fork } from 'node:child_process';
 import { Worker } from 'node:worker_threads';
-import type { ModuleWorkerTiming } from './module-worker-timing.js';
+import type { ModuleProcessMetrics, ModuleWorkerTiming } from './module-worker-timing.js';
 
 export interface ModuleWorkerRequest {
   /** Internal, trusted module URL. Never accept an executable target from a request. */
@@ -62,6 +62,7 @@ export function runModuleWorker<T>(request: ModuleWorkerRequest): Promise<T> {
     let startedAt: number | undefined;
     let settledAt: number | undefined;
     let outcome: ModuleWorkerTiming['outcome'] = 'failed';
+    let processMetrics: ModuleProcessMetrics | undefined;
     const report = (phase: ModuleWorkerTiming['phase']) => {
       if (!request.onTiming) return;
       const now = performance.now();
@@ -76,6 +77,7 @@ export function runModuleWorker<T>(request: ModuleWorkerRequest): Promise<T> {
         releaseLagMs: phase === 'released' ? now - end : 0,
         activeAtAdmission,
         queuedAtAdmission,
+        ...(processMetrics ? { processMetrics: { ...processMetrics } } : {}),
       });
     };
     const release = () => {
@@ -114,7 +116,12 @@ export function runModuleWorker<T>(request: ModuleWorkerRequest): Promise<T> {
       if (settled) return;
       active++;
       if (request.onTiming) startedAt = performance.now();
-      const receive = (message: { ok: true; value: T } | { ok: false; error: { message: string; name: string } }) => {
+      const receive = (
+        message: ({ ok: true; value: T } | { ok: false; error: { message: string; name: string } }) & {
+          processMetrics?: ModuleProcessMetrics;
+        },
+      ) => {
+        if (!settled && request.onTiming) processMetrics = message.processMetrics;
         if (message.ok) finish(undefined, message.value);
         else finish(Object.assign(new Error(message.error.message), { name: message.error.name }));
         terminate?.();
@@ -123,7 +130,12 @@ export function runModuleWorker<T>(request: ModuleWorkerRequest): Promise<T> {
         if (!settled) finish(new Error(`Projection worker exited without a result (${code})`));
         release();
       };
-      const job = { moduleUrl: request.moduleUrl.href, exportName: request.exportName, input: request.input };
+      const job = {
+        moduleUrl: request.moduleUrl.href,
+        exportName: request.exportName,
+        input: request.input,
+        ...(request.onTiming && request.isolation === 'process' ? { captureTiming: true } : {}),
+      };
       const extension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
       try {
         if (request.isolation === 'process') {

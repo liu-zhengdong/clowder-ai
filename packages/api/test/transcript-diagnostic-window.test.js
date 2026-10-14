@@ -104,3 +104,31 @@ test('logging exceptions and hundreds of completed reads cannot leak admission s
   assert.ok(diagnostic.beginRead('after-600', 'generations'));
   assert.doesNotThrow(() => diagnostic.stop());
 });
+
+test('child CPU coverage counts only measured settlements and never copies payload fields', () => {
+  const events = [];
+  const diagnostic = createTranscriptReadDiagnostics({ onEvent: (event) => events.push(event), slowMs: 0 });
+  const read = diagnostic.beginRead('req', 'canonical');
+  const processMetrics = {
+    moduleLoadWallMs: 4,
+    moduleLoadProcessCpuMs: 2,
+    operationStarted: true,
+    operationWallMs: 200,
+    operationProcessCpuMs: 1,
+    body: 'private-child-canary',
+  };
+  read.onWorkerTiming({ ...timing, runMs: 210, processMetrics });
+  read.onWorkerTiming({ ...timing, phase: 'released', processMetrics });
+  diagnostic.beginRead('req', 'generations').onWorkerTiming(timing);
+  diagnostic.stop();
+  const worker = events.find((event) => event.type === 'transcript_worker');
+  assert.equal(worker.moduleLoadWallMs, 4);
+  assert.equal(worker.operationProcessCpuMs, 1);
+  assert.equal(worker.parentResidualMs, 6);
+  const coverage = events.at(-1);
+  assert.equal(coverage.processMeasuredWorkers, 1);
+  assert.equal(coverage.processMeasurementMissingWorkers, 1);
+  assert.equal(coverage.operationWallMs, 200);
+  assert.equal(coverage.operationProcessCpuMs, 1);
+  assert.equal(JSON.stringify(events).includes('private-child-canary'), false);
+});

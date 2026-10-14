@@ -13,6 +13,19 @@ interface Options {
   slowMs?: number;
   now?: () => number;
 }
+function processFields(timing: ModuleWorkerTiming) {
+  const metrics = timing.processMetrics;
+  if (!metrics) return {};
+  return {
+    moduleLoadWallMs: metrics.moduleLoadWallMs,
+    moduleLoadProcessCpuMs: metrics.moduleLoadProcessCpuMs,
+    operationStarted: metrics.operationStarted,
+    operationWallMs: metrics.operationWallMs,
+    operationProcessCpuMs: metrics.operationProcessCpuMs,
+    // Startup, IPC/serialization and parent scheduling remain combined here.
+    parentResidualMs: timing.runMs - metrics.moduleLoadWallMs - metrics.operationWallMs,
+  };
+}
 
 /** Only the two request-generations reads opt in; no ALS/request slots or payload retention. */
 export function createTranscriptReadDiagnostics(options: Options) {
@@ -45,6 +58,11 @@ export function createTranscriptReadDiagnostics(options: Options) {
     droppedReads: 0,
     reportedWorkers: 0,
     droppedWorkers: 0,
+    processMeasuredWorkers: 0,
+    moduleLoadWallMs: 0,
+    moduleLoadProcessCpuMs: 0,
+    operationWallMs: 0,
+    operationProcessCpuMs: 0,
   };
   const emit = (event: Record<string, unknown>) => {
     try {
@@ -52,6 +70,15 @@ export function createTranscriptReadDiagnostics(options: Options) {
     } catch {
       /* Logging must not break reads. */
     }
+  };
+  const addProcessWork = (timing: ModuleWorkerTiming) => {
+    const metrics = timing.processMetrics;
+    if (!metrics) return;
+    ++coverage.processMeasuredWorkers;
+    coverage.moduleLoadWallMs += metrics.moduleLoadWallMs;
+    coverage.moduleLoadProcessCpuMs += metrics.moduleLoadProcessCpuMs;
+    coverage.operationWallMs += metrics.operationWallMs;
+    coverage.operationProcessCpuMs += metrics.operationProcessCpuMs;
   };
   const stop = (reason: 'window' | 'close' = 'close') => {
     if (stopped) return;
@@ -65,6 +92,7 @@ export function createTranscriptReadDiagnostics(options: Options) {
       ...coverage,
       incompleteReads: coverage.observedReads - coverage.completedReads,
       settledWithoutRelease: coverage.settledStartedWorkers - coverage.releasedWorkers,
+      processMeasurementMissingWorkers: coverage.settledStartedWorkers - coverage.processMeasuredWorkers,
     });
   };
   const timer = setTimeout(() => stop('window'), windowMs);
@@ -127,6 +155,7 @@ export function createTranscriptReadDiagnostics(options: Options) {
           coverage.settledStartedWorkers += Number(timing.started);
           coverage.queueMs += timing.queueMs;
           coverage.runMs += timing.runMs;
+          addProcessWork(timing);
         } else {
           ++coverage.releasedWorkers;
           coverage.releaseLagMs += timing.releaseLagMs;
@@ -145,6 +174,7 @@ export function createTranscriptReadDiagnostics(options: Options) {
           releaseLagMs: timing.releaseLagMs,
           activeAtAdmission: timing.activeAtAdmission,
           queuedAtAdmission: timing.queuedAtAdmission,
+          ...processFields(timing),
         });
       },
     };

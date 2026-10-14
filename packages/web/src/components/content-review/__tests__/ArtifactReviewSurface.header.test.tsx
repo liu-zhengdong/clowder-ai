@@ -2,6 +2,10 @@ import type { ArtifactReviewView } from '@cat-cafe/shared';
 import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { writeShellPresentation } from '@/components/shell/shell-presentation';
+import { syncContextAttachmentDraftToStorage } from '@/components/thread-drafts';
+import { _resetCatDataCache } from '@/hooks/useCatData';
+import { useChatStore } from '@/stores/chatStore';
 import { ArtifactReviewSurface } from '../ArtifactReviewSurface';
 import { compareAsset } from './media-compare.fixture';
 
@@ -15,7 +19,26 @@ vi.mock('../useReviewMediaSource', () => ({
 }));
 vi.mock('@/utils/api-client', () => ({
   API_URL: 'http://api.test',
-  apiFetch: vi.fn(async () => new Response(JSON.stringify({ requests: [], contexts: [] }))),
+  apiFetch: vi.fn(async (url: string) =>
+    Response.json(
+      url === '/api/cats'
+        ? {
+            cats: [
+              {
+                id: 'codex-astra',
+                displayName: '小星星',
+                mentionPatterns: ['@codex-astra'],
+                clientId: 'openai',
+                defaultModel: 'gpt-6-astra',
+                color: { primary: '#000', secondary: '#fff' },
+                avatar: '',
+                roleDescription: '',
+              },
+            ],
+          }
+        : { requests: [], contexts: [] },
+    ),
+  ),
 }));
 vi.mock('../ReviewActor', () => ({ ReviewActor: () => <span>原作者</span> }));
 
@@ -56,6 +79,9 @@ let root: Root, container: HTMLDivElement;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   localStorage.clear();
+  _resetCatDataCache();
+  useChatStore.setState({ currentThreadId: 'thread-one', pendingChatInsert: null });
+  syncContextAttachmentDraftToStorage('thread-one', []);
   mocks.controller.mockReturnValue({
     view: reviewView(),
     error: null,
@@ -71,10 +97,95 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
 });
+
+it('makes the original Task owner visible in Chat when requesting changes', async () => {
+  writeShellPresentation('v2');
+  await act(async () => root.render(<ArtifactReviewSurface reviewId="review-one" onBack={vi.fn()} />));
+  const request = [...container.querySelectorAll('button')].find((button) => button.textContent === '要求修改');
+  expect(request).toBeDefined();
+  await act(async () => request?.click());
+  expect(useChatStore.getState().pendingChatInsert?.text).toContain('@codex-astra');
+  expect(useChatStore.getState().pendingChatInsert?.contextAttachments?.[0]).toMatchObject({
+    taskContext: { taskId: 'task-one', reviewId: reviewView().review.reviewId, round: 2 },
+  });
+});
+
+it('carries the verified host work name into Chat while keeping canonical Task and round identity', async () => {
+  writeShellPresentation('v2');
+  const view = reviewView();
+  view.review.title = `修改《codex-${'b'.repeat(32)}.png》`;
+  mocks.controller.mockReturnValue({ ...mocks.controller(), view });
+  await act(async () =>
+    root.render(<ArtifactReviewSurface reviewId="review-one" title="发布入口实看" onBack={vi.fn()} />),
+  );
+  await act(async () =>
+    [...container.querySelectorAll('button')].find((button) => button.textContent === '要求修改')?.click(),
+  );
+  expect(useChatStore.getState().pendingChatInsert?.contextAttachments?.[0]).toMatchObject({
+    title: '发布入口实看',
+    source: { kind: 'artifact-review', reviewId: view.review.reviewId, round: 2, expectedReviewRevision: 3 },
+    taskContext: { taskId: 'task-one', expectedTaskRevision: 1, round: 2 },
+  });
+});
+
+it('uses the same visible owner and host name from comparison', async () => {
+  writeShellPresentation('v2');
+  await act(async () =>
+    root.render(<ArtifactReviewSurface reviewId="review-one" title="发布入口实看" onBack={vi.fn()} />),
+  );
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="对比版本"]')?.click());
+  const compare = container.querySelector('[data-testid="artifact-media-compare"]');
+  expect(compare).not.toBeNull();
+  await act(async () =>
+    [...compare!.querySelectorAll('button')].find((button) => button.textContent === '要求修改')?.click(),
+  );
+  expect(useChatStore.getState().pendingChatInsert).toMatchObject({
+    text: '@codex-astra',
+    contextAttachments: [{ title: '发布入口实看', taskContext: { taskId: 'task-one', round: 2 } }],
+  });
+});
+
+for (const boundary of ['unknown-owner', 'foreign-thread'] as const) {
+  it(`leaves the original composer untouched for ${boundary}`, async () => {
+    writeShellPresentation('v2');
+    const view = reviewView();
+    if (boundary === 'unknown-owner') view.authority.ownerCatId = 'unregistered-owner';
+    else useChatStore.setState({ currentThreadId: 'foreign-thread' });
+    mocks.controller.mockReturnValue({ ...mocks.controller(), view });
+    await act(async () => root.render(<ArtifactReviewSurface reviewId="review-one" onBack={vi.fn()} />));
+    await act(async () =>
+      [...container.querySelectorAll('button')].find((button) => button.textContent === '要求修改')?.click(),
+    );
+    expect(useChatStore.getState().pendingChatInsert).toBeNull();
+    expect(container.textContent).toContain(boundary === 'unknown-owner' ? '发送入口' : '作品的对话');
+  });
+}
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+});
+
+it('keeps automatic source refresh out of the normal v2 work header', async () => {
+  writeShellPresentation('v2');
+  await act(async () =>
+    root.render(<ArtifactReviewSurface reviewId={reviewView().review.reviewId} onBack={vi.fn()} />),
+  );
+  expect(container.querySelector('[aria-label="刷新"]')).toBeNull();
+  expect(container.querySelector('h2')?.textContent).toBe('原Task作品.png');
+});
+
+it('keeps the same Task context chooser in details instead of another permanent work bar', async () => {
+  writeShellPresentation('v2');
+  await act(async () =>
+    root.render(
+      <ArtifactReviewSurface reviewId={reviewView().review.reviewId} onBack={vi.fn()} onContextChange={vi.fn()} />,
+    ),
+  );
+  expect(container.querySelector('[aria-label="作品讨论上下文"]')).toBeNull();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="审阅详情"]')?.click());
+  expect(container.querySelector('[aria-label="版本与历史"] [aria-label="作品讨论上下文"]')).not.toBeNull();
+  expect(mocks.controller().act).not.toHaveBeenCalled();
 });
 
 for (const round of [1, 2]) {

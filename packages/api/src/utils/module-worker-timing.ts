@@ -1,3 +1,14 @@
+export interface ModuleProcessMetrics {
+  /** Import of the trusted target module, after the child receives its one job. */
+  moduleLoadWallMs: number;
+  /** Total child process CPU in that interval, including its background threads. */
+  moduleLoadProcessCpuMs: number;
+  operationStarted: boolean;
+  /** Export call, including any lazy imports and async waits inside it. */
+  operationWallMs: number;
+  operationProcessCpuMs: number;
+}
+
 export interface ModuleWorkerTiming {
   phase: 'settled' | 'released';
   outcome: 'success' | 'failed' | 'aborted' | 'timeout' | 'rejected';
@@ -11,4 +22,6 @@ export interface ModuleWorkerTiming {
   releaseLagMs: number;
   activeAtAdmission: number;
   queuedAtAdmission: number;
+  /** Absent for threads, pre-result cancellation, or failed CPU measurement. Not zero CPU. */
+  processMetrics?: ModuleProcessMetrics;
 }

@@ -74,7 +74,7 @@ export function ImageArtworkControls({
               {discussionCount ? ` · ${discussionCount}` : ''}
             </button>
             {src ? (
-              <a href={src} download="review-version-1.png">
+              <a href={src} download="作品.png">
                 {t.download}
               </a>
             ) : null}

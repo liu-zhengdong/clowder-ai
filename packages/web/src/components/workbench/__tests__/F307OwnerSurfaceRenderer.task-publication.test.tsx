@@ -68,7 +68,7 @@ for (const shell of ['v2', 'classic']) {
     const owner = element.querySelector('[data-testid="original-task-owner"]');
     expect(owner?.getAttribute('data-review')).toBe(surface.objectRef.id);
     expect(owner?.getAttribute('data-round')).toBe('2');
-    expect(owner?.getAttribute('data-title-in-host')).toBe(String(shell === 'v2'));
+    expect(owner?.getAttribute('data-title-in-host')).toBe('false');
     const trigger = [...element.querySelectorAll('button')].find((button) => button.textContent === '切换原作品');
     expect(trigger).toBeDefined();
     expect(Boolean(trigger?.closest('header'))).toBe(shell === 'v2');

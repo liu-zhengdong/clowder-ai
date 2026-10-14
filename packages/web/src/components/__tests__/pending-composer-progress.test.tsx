@@ -114,6 +114,40 @@ it('keeps the original selection while appending to a mounted owner draft', asyn
   expect([textarea.selectionStart, textarea.selectionEnd, textarea.selectionDirection]).toEqual([2, 9, 'backward']);
 });
 
+it.each([
+  true,
+  false,
+])('honors explicit media attachment selection preservation and retains the normal default: %s', async (preserveSelection) => {
+  await act(async () => root.render(<Composer />));
+  await act(async () => resolveDraft(draftResponse('Original draft content')));
+  const textarea = node.querySelector('textarea');
+  if (!textarea) throw new Error('Original composer did not mount');
+  textarea.focus();
+  textarea.setSelectionRange(3, 8, 'backward');
+  await act(async () =>
+    useChatStore.getState().setPendingChatInsert({
+      threadId,
+      text: '',
+      preserveSelection,
+      contextAttachments: [
+        {
+          v: 1,
+          id: 'original-image',
+          kind: 'media',
+          title: '作品',
+          mediaType: 'image/png',
+          source: { kind: 'artifact-review', reviewId: 'original-review', round: 2, expectedReviewRevision: 3 },
+          selections: [],
+        },
+      ],
+    }),
+  );
+  expect(textarea.value).toBe('Original draft content');
+  expect([textarea.selectionStart, textarea.selectionEnd, textarea.selectionDirection]).toEqual(
+    preserveSelection ? [3, 8, 'backward'] : [22, 22, 'none'],
+  );
+});
+
 it('does not discard the owner read when a newer recall ACK replaces the pending question', async () => {
   await act(async () => {
     queue();

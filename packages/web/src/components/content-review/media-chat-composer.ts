@@ -38,6 +38,7 @@ function queueMediaChange(
   if (replacing) removed.add(attachmentId);
   useChatStore.getState().setPendingChatInsert({
     ...base,
+    ...(!base.selectionRange ? { preserveSelection: base.preserveSelection ?? true } : {}),
     contextAttachments: [
       ...(base.contextAttachments ?? []).filter((attachment) => attachment.id !== attachmentId),
       ...(next ? [next] : []),
@@ -58,7 +59,9 @@ export function addMediaWorkToChat(
   const current = composerAttachments(threadId);
   const pending = pendingMediaAttachment(current);
   const refresh =
-    refreshWholeReview && pending?.selections.length === 0 && sameMediaContentWithAdvancedReview(pending, target);
+    refreshWholeReview &&
+    pending?.selections.length === 0 &&
+    (sameMediaSource(pending, target) || sameMediaContentWithAdvancedReview(pending, target));
   const result = addMediaWork(refresh ? current.filter((item) => item.id !== pending.id) : current, target);
   if (result.kind === 'added') {
     const attachment = refresh ? { ...result.attachment, id: pending.id } : result.attachment;

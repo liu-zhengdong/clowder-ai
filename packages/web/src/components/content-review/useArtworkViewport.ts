@@ -70,6 +70,7 @@ export function useArtworkViewport(
 
   const fit = fitArtworkScale(size, media, maximumFitScale);
   const renderedScale = scale ?? fit;
+  const fitsVertically = media.height * renderedScale <= size.height;
   const canPan = panMode || spaceHeld;
   const overflow = (nextScale: number) => ({
     x: Math.max(0, (media.width * nextScale - size.width) / 2),
@@ -131,7 +132,13 @@ export function useArtworkViewport(
 
   return {
     renderedScale,
-    mediaBottom: size.top + (size.height + media.height * renderedScale) / 2 + offset.y,
+    mediaBottom:
+      size.top +
+      (scrollZoomedImage && fitsVertically
+        ? media.height * renderedScale
+        : (size.height + media.height * renderedScale) / 2) +
+      offset.y,
+    fitsVertically,
     offset,
     panMode,
     canPan,

@@ -3,7 +3,9 @@ import type { ArtifactReviewAnnotation, ArtifactReviewView, PublicationReviewCon
 import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { ContentLandingHeader } from '@/components/workbench/content-review/ContentLandingHeader';
 import { useWorkspaceContentReview } from '@/components/workbench/content-review/useWorkspaceContentReview';
+import type { WorkspaceFileNavigationOrigin } from '@/stores/chat-types';
 import { ArtifactRoundLanding, type ArtifactRoundProps } from './ArtifactRoundLanding';
+import { artworkTitle } from './artwork-title';
 import { ReviewContextSelector } from './ReviewContextSelector';
 import { startArtifactReanchor } from './startArtifactReanchor';
 import { reviewDraftPrefix, useArtifactReview } from './useArtifactReview';
@@ -16,6 +18,9 @@ export function ArtifactReviewSurface({
   onContextChange,
   leadingAction,
   titleInHost = false,
+  title,
+  navigationOrigin,
+  fullWindowAction,
 }: {
   reviewId: string;
   onBack: () => void;
@@ -24,12 +29,18 @@ export function ArtifactReviewSurface({
   onContextChange?: (context: PublicationReviewContext) => void;
   leadingAction?: ReactNode;
   titleInHost?: boolean;
+  title?: string;
+  navigationOrigin?: WorkspaceFileNavigationOrigin;
+  fullWindowAction?: { active: boolean; onToggle: () => void };
 }) {
   const controller = useArtifactReview(reviewId);
   if (!controller.view)
     return (
       <section className="p-4" data-testid="artifact-review-surface">
         <ContentLandingHeader
+          title={title}
+          navigationOrigin={navigationOrigin}
+          fullWindowAction={fullWindowAction}
           leadingAction={leadingAction}
           onBack={onBack}
           versionControl={
@@ -52,6 +63,9 @@ export function ArtifactReviewSurface({
       onContextChange={onContextChange}
       leadingAction={leadingAction}
       titleInHost={titleInHost}
+      title={title}
+      navigationOrigin={navigationOrigin}
+      fullWindowAction={fullWindowAction}
     />
   );
 }
@@ -64,6 +78,9 @@ function AuthorizedReview({
   onContextChange,
   leadingAction,
   titleInHost,
+  title,
+  navigationOrigin,
+  fullWindowAction,
 }: {
   view: ArtifactReviewView;
   controller: ReturnType<typeof useArtifactReview>;
@@ -73,6 +90,9 @@ function AuthorizedReview({
   onContextChange?: (context: PublicationReviewContext) => void;
   leadingAction?: ReactNode;
   titleInHost: boolean;
+  title?: string;
+  navigationOrigin?: WorkspaceFileNavigationOrigin;
+  fullWindowAction?: { active: boolean; onToggle: () => void };
 }) {
   const latest = view.review.rounds.at(-1);
   const [selected, setSelected] = useState(initialRound ?? latest?.number ?? 1);
@@ -89,13 +109,13 @@ function AuthorizedReview({
     return (
       <section className="p-4" data-testid="artifact-review-surface">
         <ContentLandingHeader
-          title={titleInHost ? undefined : view.review.title}
+          title={titleInHost ? undefined : artworkTitle(title ?? view.review.title, '作品')}
+          navigationOrigin={navigationOrigin}
+          fullWindowAction={fullWindowAction}
           leadingAction={leadingAction}
+          onBack={onBack}
           versionControl={
             <>
-              <button type="button" onClick={onBack}>
-                返回来源
-              </button>
               {latest ? (
                 <button type="button" className="text-cafe-accent" onClick={() => selectVersion(latest.number)}>
                   查看当前第 {latest.number} 版
@@ -129,7 +149,19 @@ function AuthorizedReview({
   return (
     <ArtifactRoundEntry
       key={round.number}
-      {...{ view, round, controller, onBack, prefix, notice, leadingAction, titleInHost }}
+      {...{
+        view,
+        round,
+        controller,
+        onBack,
+        prefix,
+        notice,
+        leadingAction,
+        titleInHost,
+        title,
+        navigationOrigin,
+        fullWindowAction,
+      }}
       onReanchor={reanchor}
       onVersion={selectVersion}
       contextControl={

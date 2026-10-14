@@ -278,16 +278,19 @@ Sol6.1 在正常安装、构建、启动的命名 Alpha `f317-jev-spoken` / `4f7
 
 **未知**：快问交给 Luna / Sol6.1 是否更快尚无端到端数据；"十秒内首个有用回应"和"猫猫球两三秒"目前都是目标，不是保证。
 
-### 2026-10-14 公开测试分发缺口（未修复）
+### 2026-10-14 公开测试分发闭包（source 已修复，公开发行待接续）
 
-每日同步 source367 转入的既有缺口已独立核实：当前源码有 11 个直接测试消费者依赖
-5 个未导出的页面实验 helper，另有间接 fixture/可选 lab 消费；公开 `.test.js` lane
-未执行这些 `.mjs`，其绿灯不证明该组可运行。lineage 测试还读取内部验收报告，浏览器
-loader 又借用未导出的 PPT workspace，不能整目录放开来补齐。
-历史报告验证明确留在 source；可移植的合成产品回归补真实导出与执行条件，保留同根因的
-间接消费者。原 F 现场由 Sol6.1 依 operator 的替代约定续接，A 保留共享 Host 单写；修复需
-非作者 review 和干净公开布局证明。Task239 原日更不等此独立缺口，不复用 #5511 批准，
-不改变下方 Phase/AC 或原真人验收。
+原缺口经 [#5514](https://github.com/zts212653/clowder-ai/pull/5514) 合入
+`8bf3ec5fd55750ae608a9e7d5a4ddf59bb5456f6`。三项合成 helper 可导出，浏览器
+改用现有 puppeteer-core 与系统 Chrome；精确排除历史 lineage 测试，内部报告与
+模型 runner 保持私有。专用入口含 12 项默认文件及 2 项可选 lab/simulation，传递
+consumer 守门已接入现有 check 链，未扩大公共 CI 的 `.test.js` selector。
+Sonnet 对最终 exact HEAD `cfd0146d45f07c24d12a9727f209410cbaacf39a` 放行；干净
+独立公开布局实际入口 79/79、公开 check 27 pass + 1 明确 skip，源仓闭包检查 43/43。
+RED、私有路径缺席、两条既有 source check 红灯及 GitHub 账单导致未启动的 job。
+[使用前提](../setup/page-action-regressions.md)包含 linked worktree 与浏览器安装。
+Task239 仍负责从不可变 source 修复继续 frozen-cut/公开发行；此记录不声称已推送
+public，也不改变 Phase/AC、Jev 结论、source604 真人验收或父 Task33。
 
 ## Acceptance Criteria
 

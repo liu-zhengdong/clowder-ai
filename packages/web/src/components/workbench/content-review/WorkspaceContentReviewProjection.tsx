@@ -9,6 +9,7 @@ import toolbarStyles from '@/components/content-review/review-toolbar.module.css
 import styles from '@/components/content-review/review-workspace.module.css';
 import { useChatStore } from '@/stores/chatStore';
 import { API_URL } from '@/utils/api-client';
+import { isChatWorkElementVisible } from '../WorkspaceChatWorkScope';
 import type { ContentLandingCapabilities, ContentReviewView, ContentReviewWorkflow } from './content-review-contract';
 import type { WorkspaceAnnotationTarget } from './useWorkspaceContentReview';
 import { useWorkspaceMediaChat } from './useWorkspaceMediaChat';
@@ -115,6 +116,7 @@ export function WorkspaceContentReviewProjection({
   const canAuthor = view.canWrite && view.sourceState === 'current' && capabilities.annotate.state === 'available';
   const canWrite = canAuthor && !busy;
   const imageChatPrimary = source.kind !== 'text' && source.kind !== 'video-project' && source.mime === 'image/png';
+  const mediaRoot = useRef<HTMLDivElement>(null);
   const mediaChat = useWorkspaceMediaChat({
     view,
     path,
@@ -124,6 +126,7 @@ export function WorkspaceContentReviewProjection({
     setDraft,
     setTarget,
     referenceOnOpen: imageChatPrimary && !comparing && !openingComparison,
+    isWorkVisible: () => isChatWorkElementVisible(mediaRoot.current),
   });
   if (source.kind === 'video-project')
     return <p className="p-3 text-sm text-cafe-muted">当前文件视图尚不支持视频项目审阅。</p>;
@@ -263,6 +266,7 @@ export function WorkspaceContentReviewProjection({
     );
   return (
     <div
+      ref={mediaRoot}
       className={`${styles.workspace} ${imageChatPrimary ? styles.imageWorkspace : ''}`}
       data-comparing={comparing ? 'true' : undefined}
     >

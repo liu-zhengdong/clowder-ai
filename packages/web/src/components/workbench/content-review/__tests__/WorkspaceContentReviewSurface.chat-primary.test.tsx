@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { imageArtworkCopy } from '@/components/content-review/image-artwork.shell-copy';
 import { checkShellCopyParity } from '@/components/shell/__tests__/shell-copy-parity-check';
+import { writeShellPresentation } from '@/components/shell/shell-presentation';
 import { getContextAttachmentDraft, syncContextAttachmentDraftToStorage } from '@/components/thread-drafts';
 import { useChatStore } from '@/stores/chatStore';
 import { WorkspaceSurfaceVisibilityProvider } from '../../WorkspaceSurfaceVisibility';
@@ -74,6 +75,25 @@ it('does not insert an image reference when a retained hidden owner restores bes
   expect(container.querySelector('[data-testid="workspace-review-artwork"]')).not.toBeNull();
   expect(useChatStore.getState().pendingChatInsert).toBeNull();
   expect(getContextAttachmentDraft(threadId)).toEqual([]);
+});
+
+it('opening a visible image leaves the explicit composer and saved attachment draft untouched', async () => {
+  writeShellPresentation('v2');
+  await openImage();
+  expect(useChatStore.getState().pendingChatInsert).toBeNull();
+  expect(getContextAttachmentDraft(threadId)).toEqual([]);
+});
+
+it('a readable historical image can be circled for Chat while drawing and saving remain unavailable', async () => {
+  writeShellPresentation('v2');
+  await openImage({ ...mediaView(), canWrite: false });
+  const actions = [...container.querySelectorAll<HTMLButtonElement>('[aria-label="作品操作模式"] button')];
+  expect(actions[0]?.disabled).toBe(false);
+  expect(actions[1]?.disabled).toBe(true);
+  await act(async () => actions[0]?.click());
+  expect(actions[0]?.getAttribute('aria-pressed')).toBe('true');
+  expect(container.querySelector('textarea')).toBeNull();
+  expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
 });
 
 it('keeps an acknowledged removal cleared when the image owner remounts hidden', async () => {

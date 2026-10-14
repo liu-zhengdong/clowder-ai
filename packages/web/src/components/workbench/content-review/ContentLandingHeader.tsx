@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { useShellCopy } from '@/components/shell/shell-copy';
+import { fileReturnLabel } from '@/components/workspace/V2WorkspaceFileChrome';
 import { voiceMeetingCopy } from '@/components/workspace/voice-meeting.shell-copy';
 import type { WorkspaceFileNavigationOrigin } from '@/stores/chat-types';
-import { workspaceChromeCopy } from '../workspace-chrome.shell-copy';
 
 export function ContentLandingHeader({
   title,
@@ -11,6 +11,7 @@ export function ContentLandingHeader({
   onOpenFileTools,
   versionControl,
   leadingAction,
+  fullWindowAction,
 }: {
   readonly title?: string;
   readonly navigationOrigin?: WorkspaceFileNavigationOrigin;
@@ -18,9 +19,10 @@ export function ContentLandingHeader({
   readonly onOpenFileTools?: () => void;
   readonly versionControl?: ReactNode;
   readonly leadingAction?: ReactNode;
+  readonly fullWindowAction?: { active: boolean; onToggle: () => void };
 }) {
   const t = useShellCopy(voiceMeetingCopy);
-  const workspace = useShellCopy(workspaceChromeCopy);
+
   return (
     // In a narrow column (side-by-side panes, 390px) the controls wrap onto a second line so the
     // title keeps at least ~8rem instead of shrinking to a single character.
@@ -33,6 +35,17 @@ export function ContentLandingHeader({
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
         {leadingAction}
         {versionControl}
+        {fullWindowAction ? (
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-cafe-subtle px-2 py-1 text-xs hover:bg-cafe-surface-elevated"
+            onClick={fullWindowAction.onToggle}
+            aria-label={fullWindowAction.active ? '展开聊天' : '整窗查看作品'}
+            data-testid={fullWindowAction.active ? 'f307-artifact-exit-full-window' : 'f307-artifact-enter-full-window'}
+          >
+            {fullWindowAction.active ? '展开聊天' : '整窗'}
+          </button>
+        ) : null}
         {onOpenFileTools ? (
           <button
             type="button"
@@ -52,13 +65,9 @@ export function ContentLandingHeader({
                 since only the v2 meeting journey produces this origin) instead of the generic 返回来源. */}
             {navigationOrigin?.kind === 'meeting-transcript'
               ? `‹ ${t.meeting.title}`
-              : navigationOrigin?.kind === 'workspace-tools-search'
-                ? `‹ ${workspace.toolsSearch}`
-                : navigationOrigin?.kind === 'workspace-home-artifact'
-                  ? `‹ ${workspace.home}`
-                  : navigationOrigin
-                    ? '返回来源'
-                    : '返回'}
+              : navigationOrigin
+                ? fileReturnLabel(navigationOrigin)
+                : '返回'}
           </button>
         ) : null}
       </div>

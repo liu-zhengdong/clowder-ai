@@ -164,10 +164,13 @@ export function usePendingComposerDraftInsert({
         : null;
       setInput((previous) => {
         const next = projectPendingText(pendingChatInsert, previous);
-        if (pendingChatInsert.preserveSelection && !pendingChatInsert.authoritative) {
+        if (
+          pendingChatInsert.preserveSelection &&
+          !pendingChatInsert.authoritative &&
+          !pendingChatInsert.selectionRange
+        ) {
           pendingSelectionRef.current = keptDraftSelection(pendingChatInsert, previous, next, textareaRef.current);
-        }
-        if (!pendingChatInsert.selectionRange && pendingChatInsert.contextAttachments?.length) {
+        } else if (!pendingChatInsert.selectionRange && pendingChatInsert.contextAttachments?.length) {
           pendingSelectionRef.current = { text: next, start: next.length, end: next.length };
         }
         return next;

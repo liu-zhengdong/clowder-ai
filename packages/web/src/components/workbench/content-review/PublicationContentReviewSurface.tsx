@@ -2,7 +2,6 @@
 import { type ReviewedMediaAsset, reviewedMediaAssetSchema } from '@cat-cafe/shared';
 import { type ReactNode, useEffect, useState } from 'react';
 import { checked } from '@/components/content-review/modification-http';
-import { useShellPresentation } from '@/components/shell/shell-presentation';
 import type { WorkspaceFileNavigationOrigin } from '@/stores/chat-types';
 import { apiFetch } from '@/utils/api-client';
 import { useWorkspaceSurfaceVisibility } from '../WorkspaceSurfaceVisibility';
@@ -18,6 +17,7 @@ type Props = {
   onVersionChange?: (revision: number) => void;
   navigationOrigin?: WorkspaceFileNavigationOrigin;
   leadingAction?: ReactNode;
+  fullWindowAction?: { active: boolean; onToggle: () => void };
 };
 function checkedPublication(
   value: { asset: unknown; currentOwnerRevision: number },
@@ -59,8 +59,9 @@ function PublicationSurface({
   navigationOrigin,
   onVersionChange,
   leadingAction,
+  fullWindowAction,
 }: Props) {
-  const titleInHost = useShellPresentation() === 'v2';
+  const titleInHost = false;
   const review = useWorkspaceContentReview({ publication: { contentRef, ownerRevision } });
   const visible = useWorkspaceSurfaceVisibility();
   const [latest, setLatest] = useState(ownerRevision),
@@ -106,6 +107,7 @@ function PublicationSurface({
         <ContentLandingHeader
           title={titleInHost ? undefined : title}
           leadingAction={leadingAction}
+          fullWindowAction={fullWindowAction}
           navigationOrigin={navigationOrigin}
           onBack={onBack}
         />
@@ -138,6 +140,7 @@ function PublicationSurface({
       title={title}
       titleInHost={titleInHost}
       leadingAction={leadingAction}
+      fullWindowAction={fullWindowAction}
       workflow={
         historical
           ? {

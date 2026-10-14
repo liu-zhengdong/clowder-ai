@@ -3,7 +3,6 @@
 import { type ReactNode, useCallback } from 'react';
 import { EvolutionProgramSurface } from '@/components/capability-evolution/solution-gate/SolutionGateHost';
 import { ArtifactReviewSurface } from '@/components/content-review/ArtifactReviewSurface';
-import { useShellPresentation } from '@/components/shell/shell-presentation';
 import { TheaterReplayContent } from '@/components/story-player/TheaterReplayContent';
 import type { WorkspaceSurfaceDescriptor } from '@/components/workbench/workbench-contract';
 import { BrowserPanel } from '@/components/workspace/BrowserPanel';
@@ -60,6 +59,7 @@ function AgentRunOwnerSurface({ surface }: { surface: WorkspaceSurfaceDescriptor
 interface F307OwnerSurfaceRendererProps {
   surface: WorkspaceSurfaceDescriptor;
   surfaceVisible?: boolean;
+  fullWindowAction?: { active: boolean; onToggle: () => void };
   hostWorktreeId?: string | null;
   hostThreadId?: string | null;
   focusMode?: boolean;
@@ -88,8 +88,8 @@ function F307OwnerSurfaceContent({
   onRequestDetach,
   onReturnToFileOrigin,
   leadingAction,
+  fullWindowAction,
 }: Omit<F307OwnerSurfaceRendererProps, 'surfaceVisible'> & { leadingAction?: ReactNode }) {
-  const isV2 = useShellPresentation() === 'v2';
   const browserTarget = resolveBrowserTarget(surface);
   const returnToOrigin = () =>
     surface.navigationOrigin && onReturnToFileOrigin
@@ -186,7 +186,10 @@ function F307OwnerSurfaceContent({
         reviewId={target.reviewId}
         initialRound={target.round}
         leadingAction={leadingAction}
-        titleInHost={isV2}
+        titleInHost={false}
+        title={surface.title}
+        navigationOrigin={surface.navigationOrigin}
+        fullWindowAction={fullWindowAction}
         onContextChange={(context) =>
           useF307ExperienceWorkbenchStore.getState().dispatch({
             type: 'resolve-content-surface',
@@ -266,6 +269,7 @@ function F307OwnerSurfaceContent({
             {...target}
             leadingAction={leadingAction}
             title={surface.title}
+            fullWindowAction={fullWindowAction}
             navigationOrigin={surface.navigationOrigin}
             onVersionChange={(ownerRevision) =>
               onRefreshSurface({

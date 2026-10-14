@@ -7,7 +7,7 @@ import { THREAD_ID } from './f309-ordinary-workspace-journey-fixture.mjs';
 import { routeThroughRealOwner, startRealWorkspaceOwner } from './f309-ordinary-workspace-real-owner.mjs';
 import { startWorkspaceNetworkProxy } from './f309-workspace-network-proxy.mjs';
 
-const evidence = '/tmp/cat-cafe-evidence/f309-studio297-long';
+const evidence = process.env.F309_LONG_IMAGE_EVIDENCE_DIR ?? '/tmp/cat-cafe-evidence/f309-studio297-long';
 const sha = '43bd6445884b1825c75f417e8437334f52776dc8606b950826bd71c2cd93563c';
 // Same bytes as Studio Human035's first image, explicitly supplied for this private viewport test.
 // The original message/upload and parent's owners are never touched; this is a separate authentic F063 file owner.
@@ -195,6 +195,12 @@ export function registerStudio297LongImageJourneys(suite) {
               beforeWheel[key],
               `scrolling the image keeps the original ${key} frame in place`,
             );
+          const footer = await page.locator('[data-thread-chat-footer]').boundingBox();
+          assert.ok(footer);
+          assert.ok(
+            dock.x + dock.width <= footer.x || footer.x + footer.width <= dock.x || dock.y + dock.height <= footer.y,
+            `all canvas controls remain above the original composer: ${JSON.stringify({ dock, footer })}`,
+          );
           await surface.getByRole('button', { name: '圈选', exact: true }).click();
           const from = { x: bounds.x + 30, y: bounds.y + bounds.height - 130 };
           const to = { x: bounds.x + 100, y: bounds.y + bounds.height - 70 };
@@ -232,7 +238,7 @@ export function registerStudio297LongImageJourneys(suite) {
               2,
             ),
           );
-          await surface.getByRole('button', { name: '返回来源', exact: true }).click();
+          await surface.getByRole('button', { name: '‹ 聊天', exact: true }).click();
           assert.equal(await composer.inputValue(), '长图原草稿\n不替我发送');
           assert.equal(sent.length, 0);
           assert.deepEqual(errors, []);
@@ -255,6 +261,32 @@ export function registerStudio297LongImageJourneys(suite) {
                     .evaluateAll((items) => items.map((item) => [item.textContent, item.getAttribute('aria-label')])),
                   errors,
                   sent,
+                  geometry: await page.evaluate(() => {
+                    const selectors = [
+                      '[data-thread-chat-footer]',
+                      '[data-testid="chat-input-composer-row"]',
+                      '[data-testid="contextual-workspace-host"]',
+                      '[aria-label="作品画布工具"]',
+                    ];
+                    return selectors.map((selector) => {
+                      const node = document.querySelector(selector);
+                      if (!node) return { selector, missing: true };
+                      const rect = node.getBoundingClientRect();
+                      const style = getComputedStyle(node);
+                      return {
+                        selector,
+                        rect: rect.toJSON(),
+                        clientHeight: node.clientHeight,
+                        scrollHeight: node.scrollHeight,
+                        height: style.height,
+                        minHeight: style.minHeight,
+                        flex: style.flex,
+                        margin: style.margin,
+                        padding: style.padding,
+                        border: style.borderWidth,
+                      };
+                    });
+                  }),
                 },
                 null,
                 2,

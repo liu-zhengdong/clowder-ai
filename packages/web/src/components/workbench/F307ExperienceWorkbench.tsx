@@ -621,6 +621,21 @@ export function F307ExperienceWorkbench({
     <F307OwnerSurfaceRenderer
       surface={surface}
       surfaceVisible={surfaceVisible}
+      fullWindowAction={
+        artifactWorkHostAvailable &&
+        isDesktop &&
+        threadId &&
+        surface.id === activeWorkspaceSurface?.id &&
+        isWorkspaceFullWindowSurface(surface, 'v2')
+          ? {
+              active:
+                artifactWorkPresentation.session?.threadId === threadId &&
+                artifactWorkPresentation.session?.surfaceId === surface.id &&
+                artifactWorkPresentation.session?.mode === 'full-window',
+              onToggle: () => toggleArtifactWorkFullWindow(threadId, surface),
+            }
+          : undefined
+      }
       hostWorktreeId={canonicalWorktreeId ?? worktreeId}
       hostThreadId={threadId}
       focusMode={focusSurfaceId === surface.id}

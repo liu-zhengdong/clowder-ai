@@ -94,7 +94,7 @@
     "check:deps": "depcruise packages/api/src packages/shared/src --config .dependency-cruiser.cjs",
     "check:lockfile": "pnpm install --frozen-lockfile",
     "check:daemon-lifecycle": "node --test --test-concurrency=1 scripts/daemon-state.test.mjs scripts/daemon-state-timezone.test.mjs scripts/daemon-identity-argv.test.mjs scripts/daemon-lifecycle-contract.test.mjs scripts/daemon-stop-operation.test.mjs scripts/lib/self-host-guard.test.mjs",
-    "check:env-ports": "node --test scripts/check-env-port-drift.test.mjs scripts/check-sync-manifest-runtime-closure.test.mjs scripts/sync-to-opensource-commit.test.mjs",
+    "check:env-ports": "node --test scripts/check-env-port-drift.test.mjs scripts/check-sync-manifest-runtime-closure.test.mjs scripts/f317-page-action-export.test.mjs scripts/sync-to-opensource-commit.test.mjs",
     "check:env-registry": "node --test scripts/check-env-registry.test.mjs",
     "check:env-example": "node --test scripts/check-env-example.test.mjs",
     "check:worktree-port-offset": "node --test scripts/derive-worktree-ports.test.mjs && node scripts/check-worktree-port-offset.mjs",

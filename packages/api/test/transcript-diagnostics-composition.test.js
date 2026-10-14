@@ -105,6 +105,12 @@ test('compiled API composition logs both real process reads without transcript b
   assert.equal(coverage.rows, 4);
   assert.equal(coverage.settledWorkers, 2);
   assert.equal(coverage.settledStartedWorkers, 2);
+  assert.equal(coverage.processMeasuredWorkers, 2);
+  assert.equal(coverage.processMeasurementMissingWorkers, 0);
+  assert.ok(coverage.moduleLoadWallMs > 0);
+  assert.ok(coverage.operationWallMs > 0);
+  assert.ok(coverage.moduleLoadProcessCpuMs >= 0);
+  assert.ok(coverage.operationProcessCpuMs >= 0);
   const rendered = JSON.stringify(records);
   for (const canary of [threadId, invocationId, session.id, 'private-cli-canary', 'private-body-canary', dataDir])
     assert.equal(rendered.includes(canary), false);

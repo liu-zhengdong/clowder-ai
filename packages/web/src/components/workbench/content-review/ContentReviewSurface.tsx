@@ -32,6 +32,7 @@ export function ContentReviewSurface({
   onOpenFileTools,
   versionControl,
   leadingAction,
+  fullWindowAction,
   title,
   titleInHost = false,
   capabilities,
@@ -50,6 +51,7 @@ export function ContentReviewSurface({
   readonly onOpenFileTools?: () => void;
   readonly versionControl?: ReactNode;
   readonly leadingAction?: ReactNode;
+  readonly fullWindowAction?: { active: boolean; onToggle: () => void };
   readonly title?: string;
   /** The active Workspace host already names this work; retain only its version and return controls here. */
   readonly titleInHost?: boolean;
@@ -86,6 +88,7 @@ export function ContentReviewSurface({
           onOpenFileTools={onOpenFileTools}
           versionControl={versionControl}
           leadingAction={leadingAction}
+          fullWindowAction={fullWindowAction}
         />
       )}
       {workflow?.status}
