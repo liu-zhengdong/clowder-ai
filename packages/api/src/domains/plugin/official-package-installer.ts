@@ -12,6 +12,11 @@ import type { HostInventoryControlPlane } from './host-inventory/control-plane.j
 import { type PackageAdmissionCandidate, PluginInventoryError } from './host-inventory/types.js';
 import { LEGACY_BUNDLED_MANIFESTS } from './legacy-bundled-manifests.js';
 import {
+  compareOfficialPluginVersions,
+  type OfficialPluginCatalogProvider,
+  StaticOfficialPluginCatalog,
+} from './manager/official-catalog-provider.js';
+import {
   type PluginPackageQuarantineFailureCode,
   type PluginPackageQuarantineRecorder,
   quarantineFailureCodeFromInventoryError,
@@ -22,11 +27,6 @@ import {
   type OfficialPluginCatalogEntry,
   officialPluginPresentationMatches,
 } from './official-catalog.js';
-import {
-  compareOfficialPluginVersions,
-  type OfficialPluginCatalogProvider,
-  StaticOfficialPluginCatalog,
-} from './official-catalog-provider.js';
 import {
   MAX_OFFICIAL_PACKAGE_BYTES,
   publishPluginPackageArchive,

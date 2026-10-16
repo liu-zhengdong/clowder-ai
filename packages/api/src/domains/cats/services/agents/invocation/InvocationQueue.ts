@@ -42,6 +42,7 @@ import {
   type IMessageStore,
   type LifecycleResponseTerminalPatch,
   messageIdempotencyScope,
+  reusesProseRouting,
   type StoredMessage,
 } from '../../stores/ports/MessageStore.js';
 import type { ToolExecutionPolicy } from '../../types.js';
@@ -730,6 +731,9 @@ export class InvocationQueue {
         input.kind === 'message_wake',
     );
     const reuseResolvedTargets = !exactTargets;
+    if (exactTargets && message.extra?.routingTargetSource === 'prose') {
+      throw new Error('Exact Queue admission cannot use prose routing provenance');
+    }
     const requestedTargetCats = [...input.targetCats];
     const committed = message.idempotencyKey
       ? await messageStore.getByIdempotencyKey(input.userId, messageIdempotencyScope(message), message.idempotencyKey)
@@ -753,16 +757,21 @@ export class InvocationQueue {
     const enqueuedAt = this.nextEnqueuedAt();
     const result = await messageStore.appendWithQueueLedgerAdmission(
       message,
-      (messageId, replayEntries) =>
-        this.createLedgerRows(
-          input,
+      (messageId, replayEntries, replaySource) => {
+        // The store supplies the actual winner, including commits after our preflight.
+        // Only an unchanged prose request may reuse its derived expansion and intent.
+        const reuseProse = replaySource && reusesProseRouting(replaySource, message);
+        const replay = reuseProse ? replayEntries?.find((entry) => entry.id === queueEntryId(messageId)) : undefined;
+        return this.createLedgerRows(
+          replay ? { ...input, intent: replay.execution.intent } : input,
           messageId,
           enqueuedAt,
           messageId,
           replayEntries,
           reuseResolvedTargets,
-          requestedTargetCats,
-        ),
+          reuseProse ? (replay?.payload.requestedTargetCats ?? replaySource.mentions) : requestedTargetCats,
+        );
+      },
       this.ledgerStore,
       input.from.kind === 'user' ? MAX_QUEUE_DEPTH : undefined,
     );

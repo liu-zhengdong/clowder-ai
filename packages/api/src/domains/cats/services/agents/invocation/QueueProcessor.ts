@@ -422,7 +422,11 @@ function isExactReplayableQueueRecord(
 
 export interface RouterLike {
   resolveExplicitTargets(requestedCatIds: readonly string[], threadId: string): Promise<string[]>;
-  resolveConversationTargetsAtAdmission(requestedCatIds: readonly string[], threadId: string): Promise<string[]>;
+  resolveConversationTargetsAtAdmission(
+    requestedCatIds: readonly string[],
+    threadId: string,
+    content?: string,
+  ): Promise<string[]>;
   routeExecution(
     userId: string,
     content: string,
@@ -3401,6 +3405,7 @@ export class QueueProcessor {
     const targets = await this.deps.router.resolveConversationTargetsAtAdmission(
       queueEntryTargetCats(entry),
       entry.threadId,
+      entry.payload.content,
     );
     return targets.filter((catId) =>
       sources.every((source) => !source || canViewMessage(source, { type: 'cat', catId: catId as CatId })),

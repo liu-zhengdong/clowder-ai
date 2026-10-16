@@ -25,7 +25,7 @@ description_updated_at: 2026-09-29T06:01:16Z
 
 **独立恢复判断已通过**：Argon source097（`private-source-id`）typed approved证据cut `c9a356870747b70cac8ffa17f0c001e58a3c4200`，无P1/P2，认可解除旧会话续接、只读补读准入与OAuth五秒保存超时三项具体阻塞；核过38件原件哈希及历史/成员不变。其批准不覆盖整体Feature终态。
 
-**尚未结算**：本轮浏览器未执行，macOS桌面无逐帧记录，不能扩大无弹窗的保证。自动阈值 handoff 的 unavailable 会阻止实际动作，需原持续工作结果的策略证据/具体裁定；既有 Native 手动压缩与续接实证保留。协议只证明配置与CLI init/request选择的模型，没有独立backend served-model证明，保持`modelVerified=false`；AC-A2不提前签字。source1141提出的明确限制建议尚待operator裁定。Linux/Windows未认证。独立整体愿景结论不通过，不以作者报告代签或关闭Feature。原#5510工位因规范收尾的后续main内容检查未通过而具名retained至2026-10-15 20:25 UTC，#5551修正工位已释放；保留不冒充删除。
+**尚未结算**：boot35已实看当前回复的桌面、手机与刷新呈现，其他页面旅程不据此代签；macOS桌面无逐帧记录，不能扩大无弹窗的保证。自动阈值 handoff 的 unavailable 会阻止实际动作，需原持续工作结果的策略证据/具体裁定；既有 Native 手动压缩与续接实证保留。协议只证明配置与CLI init/request选择的模型，没有独立backend served-model证明，保持`modelVerified=false`；AC-A2不提前签字。source1141提出的明确限制建议尚待operator裁定。Linux/Windows未认证。独立整体愿景结论不通过，不以作者报告代签或关闭Feature。原#5510工位因规范收尾的后续main内容检查未通过而具名retained至2026-10-15 20:25 UTC，#5551修正工位已释放；保留不冒充删除。
 
 原 A–E、F261 有效需求与迁移/历史边界继续被同一 Task 承接；未以部分进度关闭 Feature，也未重启正式 runtime。
 

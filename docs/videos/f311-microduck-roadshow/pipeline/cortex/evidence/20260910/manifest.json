@@ -70,7 +70,11 @@
     {
       "path": "cortex-793-live1/manifest.json",
       "bytes": 3673,
-      "sha256": "8d48b99fc0034e0a4ab6820a806d75ccce2309c91e569b66a3e8767ebf5c6579"
+      "sha256": "8d48b99fc0034e0a4ab6820a806d75ccce2309c91e569b66a3e8767ebf5c6579",
+      "exported": {
+        "bytes": 3670,
+        "sha256": "ec14c5aa46978107f1646d6799a7a1b0ff7f32127086b47a1d98254c975d26c8"
+      }
     },
     {
       "path": "cortex-793-live1/match.mp4",
@@ -120,7 +124,11 @@
     {
       "path": "cortex-793-live2-state/manifest.json",
       "bytes": 4077,
-      "sha256": "a55f5d694272f958bc0b24889a49b9914414cd27f28d7b0bdbc4ce8cca6ca554"
+      "sha256": "a55f5d694272f958bc0b24889a49b9914414cd27f28d7b0bdbc4ce8cca6ca554",
+      "exported": {
+        "bytes": 4074,
+        "sha256": "18ef6431566dafc7516f160b65f7c541f83584a26bfc31d057056055a31f34df"
+      }
     },
     {
       "path": "cortex-793-live2-state/match.mp4",

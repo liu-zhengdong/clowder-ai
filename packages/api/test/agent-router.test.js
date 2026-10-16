@@ -2400,56 +2400,6 @@ describe('AgentRouter', () => {
 // ── F078: Smart Routing & Group Mentions ─────────────────────────────
 
 describe('F078: Default to last replier', () => {
-  test('canonical no-mention fallback binds the latest completed lifecycle responder before Queue admission', async () => {
-    const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
-
-    const messageStore = createMockMessageStore();
-    messageStore.append({
-      from: { kind: 'cat', catId: 'codex' },
-      userId: 'user-1',
-      content: 'completed reply',
-      mentions: [],
-      timestamp: 1,
-      threadId: 't1',
-      lifecycle: {
-        kind: 'response',
-        status: 'completed',
-        sourceMessageId: 'source-1',
-        targetId: 'codex',
-        invocationId: 'invocation-1',
-      },
-    });
-    messageStore.append({
-      from: { kind: 'cat', catId: 'gemini' },
-      userId: 'user-1',
-      content: 'newer but still processing',
-      mentions: [],
-      timestamp: 2,
-      threadId: 't1',
-      lifecycle: {
-        kind: 'response',
-        status: 'processing',
-        sourceMessageId: 'source-2',
-        targetId: 'gemini',
-        invocationId: 'invocation-2',
-      },
-    });
-    const router = new AgentRouter(
-      await migrateRouterOpts({
-        claudeService: createMockAgentService('opus'),
-        codexService: createMockAgentService('codex'),
-        geminiService: createMockAgentService('gemini'),
-        registry: createMockRegistry(),
-        messageStore,
-      }),
-    );
-
-    assert.deepStrictEqual(await router.resolveConversationTargetsAtAdmission([], 't1'), ['codex']);
-    assert.deepStrictEqual(await router.resolveConversationTargetsAtAdmission([], 'thread-without-completed-replies'), [
-      'opus',
-    ]);
-  });
-
   test('no @mention routes to most recent replier only (not all participants)', async () => {
     const { AgentRouter } = await import('../dist/domains/cats/services/agents/routing/AgentRouter.js');
 

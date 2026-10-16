@@ -3,7 +3,7 @@ import {
   type OfficialPluginCatalogPolicy,
   type OfficialPluginRelease,
   officialPluginCatalogEntry,
-} from './official-catalog.js';
+} from '../official-catalog.js';
 
 export type OfficialPluginCatalogRefreshErrorCode =
   | 'CATALOG_FETCH_FAILED'

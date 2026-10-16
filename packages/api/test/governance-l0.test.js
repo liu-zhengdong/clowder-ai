@@ -33,9 +33,13 @@ describe('governance-l0 compiler (#747)', () => {
 
   it('projects the distinction between A2A routing and human progress from its source', () => {
     const l0 = compileGovernanceL0FromMarkdown(sharedRules);
-    assert.ok(l0.includes('面向co-creator的进度不受此限制'));
-    assert.ok(l0.includes('耗时工作'));
-    const revised = sharedRules.replace('面向co-creator的进度不受此限制', 'SOURCE-PROGRESS-BOUNDARY');
+    const progressBoundary = sharedRules.match(/人或队友发起任务，进度都对人可见/)?.[0];
+    assert.ok(progressBoundary, 'the source must declare the human progress boundary');
+    assert.ok(l0.includes(progressBoundary));
+    assert.ok(l0.includes('先用本轮正文说明要做什么，再调用工具'));
+    assert.ok(l0.includes('进度说明无需 @ 或唤醒队友'));
+    assert.ok(l0.includes('不用工具计数代替说明'));
+    const revised = sharedRules.replace(progressBoundary, 'SOURCE-PROGRESS-BOUNDARY');
     assert.ok(compileGovernanceL0FromMarkdown(revised).includes('SOURCE-PROGRESS-BOUNDARY'));
   });
 

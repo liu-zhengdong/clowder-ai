@@ -18,7 +18,7 @@ import type {
   PluginInventorySnapshot,
   PluginPackageRecord,
   PluginRuntimeErrorRecord,
-} from './host-inventory/types.js';
+} from '../host-inventory/types.js';
 
 /** Catalog-owned metadata required to render an available plugin before installation. */
 export interface PluginManagerCatalogCandidate {

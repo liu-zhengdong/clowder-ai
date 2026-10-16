@@ -5811,7 +5811,7 @@ async function main(): Promise<void> {
   const { OFFICIAL_PLUGIN_POLICIES, OFFICIAL_BUNDLED_CATALOG_ENTRIES, OFFICIAL_BUNDLED_MANIFESTS } = await import(
     './domains/plugin/official-catalog.js'
   );
-  const { RefreshingOfficialPluginCatalog } = await import('./domains/plugin/official-catalog-provider.js');
+  const { RefreshingOfficialPluginCatalog } = await import('./domains/plugin/manager/official-catalog-provider.js');
   const { OfficialPluginHistoryImportService } = await import('./domains/plugin/official-plugin-history-import.js');
   const { OfficialPluginMeetingIntakeService } = await import('./domains/plugin/official-plugin-meeting-intake.js');
   const { createLarkCliFeishuArtifactInspector, normalizeGeneratedArtifact, parseFeishuMinutesReference } =

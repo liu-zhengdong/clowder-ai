@@ -265,6 +265,7 @@ type ExtraCarrierPersistence = ExtraCarrierPersistenceClassification<{
   realtimeCompanion: 'parsed';
   liveCompanion: 'parsed';
   liveAdmission: 'parsed';
+  routingTargetSource: 'parsed';
   rich: 'parsed';
   callbackRichRequestDigest: 'parsed';
   isExplicitPost: 'parsed';
@@ -615,6 +616,10 @@ export function safeParseExtra(raw: string | undefined): StoredMessage['extra'] 
       parsed.liveAdmission.targetId
     ) {
       result.liveAdmission = { sessionId: parsed.liveAdmission.sessionId, targetId: parsed.liveAdmission.targetId };
+      hasField = true;
+    }
+    if (parsed.routingTargetSource === 'prose' || parsed.routingTargetSource === 'explicit') {
+      result.routingTargetSource = parsed.routingTargetSource;
       hasField = true;
     }
     const liveCompanion = parseLiveCompanionCarrier(parsed.liveCompanion);

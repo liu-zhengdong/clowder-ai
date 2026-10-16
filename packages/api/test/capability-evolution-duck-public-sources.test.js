@@ -20,12 +20,28 @@ const objectRef = {
 const apps = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
+async function readPublicDistributable(path) {
+  if (path.includes('/pipeline/football/')) {
+    const error = new Error('optional installation football archive is not bundled');
+    error.code = 'ENOENT';
+    throw error;
+  }
+  const bytes = new Uint8Array(await readFile(path));
+  if (!/cortex-793-live(?:1|2-state)\/manifest\.json$/.test(path)) return bytes;
+  return Buffer.from(
+    Buffer.from(bytes)
+      .toString('utf8')
+      .replaceAll('/home/user/projects/relay-station', '/home/user/projects/relay-station')
+      .replaceAll('current Clowder AI invocation', 'current Clowder AI invocation'),
+  );
+}
+
 async function fixture({
   user = 'default-user',
   workspaceId = 'user:default-user',
   target = objectRef,
   id = programId,
-  readBytes,
+  readBytes = readPublicDistributable,
 } = {}) {
   const app = Fastify();
   if (user)
@@ -45,7 +61,7 @@ async function fixture({
   return app;
 }
 
-test('the existing duck goal reads football and both Cortex experiments without changing its target', async () => {
+test('the public distributable reads both Cortex experiments without requiring the installation football archive', async () => {
   const app = await fixture();
   const response = await app.inject({
     url: `/api/capability-evolution/programs/${encodeURIComponent(programId)}/exploration`,
@@ -54,12 +70,13 @@ test('the existing duck goal reads football and both Cortex experiments without 
   const read = response.json();
   assert.deepEqual(read.objectRef, objectRef);
   assert.equal(read.programRef.ownerStateRef, programId);
-  assert.ok(read.nodes.some((node) => node.title === 'v8'));
+  assert.ok(!read.nodes.some((node) => node.title === 'v8'));
   const cortex = read.nodes.find((node) => node.title === 'Cortex · 两场公开比赛');
   assert.ok(cortex);
   assert.deepEqual(cortex.parentEdges, []);
   assert.equal(read.experiments.filter((run) => run.nodeRef.ownerStateRef === cortex.nodeRef.ownerStateRef).length, 2);
   assert.ok(read.nodes.every((node) => node.kind === 'public_archive'));
+  assert.ok(read.blockers.some((blocker) => blocker.code === 'owner_public_archive_unavailable'));
   assert.equal('currentVersionRefs' in read, false);
 });
 
@@ -132,13 +149,25 @@ test('a corrupted Cortex inventory cannot answer a Cortex selection using footba
   const cortexRun = catalog.experiments.find((run) => run.experimentRef.ownerStateRef.startsWith('cortex-run:'));
   const broken = await fixture({
     readBytes: async (path) =>
-      path.endsWith('/cortex/evidence/20260910/manifest.json')
-        ? Buffer.from('{}')
-        : new Uint8Array(await readFile(path)),
+      path.endsWith('/cortex/evidence/20260910/manifest.json') ? Buffer.from('{}') : readPublicDistributable(path),
   });
   const response = await broken.inject({ url: explorationUrl() + select(cortexRun.experimentRef) });
   assert.equal(response.statusCode, 422, response.body);
   assert.ok(!response.json().details);
+});
+
+test('an undeclared Cortex export transform remains outside the signed publication', async () => {
+  const app = await fixture({
+    readBytes: async (path) => {
+      const bytes = await readPublicDistributable(path);
+      return path.endsWith('/cortex-793-live1/manifest.json')
+        ? Buffer.from(Buffer.from(bytes).toString('utf8').replace('Clowder AI', 'another runtime'))
+        : bytes;
+    },
+  });
+  const response = await app.inject({ url: explorationUrl() });
+  assert.equal(response.statusCode, 422, response.body);
+  assert.ok(response.json().blockers.some((blocker) => blocker.code === 'cortex_public_archive_unavailable'));
 });
 
 test('public source reading supplies no owner version or execution capability', async () => {

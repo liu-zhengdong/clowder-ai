@@ -661,11 +661,23 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
       reply.status(400);
       return { error: 'One or more selected member identities are invalid', code: 'INVALID_EXPLICIT_TARGETS' };
     }
-    const structuredTargetCats = admittedMessageBundle ? bundleRoutingTargetCats : explicitRoutingTargetCats;
-    const routingResult: Awaited<ReturnType<AgentRouter['resolveTargetsAndIntent']>> = structuredTargetCats
+    // Legacy sources lack routing provenance; retain their serial replay snapshot.
+    // New sources freeze prose expansion at the store's actual winning commit,
+    // including races after this preflight. Exact recipient checks stay unchanged.
+    const replayedProseTargets =
+      replayedSource?.content === content &&
+      !replayedSource.extra?.routingTargetSource &&
+      !liveSessionId &&
+      !whisperVisibility
+        ? replayedSource.mentions
+        : undefined;
+    const fixedTargetCats = admittedMessageBundle
+      ? bundleRoutingTargetCats
+      : (explicitRoutingTargetCats ?? replayedProseTargets);
+    const routingResult: Awaited<ReturnType<AgentRouter['resolveTargetsAndIntent']>> = fixedTargetCats
       ? {
-          targetCats: structuredTargetCats,
-          intent: parseIntent(admittedMessageBundle ? '' : content, structuredTargetCats.length),
+          targetCats: [...fixedTargetCats],
+          intent: parseIntent(admittedMessageBundle ? '' : content, fixedTargetCats.length),
           hasMentions: true,
           routing_warnings: [],
         }
@@ -748,6 +760,9 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
     // Server-generated idempotency key if client didn't provide one
     const resolvedIdempotencyKey = idempotencyKey ?? randomUUID();
     const sourcePayloadExtra: NonNullable<StoredMessage['extra']> = {
+      ...(!liveSessionId && !whisperVisibility && !admittedMessageBundle
+        ? { routingTargetSource: explicitMentionTargetCats ? ('explicit' as const) : ('prose' as const) }
+        : {}),
       ...(liveSessionId ? { liveAdmission: { sessionId: liveSessionId, targetId: targetCats[0]! } } : {}),
       ...(admittedMessageBundle ? { messageBundle: admittedMessageBundle.carrier } : {}),
     };

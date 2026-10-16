@@ -838,29 +838,19 @@ export class AgentRouter {
    *
    * Common send resolves before atomic Message + Queue admission. Drain uses
    * the same resolver to handle targets that have since become unavailable.
-   * Still-routable explicit
-   * members are preserved in their original order. If none remain, the most
-   * recent completed lifecycle response is the only history-derived fallback;
-   * non-terminal and non-completed bubbles are deliberately ignored. The
-   * configured default is consulted only after that history lookup.
+   * Still-routable explicit members keep their original order. Otherwise use
+   * the same conversation policy shown by the composer, including historical
+   * user mentions, healthy repliers and preferences. Existing history does not
+   * need newly introduced response lifecycle metadata to retain its recipient.
    */
-  async resolveConversationTargetsAtAdmission(requestedCatIds: readonly string[], threadId: string): Promise<CatId[]> {
+  async resolveConversationTargetsAtAdmission(
+    requestedCatIds: readonly string[],
+    threadId: string,
+    content = '',
+  ): Promise<CatId[]> {
     const explicit = this.filterRoutableCats(requestedCatIds);
     if (explicit.length > 0) return explicit;
-
-    if (this.messageStore) {
-      const recent = await Promise.resolve(this.messageStore.getByThread(threadId, 100));
-      for (let index = recent.length - 1; index >= 0; index -= 1) {
-        const lifecycle = recent[index]?.lifecycle;
-        if (lifecycle?.kind !== 'response' || lifecycle.status !== 'completed') continue;
-        const target = this.filterRoutableCats([lifecycle.targetId]);
-        if (target.length > 0) return target;
-        break;
-      }
-    }
-
-    const fallback = this.pickFallbackCat(new Set());
-    return fallback ? [fallback] : [];
+    return (await this.resolveImplicitTargetPreview(content, threadId)).targetCats;
   }
 
   /** Public send parses prose once, then shares the existing conversation fallback. */
@@ -878,7 +868,7 @@ export class AgentRouter {
       requested.length > 0
         ? requested
         : (await this.resolveTargetsAndIntent(content, threadId, { persist: false, allowFallback: false })).targetCats;
-    return this.resolveConversationTargetsAtAdmission(targets, threadId);
+    return this.resolveConversationTargetsAtAdmission(targets, threadId, content);
   }
 
   /**
@@ -1286,13 +1276,26 @@ export class AgentRouter {
   private async resolveTargetPreview(
     message: string,
     threadId: string,
+    options?: { prospectivePreferredCats?: readonly CatId[]; publicConversation?: boolean },
+  ): Promise<RoutingPreviewResponse> {
+    const { mentions: mentionedCats } = await this.parseAllMentions(message, threadId, {
+      allowGroupFallback: !options?.publicConversation,
+    });
+    // Common conversation admission can select an available recipient. Exact
+    // callers retain named identities so an unavailable member reports its cause.
+    const targets = options?.publicConversation ? this.filterRoutableCats(mentionedCats) : mentionedCats;
+    if (targets.length > 0) {
+      return { targetCats: targets, reason: { kind: 'current_message_mentions' } };
+    }
+    return this.resolveImplicitTargetPreview(message, threadId, options);
+  }
+
+  /** One policy owner for implicit preview, common send and queued public recovery. */
+  private async resolveImplicitTargetPreview(
+    message: string,
+    threadId: string,
     options?: { prospectivePreferredCats?: readonly CatId[] },
   ): Promise<RoutingPreviewResponse> {
-    const { mentions: mentionedCats } = await this.parseAllMentions(message, threadId);
-    if (mentionedCats.length > 0) {
-      return { targetCats: mentionedCats, reason: { kind: 'current_message_mentions' } };
-    }
-
     const prospective = options?.prospectivePreferredCats !== undefined;
     if (!prospective && !this.threadStore) {
       // Preserve the pre-existing no-store fallback used by narrow tests and
@@ -1367,6 +1370,7 @@ export class AgentRouter {
     options: { threadId: string; prospectivePreferredCats?: readonly CatId[] },
   ): Promise<RoutingPreviewResponse> {
     return this.resolveTargetPreview(message, options.threadId, {
+      publicConversation: true,
       ...(options.prospectivePreferredCats === undefined
         ? {}
         : { prospectivePreferredCats: options.prospectivePreferredCats }),

@@ -6,11 +6,24 @@ import { ArchiveIntegrityError, archiveRef, digestBytes } from './archive-reader
 
 export const CORTEX_ARCHIVE_ROOT = 'docs/videos/f311-microduck-roadshow/pipeline/cortex/evidence/20260910';
 export const CORTEX_SOURCE_COMMIT = '35dfed114be3ca292aac304a888d4a9519d0dbea';
-export const CORTEX_MANIFEST_SHA = '16b4a723472a23be10d3b29b56026e79564fc59d2c3e463cca707a5796b70a64';
+export const CORTEX_MANIFEST_SHA = 'f32db61d53e63b086fd9905a072d7b4335fc5acb3dbec8032bd699d54bf487a2';
 const sha = z.string().regex(/^[a-f0-9]{64}$/);
+const inventoryIdentitySchema = z.object({
+  bytes: z.number().int().positive(),
+  sha256: sha,
+});
 const inventorySchema = z.object({
   schema_version: z.literal(1),
-  files: z.array(z.object({ path: z.string().max(240), bytes: z.number().int().positive(), sha256: sha })).max(128),
+  files: z
+    .array(
+      inventoryIdentitySchema.extend({
+        path: z.string().max(240),
+        // Public sync rewrites private locators inside two run manifests. The signed root
+        // inventory names that exact exported byte identity; no arbitrary redaction is accepted.
+        exported: inventoryIdentitySchema.optional(),
+      }),
+    )
+    .max(128),
 });
 const manifestSchema = z.object({
   run_id: z.string().regex(/^[a-f0-9]{32}$/),
@@ -84,7 +97,9 @@ export function createCortexReader(options: MicroduckLocalEvidenceOptions) {
     const ref = files.find((entry) => entry.path === path);
     if (!ref) throw new ArchiveIntegrityError('Cortex file not published');
     const bytes = await boundedRead(path);
-    if (bytes.byteLength !== ref.bytes || digestBytes(bytes) !== ref.sha256)
+    const digest = digestBytes(bytes);
+    const identities = [ref, ...(ref.exported ? [ref.exported] : [])];
+    if (!identities.some((identity) => bytes.byteLength === identity.bytes && digest === identity.sha256))
       throw new ArchiveIntegrityError('Cortex file revision drift');
     return { bytes, ref };
   };

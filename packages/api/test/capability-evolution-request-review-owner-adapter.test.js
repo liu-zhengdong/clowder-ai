@@ -760,7 +760,10 @@ describe('F100 request-review owner adapter', () => {
       assert.equal(selected.details.length, 1);
       assert.equal(selected.details[0].records[0].result.status, 'unknown');
       assert.match(selected.details[0].records[0].result.label, /不是版本效用判定/);
-      assert.match(selected.details[0].records[0].sources[0].href, /github\.com\/zts212653\/cat-cafe\/blob/);
+      assert.equal(
+        selected.details[0].records[0].sources[0].href,
+        `https://github.com/zts212653/clowder-ai/blob/${'1'.repeat(40)}/docs/discussions/2026-09-19-continuous-team-collaboration/README.md#case-f`,
+      );
     });
 
     it('fails closed when the reviewed generated index is malformed', async () => {

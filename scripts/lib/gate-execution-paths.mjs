@@ -46,6 +46,7 @@ export const GATE_EXECUTION_PATHS = Object.freeze([
   'scripts/lib/gate-resource-bridge.mjs',
   'scripts/lib/gate-resource-bridge-store.mjs',
   'scripts/lib/gate-resource-receipts.mjs',
+  'scripts/lib/gate-resource-retirement-receipt.mjs',
   'scripts/lib/gate-resource-transaction.mjs',
   'scripts/lib/gate-resource-db.mjs',
   'scripts/lib/gate-resource-pressure.mjs',

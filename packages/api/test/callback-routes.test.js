@@ -6750,7 +6750,7 @@ describe('Callback Routes', () => {
       url: '/api/callbacks/register-pr-tracking',
       headers: { 'x-invocation-id': invocationId, 'x-callback-token': callbackToken },
       payload: prWaitPayload({
-        repoFullName: 'Zts212653/Cat-Cafe',
+        repoFullName: 'FixtureOwner/FixtureRepo',
         prNumber: 2856,
         when: [{ kind: 'pr_review_result_available', triggerCommentId: 4936000000 }],
       }),
@@ -6764,7 +6764,7 @@ describe('Callback Routes', () => {
     );
     assert.deepEqual(verificationCalls, [
       {
-        repoFullName: 'Zts212653/Cat-Cafe',
+        repoFullName: 'FixtureOwner/FixtureRepo',
         prNumber: 2856,
         triggerCommentId: 4936000000,
       },
@@ -6773,7 +6773,7 @@ describe('Callback Routes', () => {
     assert.deepEqual(body.await, {
       v: 1,
       generation: 1,
-      subjectRef: 'pr:zts212653/clowder-ai#2856',
+      subjectRef: 'pr:fixtureowner/fixturerepo#2856',
       ownerFence: { kind: 'containing_task', generation: 1 },
       baseline: {
         capturedAt: 100,

@@ -1535,7 +1535,7 @@ export class RedisMessageStore {
       return { outcome: 'enqueued', message: result.message, entries, deduped: false };
     }
     assertQueueMessageReplay(result.message, input);
-    const identities = [...buildAdmission(result.message.id)];
+    const identities = [...buildAdmission(result.message.id, undefined, result.message)];
     const persisted = await Promise.all(identities.map((entry) => ledgerStore.get(entry.threadId, entry.id)));
     // A receiver may retire pending work while this replay is resolving.
     // The committed source remains the acknowledgement; never recreate its row.
@@ -1546,6 +1546,7 @@ export class RedisMessageStore {
       ...buildAdmission(
         result.message.id,
         persisted.filter((entry): entry is QueueLedgerEntry => entry !== null),
+        result.message,
       ),
     ];
     if (

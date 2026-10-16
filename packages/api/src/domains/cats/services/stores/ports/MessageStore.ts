@@ -295,6 +295,8 @@ export interface StoredMessage {
     };
     /** Immutable Live ingress receipt, not executable media or an ownership record. */
     liveAdmission?: { sessionId: string; targetId: string };
+    /** HTTP conversation request provenance; prose expansion is derived, explicit selection is identity. */
+    routingTargetSource?: 'prose' | 'explicit';
     /** F309: a confirmed human request; technical coordinates resolve through the request ref. */
     contentModificationRequestV1?: import('@cat-cafe/shared').ContentModificationSourceMessageV1;
     /** F309: immutable Host projection of one candidate or disposition event. */
@@ -759,6 +761,7 @@ export function canonicalizeAppendMessageInput(input: AppendMessageInput): Canon
 export type QueueLedgerAdmissionFactory = (
   messageId: string,
   replayEntries?: readonly QueueLedgerEntry[],
+  replaySource?: StoredMessage,
 ) => readonly QueueLedgerEntry[];
 
 export type QueueLedgerMessageAdmissionResult =
@@ -830,8 +833,29 @@ export function prepareLifecycleResponseTerminalWithLedgerTargets(
     : { kind: 'conflict', reason: 'different_terminal', message: structuredClone(current) };
 }
 
+export function reusesProseRouting(existing: StoredMessage, incoming: AppendMessageInput): boolean {
+  return (
+    existing.extra?.routingTargetSource === 'prose' &&
+    incoming.extra?.routingTargetSource === 'prose' &&
+    existing.from?.kind === 'user' &&
+    incoming.from.kind === 'user' &&
+    !existing.visibility &&
+    !incoming.visibility &&
+    !existing.extra.liveAdmission &&
+    !incoming.extra.liveAdmission &&
+    !existing.extra.messageBundle &&
+    !incoming.extra.messageBundle
+  );
+}
+
 export function assertQueueMessageReplay(existing: StoredMessage, incoming: AppendMessageInput): void {
   const canonical = canonicalizeAppendMessageInput(incoming);
+  if (
+    existing.extra?.routingTargetSource &&
+    existing.extra.routingTargetSource !== canonical.extra?.routingTargetSource
+  ) {
+    throw new Error(`Queue admission identity conflict for replayed message ${existing.id}`);
+  }
   for (const key of [
     'from',
     'content',
@@ -842,6 +866,7 @@ export function assertQueueMessageReplay(existing: StoredMessage, incoming: Appe
     'replyTo',
     'source',
   ] as const) {
+    if (key === 'mentions' && reusesProseRouting(existing, canonical)) continue;
     if (!isDeepStrictEqual(existing[key], canonical[key])) {
       throw new Error(`Queue admission identity conflict for replayed message ${existing.id}`);
     }
@@ -2627,7 +2652,7 @@ export class MessageStore {
       : null;
     if (existing) {
       assertQueueMessageReplay(existing, msg);
-      const identities = [...buildAdmission(existing.id)];
+      const identities = [...buildAdmission(existing.id, undefined, existing)];
       const persisted = identities.map((entry) => ledgerStore.getNow(entry.threadId, entry.id));
       // A receiver may retire pending work while this replay is resolving.
       // The committed source remains the acknowledgement; never recreate its row.
@@ -2638,6 +2663,7 @@ export class MessageStore {
         ...buildAdmission(
           existing.id,
           persisted.filter((entry): entry is QueueLedgerEntry => entry !== null),
+          existing,
         ),
       ];
       if (

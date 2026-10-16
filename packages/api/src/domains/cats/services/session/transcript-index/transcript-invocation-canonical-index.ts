@@ -35,9 +35,10 @@ export function updateCanonicalInvocationIndex(
   const insertBuffer = db.prepare(`INSERT INTO buffer
     (source, seq, event_no, invocation_id, hash, byte_offset, byte_length, projection, files_touched)
     VALUES (2, ?, ?, ?, ?, 0, 0, ?, ?)`);
+  let bufferedCount = 0;
   for (let index = 0; index < input.buffered.length; index += 1) {
     const event = input.buffered[index];
-    if (event)
+    if (event) {
       insertBuffer.run(
         index,
         event.projection.eventNo,
@@ -46,11 +47,28 @@ export function updateCanonicalInvocationIndex(
         JSON.stringify(event.projection),
         JSON.stringify(event.filesTouched),
       );
+      bufferedCount += 1;
+    }
+  }
+  // Repeated identities can make a sparse plan reread an entire live run.
+  // Count at most this many matches before choosing the original counted plan;
+  // the probe can still scan nonmatching rows within a shared hash bucket.
+  let rankOnlyMatchingPrimary = true;
+  if (input.includeLive && bufferedCount > 0) {
+    const sparseMatchLimit = bufferedCount * 2;
+    const liveMatches = db
+      .prepare(`SELECT COUNT(*) AS count FROM (
+        SELECT 1 FROM source_events WHERE source = 1
+          AND (hash, event_no) IN (SELECT hash, event_no FROM buffer)
+        LIMIT ?)`)
+      .get(sparseMatchLimit + 1) as { count: number };
+    rankOnlyMatchingPrimary = liveMatches.count <= sparseMatchLimit;
   }
   db.exec(`CREATE TEMP TABLE active AS ${orderedTranscriptMergeSql(
     `SELECT *, seq AS order_no FROM source_events WHERE source = 1 AND ${input.includeLive ? 1 : 0}`,
     'SELECT *, seq AS order_no FROM buffer',
     true,
+    rankOnlyMatchingPrimary,
   )};
     CREATE INDEX active_hash ON active(hash);
     DELETE FROM canonical;

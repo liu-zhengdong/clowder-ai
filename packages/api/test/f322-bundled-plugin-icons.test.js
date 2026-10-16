@@ -13,6 +13,7 @@ import { HostInventoryControlPlane } from '../dist/domains/plugin/host-inventory
 import { MemoryPluginInventoryStore } from '../dist/domains/plugin/host-inventory/stores.js';
 import { LEGACY_BUNDLED_MANIFESTS } from '../dist/domains/plugin/legacy-bundled-manifests.js';
 import { MachineOfficialPluginCatalog } from '../dist/domains/plugin/manager/machine-catalog-provider.js';
+import { projectPluginManagerCatalogCandidate } from '../dist/domains/plugin/manager/plugin-manager-projection.js';
 import { PluginManagerPackageAssetService } from '../dist/domains/plugin/manager/plugin-package-assets.js';
 import {
   bundledManifestDigest,
@@ -21,7 +22,6 @@ import {
   OFFICIAL_PLUGIN_CATALOG,
 } from '../dist/domains/plugin/official-catalog.js';
 import { OfficialPluginPackageInstaller } from '../dist/domains/plugin/official-package-installer.js';
-import { projectPluginManagerCatalogCandidate } from '../dist/domains/plugin/plugin-manager-projection.js';
 import { OfficialPluginManagerCatalogAdapter } from '../dist/domains/plugin/runtime-composition.js';
 
 function offlineHostCatalog() {

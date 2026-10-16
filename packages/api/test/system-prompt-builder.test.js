@@ -5,7 +5,7 @@
 
 import './helpers/setup-cat-registry.js';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, mock, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -1958,8 +1958,16 @@ describe('SystemPromptBuilder', () => {
     const { buildStaticIdentity } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const codexId = buildStaticIdentity('codex');
     assert.ok(codexId.includes('跨猫路由只在需要对方行动或状态迁移时发送'));
-    assert.ok(codexId.includes('面向co-creator的进度不受此限制'));
-    assert.ok(codexId.includes('过程中更新关键发现、阻碍与下一步'));
+    const sourceRules = readFileSync(
+      resolve(dirname(CAT_TEMPLATE_PATH), 'cat-cafe-skills/refs/shared-rules.md'),
+      'utf8',
+    );
+    const progressBoundary = sourceRules.match(/人或队友发起任务，进度都对人可见/)?.[0];
+    assert.ok(progressBoundary, 'the source must declare the human progress boundary');
+    assert.ok(codexId.includes(progressBoundary));
+    assert.ok(codexId.includes('先用本轮正文说明要做什么，再调用工具'));
+    assert.ok(codexId.includes('工作中更新关键发现、阻碍与下一步'));
+    assert.ok(codexId.includes('进度说明无需 @ 或唤醒队友'));
     assert.ok(!codexId.includes('只发状态迁移消息'));
     assert.ok(codexId.includes('serial/handoff 场景且需要对方行动 → @ 对应猫'));
   });

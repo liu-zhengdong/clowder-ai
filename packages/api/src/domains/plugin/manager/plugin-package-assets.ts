@@ -11,7 +11,7 @@ import type { VerifiedPluginPackage, VerifiedPluginPackageLocator } from '../ext
 import type { PluginInventoryStore } from '../host-inventory/ports.js';
 import type { PluginPackageRecord } from '../host-inventory/types.js';
 import { type OfficialPluginCatalogEntry, officialPluginPresentationMatches } from '../official-catalog.js';
-import type { OfficialPluginCatalogProvider } from '../official-catalog-provider.js';
+import type { OfficialPluginCatalogProvider } from './official-catalog-provider.js';
 
 const MAX_PLUGIN_ICON_BYTES = 1024 * 1024;
 const MAX_PLUGIN_README_BYTES = 256 * 1024;
