@@ -151,7 +151,23 @@ function geminiEvents(sessionId, text) {
 
 function createNativeFixtureService(spawnFn) {
   const workspace = join(testGlobalConfigRoot, 'native-workspace');
-  mkdirSync(workspace, { recursive: true });
+  mkdirSync(join(workspace, '.cat-cafe'), { recursive: true });
+  // This test requires collab; an ambient skills-only config correctly enables no MCPs.
+  writeFileSync(
+    join(workspace, '.cat-cafe/capabilities.json'),
+    JSON.stringify({
+      version: 2,
+      capabilities: [
+        {
+          id: 'cat-cafe-collab',
+          type: 'mcp',
+          source: 'cat-cafe',
+          enabled: true,
+          mcpServer: { command: 'node', args: [] },
+        },
+      ],
+    }),
+  );
   const service = new AgyNativeAgentService({
     catId: 'gemini',
     l0CompilerFn: fakeL0Compiler,
@@ -176,7 +192,8 @@ function createNativeFixtureService(spawnFn) {
         const geminiDir = geminiDirArg.slice('--gemini_dir='.length);
         const config = JSON.parse(readFileSync(join(geminiDir, 'config/mcp_config.json'), 'utf8'));
         const credentialPath = config.mcpServers?.['cat-cafe-collab']?.env?.CAT_CAFE_CREDENTIAL_FILE;
-        if (credentialPath) spawnFn._nativeCredential = JSON.parse(readFileSync(credentialPath, 'utf8'));
+        assert.ok(credentialPath, 'Native collab MCP must receive its per-run credential file');
+        spawnFn._nativeCredential = JSON.parse(readFileSync(credentialPath, 'utf8'));
         return spawnCli(launch, { spawnFn });
       },
     });
@@ -407,6 +424,7 @@ describe('AgentRouter + Services wiring', () => {
     assert.ok(spawnOpts.env.CAT_CAFE_INVOCATION_ID);
     assert.equal(spawnOpts.env.CAT_CAFE_CALLBACK_TOKEN, undefined);
     assert.ok(geminiSpawn._nativeCredential?.callbackToken);
+    assert.equal(geminiSpawn._nativeCredential.invocationId, spawnOpts.env.CAT_CAFE_INVOCATION_ID);
   });
 
   // --- InvocationRegistry 接线验证 ---

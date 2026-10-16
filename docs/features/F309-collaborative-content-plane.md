@@ -602,6 +602,62 @@ custodian connection 暂时不可达时，Artifact 仍在目录中且其他成�
 constraint/session 失效，并等待同 owner continuity rebind 或 steward 发起的显式 handoff。handoff CAS 推进
 custody/access epoch，旧 endpoint、旧 domain decision 与旧 owner session 永远不能恢复写权限。
 
+**可验证 per-Artifact custody transfer（2026-10-16 追加裁决）。** 这仍属于 AC-B6 已准入的必要
+handoff 接线，不是新的 Café 迁移产品或 kernel extraction。当前候选实现
+`packages/collective-service/src/artifact-custody.ts#accept` 只核 destination credential、handoffRef 与调用方提交的
+最新 revision/digest/receipt/ownerScopeRef 后就做 custody CAS；空目标 Café 也能照抄这些坐标，因此不能把该
+attestation 称为“可验证完整交接”。只要产品暴露成功的 `accept`，就必须先完成下面的 owner-to-owner transfer；
+若本切片不实现 transfer，则应禁用成功 accept，并继续用 `artifact_custody_handoff_required` 阻止原 custodian
+退出，不能保留一个会制造空 owner 的半成品接口。
+
+唯一 Connector→owner seam 收敛在现有 `CollectiveMarkdownOwner` composition root，新增一个 typed
+`CollectiveArtifactCustodyTransferPort`（可由同一 owner port 组合暴露）；Connector 不分别调用 content-owner
+文件 store、Workspace review SQLite 与 modification SQLite。该 port 在一个 stable Collective scope 上串行化
+`prepareSource/readPage/stageTarget/attestReady/finalize`，内部才协调以下三块现有真相：
+
+- `ProjectContentOwnerService` 的完整 owner manifest、全部 revision blobs、operations 与 settlement receipts；
+- `WorkspaceContentReviewStore` 中该 collaboration scope 的 review aggregate、operation receipts 与 retained
+  snapshots；
+- `ArtifactReviewStore` 中仅属于该 scope 的 Collective request、proposal 与 accepted disposition rows。
+
+这是 typed scoped snapshot，不是 raw DB dump，也不是重放普通 `importContent/settle/annotate` 来“重建”历史；
+后者会改时间、authority context 或 receipt 语义。bundle 绝不包含 F063 私有 text snapshot、worktree/token、
+Task、私人 review 或其他 scope。`reviewId/requestId/proposalRef/dispositionId/operationId/receiptRef` 与全部历史
+Human/Cat actor 保持原值；`publishedByHumanId` 永远不变。唯一允许重绑的是 owner-local tenancy 字段：目标端用
+自己真实 `ownerUserId` 承载，并在 import 时同步改写相应本地索引/intent 字段；不得造 synthetic user，也不得
+据此重算 stable Collective identities。任何 identity 实际依赖旧 local owner、目标已有不等价 row/contentRef，
+或 schema/引用链无法完整验证，都必须在 ready 前拒绝。
+
+Service 持久化的 content-free 状态机为
+`offered → source_prepared → target_ready → committed`，pre-commit 可显式 `cancelled`；至少绑定
+`transferId/handoffRef`、source/target connection、expected custody revision、完整 manifest digest、page count/
+total bytes、source prepared ref、target ready ref、目标 ownerScopeRef 与最新 owner tuple。source owner 先在
+per-scope mutex 下等现有操作退出，持久化 transfer fence 并冻结所有新 effect，再产出 manifest。普通 fresh
+read 可继续到 CAS；任何会写 owner/ledger 的路径都必须被 fence 拒绝——包括当前借 `read` action 进入
+`prepareDelegatedRequest` 的 agent 路径。若存在 active execution、pending acceptance，或 accepted disposition 与
+owner receipt 尚未精确对齐，先按原 operation id 恢复/结算；仍不一致就拒绝 transfer，不导出模棱两可状态。
+
+payload 通过同一 Connector 连接上的专用 custody relay 分页短命传输；单页沿现有 64 KiB owner relay 上限，
+总页数/总字节另设显式 admitted cap。超限、丢页或 digest mismatch 必须整项失败且 source 仍持 custody，不得
+截断历史。Service 可持 manifest/page digests 等 content-free coordinates，但不得落任何 page bytes；source 与
+target owner 各自持 TTL=0 transfer journal 和可恢复 staging。目标 owner 逐项核 schema、完整 revision chain、
+blob digest、receipt/operation fingerprint 与 ledger referential integrity，全部通过后才签
+`target_ready(manifestDigest, ownerScopeRef)`。现有 `accept` 不再信调用方自报 owner tuple/ownerScopeRef，而只能
+消费同一 transfer 的 source-prepared + target-ready receipts。
+
+Service 对上述 exact receipts 做 custody/access epoch CAS 是唯一线性化点。CAS 前目标 staging 不可读写，取消
+后 source 读到 canonical cancelled receipt 才能解冻；同 `transferId` 重试缺页、重启和丢响应。CAS 后目标按
+transfer journal 幂等导入 canonical stores、最后发布 activation sentinel；任何中间崩溃只表现为
+`owner_unavailable`，不得暴露半份 ledger。source 观察到 committed 后永久 retire 该 generation，旧数据可保留
+只读待显式 GC，但旧 endpoint 永不再产生 effect。CAS 响应丢失也不得回滚给 source；双方从 Service 的
+committed truth 收敛，保证不会双写。
+
+最小 contract evidence 必须包含：空目标仅抄坐标无法 accept；真实目标转入全部 versions/receipts、批注、
+proposal 与 disposition identities 后可继续产生唯一下一 revision；source/target/Service 在每个 phase 重启或
+丢页均以同 transferId 恢复；pre-commit cancel 保留原 custodian，post-commit 旧 constraint/session 永久拒绝；
+stale tuple、pending-effect mismatch、目标碰撞与 bundle 超限全部 fail closed；Service 持久态无 content bytes，
+bundle 无 private snapshot/worktree/token。
+
 **完整验收切片。** 导入一份真实 sealed Markdown 为 v1；Human A 与 B 以两个独立认证 session 读取同一
 digest/revision。A 建 exact-quote annotation 与 version-bound proposal，B 在 fresh allow 下接受；系统以
 同一 disposition id 完成两级 CAS，只生成一个 v2 与一份可重放 receipt。duplicate/stale accept 不得二次
@@ -616,7 +672,10 @@ Review Gate 对 Phase B 其余 AC 仍不变。本次 authority scope 仅为
 F309 owner。原 F290 Task038 `private-source-id` rev18 已把批准 source、执行子现场与
 `@codex61-sol` 单 writer 写进 canonical progress；子现场不另造镜像 Task。首个 Service domain checkpoint
 `aebb3dd407e8ac6dc75a3997cdb897e89b171e8b` 只交 Artifact directory/constraint/revoke+restart，尚不代表
-API owner、F309 ledger、surface 或完整旅程交付。当前 open PR census 未发现 content-owner/workspace-review/
+API owner、F309 ledger、surface 或完整旅程交付。后续 committed checkpoint
+`3e979b2feb` 已接通双人读取、选区批注、具名 Cat proposal 与 Human adoption，但当前 branch head
+`c72679d496` 的 custody `accept` 仍缺上述 owner transfer/ready proof，因此不可声称主动退出闭环已交付。当前
+open PR census 未发现 content-owner/workspace-review/
 editor-session/modification 后端路径的在飞 writer；#5628 只改 MessageAnnotation marker 与 browser policy，
 不与本包后端写入面重叠。
 
