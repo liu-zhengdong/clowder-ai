@@ -40,6 +40,7 @@ import {
   type AppendMessageInput,
   assertQueueMessageReplay,
   type IMessageStore,
+  LifecycleResponseInputsChangedError,
   type LifecycleResponseTerminalPatch,
   messageIdempotencyScope,
   reusesProseRouting,
@@ -830,6 +831,8 @@ export class InvocationQueue {
       input.from.kind === 'user' ? MAX_QUEUE_DEPTH : undefined,
     );
     if (result.kind === 'full') return { outcome: 'full' };
+    if (result.kind === 'conflict' && result.reason === 'inputs_changed')
+      throw new LifecycleResponseInputsChangedError();
     if (result.kind !== 'applied' && result.kind !== 'replayed') {
       throw new Error(
         `lifecycle response terminal Queue admission conflict: ${result.kind}:${'reason' in result ? result.reason : 'missing'}`,

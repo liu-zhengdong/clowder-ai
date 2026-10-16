@@ -155,7 +155,11 @@ vi.mock('../ChatInput', () => ({
     }),
 }));
 vi.mock('../ChatContainerHeader', () => ({
-  ChatContainerHeader: (props: { onToggleSidebar: () => void; onToggleStatusPanel: () => void }) =>
+  ChatContainerHeader: (props: {
+    onToggleSidebar: () => void;
+    onToggleStatusPanel: () => void;
+    onOpenMessageSearch?: () => void;
+  }) =>
     React.createElement(
       'div',
       { 'data-testid': 'header' },
@@ -169,6 +173,8 @@ vi.mock('../ChatContainerHeader', () => ({
         'data-testid': 'workspace-toggle',
         onClick: props.onToggleStatusPanel,
       }),
+      props.onOpenMessageSearch &&
+        React.createElement('button', { type: 'button', onClick: props.onOpenMessageSearch }, '查找消息'),
     ),
 }));
 vi.mock('../ThreadSidebar', () => ({
@@ -393,6 +399,55 @@ describe('ChatContainer mobile interactions', () => {
       root.render(renderChatContainer('test-thread'));
     });
     expect(container.querySelector('[data-testid="sidebar"]')).toBeNull();
+  });
+
+  it.each([
+    false,
+    true,
+  ])('keeps the search trip in Chat and withdraws only the covered mobile controls (desktop=%s)', (desktop) => {
+    writeShellPresentation('v2');
+    mockMatchMedia(desktop);
+    const id = 'a7eafdfa-513c-4129-8acd-9f4cc8df1aa1';
+    const key = `cat-cafe:message-reading-session:${id}`;
+    const saved = JSON.stringify({
+      v: 1,
+      session: {
+        id,
+        originPersisted: true,
+        trip: {
+          searchId: 'original-search',
+          origin: { threadId: 'test-thread', readingRef: 'original-reading-ref' },
+          targets: [{ threadId: 'test-thread', messageId: 'exact-message' }],
+          generation: 1,
+          settledIndex: 0,
+          pending: null,
+          status: 'ready',
+        },
+      },
+    });
+    localStorage.setItem('cat-cafe:message-reading-active:v1', id);
+    localStorage.setItem(key, saved);
+    const controls = () => document.querySelector('nav[aria-label="浏览本次检索结果"]');
+    try {
+      act(() => root.render(renderChatContainer('test-thread')));
+      const chat = container.querySelector('[data-testid="thread-chat-host"]');
+      const input = container.querySelector('[data-testid="chat-input"]');
+      expect(controls()).not.toBeNull();
+      expect(chat?.contains(controls())).toBe(true);
+      mockRightPanelMode = 'workspace';
+      mockRightPanelOpen = true;
+      act(() => root.render(renderChatContainer('test-thread')));
+      expect(controls() !== null).toBe(desktop);
+      expect(localStorage.getItem(key)).toBe(saved);
+      mockRightPanelOpen = false;
+      act(() => root.render(renderChatContainer('test-thread')));
+      expect(controls()).not.toBeNull();
+      expect(container.querySelector('[data-testid="chat-input"]')).toBe(input);
+      expect(localStorage.getItem(key)).toBe(saved);
+    } finally {
+      localStorage.removeItem(key);
+      localStorage.removeItem('cat-cafe:message-reading-active:v1');
+    }
   });
 
   it('keeps quote forwarding locked for a stale document and enables it after a refreshed compatible baseline', () => {

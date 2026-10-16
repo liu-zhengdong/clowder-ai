@@ -1438,7 +1438,6 @@ export class AgentRouter {
         ...(this.dismissTracker ? { dismissTracker: this.dismissTracker } : {}),
         ...(this.conciergeConfigStore ? { conciergeConfigStore: this.conciergeConfigStore } : {}),
         ...(this.conciergeTriagePlanStore ? { conciergeTriagePlanStore: this.conciergeTriagePlanStore } : {}),
-        ...(this.dotReplyTarget ? { dotReplyTarget: this.dotReplyTarget } : {}),
         ...(this.cloudInvokeBridge ? { cloudInvokeBridge: this.cloudInvokeBridge } : {}),
         ...(this.cloudReturnGrantStore ? { cloudReturnGrantStore: this.cloudReturnGrantStore } : {}),
         ...(this.freshnessStateStore ? { freshnessStateStore: this.freshnessStateStore } : {}),
@@ -1455,6 +1454,7 @@ export class AgentRouter {
         ...(this.profileRepository ? { profileRepository: this.profileRepository } : {}),
       },
       messageStore: this.messageStore,
+      ...(this.dotReplyTarget ? { dotReplyTarget: this.dotReplyTarget } : {}),
       deliveryCursorStore: this.deliveryCursorStore,
       ...(this.taskStore ? { taskStore: this.taskStore } : {}),
       ...(this.threadExecutionSituationSource

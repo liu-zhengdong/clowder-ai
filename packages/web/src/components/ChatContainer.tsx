@@ -390,7 +390,12 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     narrowWorkComposerActive,
     closeStatusPanel,
   ]);
-  const messageSearchAvailable = isV2 && viewMode === 'single' && !artifactFullWindowActive && !mainAreaOverlayActive;
+  const messageSearchAvailable =
+    isV2 &&
+    viewMode === 'single' &&
+    !workComposerOnlyActive &&
+    !mainAreaOverlayActive &&
+    (isDesktop || !statusPanelOpen);
   const messageSearch = useMessageSearchHost({
     threadId,
     pushThreadRoute: navigateToThread,
@@ -991,16 +996,6 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     >
       <div ref={containerRef} className="relative flex h-screen h-dvh">
         <ArtworkLightboxHost />
-        <MessageSearchOverlay
-          threadId={threadId}
-          host={messageSearch}
-          available={messageSearchAvailable}
-          resolveSpeaker={(speaker) => {
-            if (speaker === 'user') return coCreator.name;
-            const cat = cats.find((candidate) => candidate.id === speaker);
-            return cat ? formatCatName(cat) : speaker;
-          }}
-        />
         {connectionStatus.updateRequired && <RuntimeUpdateRequiredDialog onReload={() => window.location.reload()} />}
         {/* Mobile-only sidebar overlay — desktop sidebar is in AppShell */}
         {sidebarOpen && !isDesktop && (
@@ -1018,7 +1013,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
 
         <div
           className={`flex min-w-0 flex-col ${mainAreaOverlayActive ? 'invisible pointer-events-none' : ''} ${
-            workComposerOnlyActive ? 'absolute inset-0 z-50 pointer-events-none' : ''
+            workComposerOnlyActive ? 'absolute inset-0 z-50 pointer-events-none' : 'relative'
           }`}
           aria-hidden={mainAreaOverlayActive || undefined}
           data-testid="thread-chat-host"
@@ -1038,6 +1033,16 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
               : { flex: '1 1 0%' }
           }
         >
+          <MessageSearchOverlay
+            threadId={threadId}
+            host={messageSearch}
+            available={messageSearchAvailable}
+            resolveSpeaker={(speaker) => {
+              if (speaker === 'user') return coCreator.name;
+              const cat = cats.find((candidate) => candidate.id === speaker);
+              return cat ? formatCatName(cat) : speaker;
+            }}
+          />
           {!workComposerOnlyActive && !showNewConversationLanding && (
             <ChatContainerHeader
               sidebarOpen={sidebarOpen}

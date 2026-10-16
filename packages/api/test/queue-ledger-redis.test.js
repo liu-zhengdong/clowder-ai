@@ -656,6 +656,19 @@ describe('RFC #1356 Redis Queue ledger', { skip: redisIsolationSkipReason(REDIS_
       origin: 'stream',
     };
 
+    await assert.rejects(
+      queue.terminalizeResponseAndEnqueueDurable(
+        messageStore,
+        response.id,
+        { ...patch, expectedInputMessageIds: [] },
+        input,
+      ),
+      /inputs_changed/,
+    );
+    assert.equal((await store.list('thread-redis')).length, 0, 'stale snapshot must not enqueue');
+    assert.equal((await messageStore.getById(response.id)).lifecycle.status, 'processing');
+    patch.expectedInputMessageIds = ['message-input'];
+
     const applied = await queue.terminalizeResponseAndEnqueueDurable(messageStore, response.id, patch, input);
     assert.equal(applied.outcome, 'enqueued');
     assert.equal(applied.message.lifecycle.status, 'completed');

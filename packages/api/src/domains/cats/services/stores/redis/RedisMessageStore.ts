@@ -120,6 +120,7 @@ import {
   isDelivered,
   isValidCustodyOfferTransition,
   lifecycleInputIdentityForStoredMessage,
+  lifecycleResponseInputsChanged,
   matchesLifecyclePreAdmissionFailure,
   mergeMessageExtra,
   preAdmissionFailureIdempotencyKey,
@@ -1036,6 +1037,8 @@ function prepareRedisLifecycleResponseTerminal(
   if (current.lifecycle.invocationId !== patch.invocationId) {
     return { kind: 'result', result: { kind: 'conflict', reason: 'invocation_mismatch', message: current } };
   }
+  if (lifecycleResponseInputsChanged(current, patch))
+    return { kind: 'result', result: { kind: 'conflict', reason: 'inputs_changed', message: current } };
   if (
     !Number.isFinite(patch.completedAt) ||
     patch.completedAt < current.lifecycle.startedAt ||

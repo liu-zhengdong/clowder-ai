@@ -79,7 +79,7 @@ export function ChatContainerHeader({
           </div>
           <div className="shell-chat-header-actions flex flex-none flex-wrap items-center justify-end gap-1 sm:gap-1.5">
             {onOpenMessageSearch && <MessageSearchButton onOpen={onOpenMessageSearch} open={messageSearchOpen} />}
-            <ThreadWorksButton />
+            <ThreadWorksButton threadId={threadId} />
             <ThreadTasksButton />
             <PanelToggle
               onToggleStatusPanel={onToggleStatusPanel}

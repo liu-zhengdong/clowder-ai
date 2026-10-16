@@ -57,8 +57,8 @@ function useThreadChatHistoryPresentation(presentation: ThreadChatPresentation) 
   return { historyHostRef, composerOnly };
 }
 
-function historyHostClassName(composerOnly: boolean): string {
-  return `relative min-h-0 flex-1 overflow-hidden ${composerOnly ? 'invisible pointer-events-none' : ''}`;
+function historyHostClassName(composerOnly: boolean, v2: boolean): string {
+  return `relative min-h-0 flex-1 overflow-hidden ${v2 ? 'flex flex-col' : ''} ${composerOnly ? 'invisible pointer-events-none' : ''}`;
 }
 
 function footerClassName(compact: boolean, composerOnly: boolean): string | undefined {
@@ -205,7 +205,7 @@ export function ThreadChatSurface({
       {!composerOnly && companion.header}
       <div
         ref={historyHostRef}
-        className={historyHostClassName(composerOnly)}
+        className={historyHostClassName(composerOnly, composerPresentation === 'v2')}
         aria-hidden={composerOnly || undefined}
         data-thread-chat-history
       >
@@ -216,8 +216,8 @@ export function ThreadChatSurface({
           className={
             composerPresentation === 'v2'
               ? compact
-                ? 'h-full overflow-y-auto [overflow-anchor:none] pl-3 pr-[42px] py-3'
-                : 'h-full overflow-y-auto [overflow-anchor:none] p-4 pr-10'
+                ? 'min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] pl-3 pr-[42px] py-3'
+                : 'min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] p-4 pr-10'
               : compact
                 ? 'h-full overflow-y-auto [overflow-anchor:none] px-3 py-3'
                 : 'h-full overflow-y-auto [overflow-anchor:none] p-4'

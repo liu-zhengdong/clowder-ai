@@ -350,7 +350,12 @@ export interface RouteOptions {
     | ((input: {
         responseMessageId: string;
         invocationId: string;
-        terminal: { status: 'completed'; completedAt: number; reason?: string };
+        terminal: {
+          status: 'completed';
+          completedAt: number;
+          reason?: string;
+          expectedInputMessageIds?: readonly string[];
+        };
         message: AppendMessageInput;
         targetCats: CatId[];
         userId: string;

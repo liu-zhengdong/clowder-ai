@@ -104,7 +104,7 @@ caller 的运行时观察以 exact source×target 为单位，记录已提交的
 
 入口只提交 envelope；普通消息的目标解析、默认策略解析、持久化和 drain 通知属于共同准入。新增一种普通来源不需要新增调度分支。
 
-普通正文只把匹配现有成员的 mention 当作目标；未匹配的 `@` 原样留在正文，不新增 warning、错误卡或等待状态。没有有效可用目标时使用既有 resolver：最近 completed 回复者，再到配置 fallback；普通公开目标不可用时允许 fallback。显式协议 ID 的身份校验不适用正文忽略规则。
+普通正文只把匹配现有成员的 mention 当作目标；未匹配的 `@` 原样留在正文，不新增 warning、错误卡或等待状态。没有有效可用目标时，预览与共同接纳使用同一既有 resolver：普通会话先取最近 5 条用户消息、1 小时窗口内最近一次点名中的第一个可路由成员，再取最近健康回复者、首选/可用参与者与默认成员；保留 concierge、显式 #ideate 和 routing policy 的既有覆盖规则。旧格式历史不因缺少新 response lifecycle 而被一律排除，忙碌也不等于不可路由。该优先级承接 [F194 AC-Z16/AC-Z18](F194-invocation-liveness-canonical-read-model.md) 并与 [#1610 的路由约定](https://github.com/zts212653/clowder-ai/issues/1610#issuecomment-6211320060) 一致。普通公开目标不可用时允许 fallback；入队后的已绑定目标不扩大，晚失效沿原目标失败或恢复。显式协议 ID 的身份校验不适用正文忽略规则。
 
 A2A 的行首路由或指定 ID 是 exact 目标：目标不存在／不可执行走已有 delivery failure 回报，不改投默认成员。whisper 与其他授权绑定输入也保持精确收件人；公开 fallback 不扩大其可见性。排队后和追加前都复验 source/receiver 的权限。
 

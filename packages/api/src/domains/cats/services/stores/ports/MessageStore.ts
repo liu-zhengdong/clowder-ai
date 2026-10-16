@@ -784,6 +784,14 @@ export type QueueLedgerLifecycleAdmissionResult =
   | { kind: 'full' }
   | Exclude<CommitLifecycleResponseTerminalResult, { kind: 'applied' | 'replayed' }>;
 
+export function lifecycleResponseInputsChanged(current: StoredMessage, patch: LifecycleResponseTerminalPatch): boolean {
+  return (
+    patch.expectedInputMessageIds !== undefined &&
+    (current.lifecycle?.kind !== 'response' ||
+      !isDeepStrictEqual(current.lifecycle.inputMessageIds, patch.expectedInputMessageIds))
+  );
+}
+
 export function prepareLifecycleResponseTerminalWithLedgerTargets(
   current: StoredMessage,
   patch: LifecycleResponseTerminalPatch,
@@ -802,6 +810,8 @@ export function prepareLifecycleResponseTerminalWithLedgerTargets(
   if (current.lifecycle.invocationId !== patch.invocationId) {
     return { kind: 'conflict', reason: 'invocation_mismatch', message: structuredClone(current) };
   }
+  if (lifecycleResponseInputsChanged(current, patch))
+    return { kind: 'conflict', reason: 'inputs_changed', message: structuredClone(current) };
   if (
     !Number.isFinite(patch.completedAt) ||
     patch.completedAt < current.lifecycle.startedAt ||
@@ -962,7 +972,16 @@ export function prepareQueueLedgerSourceLifecycle(
   return assigned.lifecycle;
 }
 
+export class LifecycleResponseInputsChangedError extends Error {
+  constructor() {
+    super('lifecycle response terminal conflict: inputs_changed');
+    this.name = 'LifecycleResponseInputsChangedError';
+  }
+}
+
 export interface LifecycleResponseTerminalPatch {
+  /** Commit-only compare-and-set fence; never persisted in History. */
+  expectedInputMessageIds?: readonly string[];
   invocationId: string;
   status: 'completed' | 'failed' | 'canceled' | 'interrupted';
   completedAt: number;
@@ -983,7 +1002,7 @@ export type CommitLifecycleResponseTerminalResult =
   | { kind: 'applied' | 'replayed'; message: StoredMessage }
   | {
       kind: 'conflict';
-      reason: 'not_response' | 'invocation_mismatch' | 'invalid_terminal' | 'different_terminal';
+      reason: 'not_response' | 'invocation_mismatch' | 'invalid_terminal' | 'different_terminal' | 'inputs_changed';
       message: StoredMessage;
     }
   | { kind: 'not_found' };
@@ -1541,6 +1560,7 @@ export async function commitLifecycleResponseFromAppendInput(
     status: LifecycleResponseTerminalPatch['status'];
     completedAt: number;
     reason?: string;
+    expectedInputMessageIds?: readonly string[];
   },
   message: AppendMessageInput,
 ): Promise<StoredMessage> {
@@ -1557,6 +1577,7 @@ export async function commitLifecycleResponseFromTerminalPatch(
   terminalPatch: LifecycleResponseTerminalPatch,
 ): Promise<StoredMessage> {
   const result = await store.commitLifecycleResponseTerminal(responseMessageId, terminalPatch);
+  if (result.kind === 'conflict' && result.reason === 'inputs_changed') throw new LifecycleResponseInputsChangedError();
   if (result.kind !== 'applied' && result.kind !== 'replayed') {
     throw new Error(
       `lifecycle response terminal conflict: ${result.kind}:${'reason' in result ? result.reason : 'missing'}`,
@@ -1610,6 +1631,7 @@ export function lifecycleResponseTerminalPatchFromAppendInput(
     status: LifecycleResponseTerminalPatch['status'];
     completedAt: number;
     reason?: string;
+    expectedInputMessageIds?: readonly string[];
   },
   message: AppendMessageInput,
 ): LifecycleResponseTerminalPatch {
@@ -1627,6 +1649,7 @@ export function lifecycleResponseTerminalPatchFromAppendInput(
   }
   return {
     invocationId,
+    ...(terminal.expectedInputMessageIds ? { expectedInputMessageIds: terminal.expectedInputMessageIds } : {}),
     status: terminal.status,
     completedAt: terminal.completedAt,
     ...(terminal.reason ? { reason: terminal.reason } : {}),
@@ -3729,6 +3752,8 @@ export class MessageStore {
     if (msg.lifecycle.invocationId !== patch.invocationId) {
       return { kind: 'conflict', reason: 'invocation_mismatch', message: structuredClone(msg) };
     }
+    if (lifecycleResponseInputsChanged(msg, patch))
+      return { kind: 'conflict', reason: 'inputs_changed', message: structuredClone(msg) };
     if (
       !Number.isFinite(patch.completedAt) ||
       patch.completedAt < msg.lifecycle.startedAt ||

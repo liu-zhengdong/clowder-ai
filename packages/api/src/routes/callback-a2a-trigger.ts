@@ -236,7 +236,7 @@ export async function commitCompletedResponseAndEnqueueA2ATargets(
   opts: {
     responseMessageId: string;
     invocationId: string;
-    terminal: Pick<LifecycleResponseTerminalPatch, 'status' | 'completedAt' | 'reason'>;
+    terminal: Pick<LifecycleResponseTerminalPatch, 'status' | 'completedAt' | 'reason' | 'expectedInputMessageIds'>;
     message: AppendMessageInput;
     targetCats: CatId[];
     userId: string;
@@ -802,13 +802,16 @@ export async function enqueueA2ATargets(
   );
 
   const intent = inferRoutingContextIntent(opts.content);
-  const routingPreflight = deps.routingDispatchPreflight
-    ? await preflightRoutingDispatch(deps.routingDispatchPreflight, {
-        ownerId: opts.userId,
-        targetCatIds: requestedTargetCats,
-        ...(intent ? { intent } : {}),
-      })
-    : undefined;
+  // An already-admitted failure return schedules its exact predecessor to read
+  // an existing result. It is not a new availability-based recipient decision.
+  const routingPreflight =
+    preAdmittedEntry?.sourceCategory !== 'a2a_failure' && deps.routingDispatchPreflight
+      ? await preflightRoutingDispatch(deps.routingDispatchPreflight, {
+          ownerId: opts.userId,
+          targetCatIds: requestedTargetCats,
+          ...(intent ? { intent } : {}),
+        })
+      : undefined;
   return {
     enqueued,
     ...(coalesced.length > 0 ? { coalesced } : {}),

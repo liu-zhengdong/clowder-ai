@@ -12,6 +12,7 @@ import { runNativeSidebarReadingJourney, runSidebarReadingJourney } from './f322
 import { runSidebarV2Journey } from './f322-sidebar-v2.journey.mjs';
 import { registerMentionCutoverJourney } from './f322-user-mention-cutover.journey.mjs';
 import { registerUserMentionJourney } from './f322-user-mention-todo.journey.mjs';
+import { visibleAttentionFixture } from './f322-visible-attention.fixture.mjs';
 import { registerWorkspaceMenuTests } from './f322-workspace-menu.journey.mjs';
 
 // Real rail, mailbox, tooltip, settings shell, preference/pin stores and navigation hooks.
@@ -89,8 +90,8 @@ const unifiedSource = (extra = {}) => ({
   ...extra,
 });
 // F310's unified owner read (version 1). The default is the proven complete empty set.
-const unifiedRead = (overrides = {}) => {
-  const read = {
+const unifiedRead = (overrides = {}) =>
+  visibleAttentionFixture({
     version: 1,
     status: 'available',
     scope: 'owner_all_projects',
@@ -110,30 +111,7 @@ const unifiedRead = (overrides = {}) => {
     ).length,
     page: { offset: 0, limit: 20, scope: 'known_rows', hasMore: false },
     ...overrides,
-  };
-  // These synthetic owner reads represent a fresh personal view with no ignored items.
-  // Real-route journeys below return their own canonical preference projection.
-  read.sources.personalPreferences = unifiedSource({ coverage: 'owner_personal_ignored_items' });
-  read.items = read.items.map((item) => ({
-    ...item,
-    preferenceCoordinate: { kind: 'mailbox', decisionRef: item.decisionRef, version: `fixture:${item.decisionRef}` },
-  }));
-  read.personalView = { mode: 'visible', preferenceRevision: 0 };
-  if (read.totalCount !== undefined && read.attentionCount !== undefined) {
-    Object.assign(read.personalView, {
-      originalTotalCount: read.totalCount,
-      visibleTotalCount: read.totalCount,
-      ignoredTotalCount: 0,
-      originalAttentionCount: read.attentionCount,
-      visibleAttentionCount: read.attentionCount,
-      ignoredAttentionCount: 0,
-    });
-  } else {
-    delete read.totalCount;
-    delete read.attentionCount;
-  }
-  return read;
-};
+  });
 const approvalRow = (id, summary) => ({
   decisionRef: `approval:F128:${id}`,
   kind: 'approval',
@@ -280,6 +258,16 @@ async function openProof({
         return handler.fulfill({
           contentType: 'application/json',
           body: JSON.stringify({ ownerUserId: 'owner-1', receipt: null }),
+        });
+      }
+      if (
+        request.method() === 'GET' &&
+        ['/api/threads/thread-return/artifacts', '/api/threads/thread-other/artifacts'].includes(url.pathname) &&
+        url.search === '?view=works'
+      ) {
+        return handler.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({ view: 'works', artifacts: [], total: 0, complete: true, workLineage: 'resolved' }),
         });
       }
       const bodies = {
@@ -1041,7 +1029,7 @@ test('the v2 conversation header is the real one: sidebar restore, 作品, 任�
     assert.equal(await page.getByRole('button', { name: '展开侧栏', exact: true }).count(), 0);
 
     const works = page.getByTestId('header-works');
-    assert.equal(await works.getAttribute('aria-label'), '作品，这条对话的作品');
+    assert.equal(await works.getAttribute('aria-label'), '作品 0，这条对话的作品');
     await works.click();
     assert.equal(await page.getByTestId('workspace-mode').textContent(), 'artifacts');
     const worksToggle = page.getByTestId('workspace-panel-toggle');
@@ -1103,7 +1091,7 @@ test('the complete header stays in its real shell pane through keyboard navigati
       const proof = await openProof({
         viewport: { width, height: 900 },
         language,
-        ready: language === 'en' ? 'Works, Works in this conversation' : '作品，这条对话的作品',
+        ready: language === 'en' ? 'Works 0, Works in this conversation' : '作品 0，这条对话的作品',
       });
       const { page } = proof;
       try {
@@ -1175,7 +1163,7 @@ test('the complete header stays in its real shell pane through keyboard navigati
 test('the v2 header keeps the conversation view honest and inside a narrow viewport', async () => {
   const proof = await openProof({
     viewport: { width: 390, height: 860 },
-    ready: '作品，这条对话的作品',
+    ready: '作品 0，这条对话的作品',
     api: ({ request, url }) => {
       if (url.pathname !== '/api/config/conversation-view') return null;
       if (request.method() === 'PUT') {
@@ -1240,7 +1228,7 @@ test('the conversation view menu stays inside a short viewport and scrolls to it
   const proof = await openProof({
     viewport,
     participantCount: 13,
-    ready: '作品，这条对话的作品',
+    ready: '作品 0，这条对话的作品',
     api: ({ request, url }) =>
       url.pathname === '/api/config/conversation-view' && request.method() === 'GET' ? { abort: true } : null,
   });

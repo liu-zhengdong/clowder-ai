@@ -104,6 +104,7 @@ import { resolveDefaultClaudeMcpServerPath } from '../providers/ClaudeAgentServi
 import { AgentServiceUnavailableError } from '../registry/AgentServiceUnavailableError.js';
 import { parseA2AMentions } from '../routing/a2a-mentions.js';
 import { accumulateTextAggregate } from '../text-aggregation.js';
+import { commitCompletedRouteResponse, isCollectiveBoundResponse } from './commit-completed-response.js';
 import { type ContextEvalInput, extractContextEvalSignals } from './context-eval.js';
 import { buildBriefingMessage } from './format-briefing.js';
 import { isDirectOwnerDispositionOrigin } from './human-disposition-invocation-origin.js';
@@ -236,6 +237,13 @@ export async function* routeParallel(
     }
   }
   const ownerAuthProvenance = options.ownerAuthProvenance ?? 'unknown';
+  const triggerMessageId = currentUserMessageId ?? options.a2aTriggerMessageId;
+  const collectiveBoundTurn =
+    Boolean(deps.dotReplyTarget) &&
+    isCollectiveBoundResponse(
+      options.executionScope,
+      triggerMessageId ? await deps.messageStore.getById(triggerMessageId) : null,
+    );
   const thinkingMode = options.thinkingMode ?? 'play';
   const turnExecutionKind = 'ordinary';
   const exactA2ACallerCatId = options.a2aTriggerMessageId ? options.a2aCallerCatId : undefined;
@@ -1698,6 +1706,25 @@ export async function* routeParallel(
         : lifecycleResponse && providerFailureText
           ? providerFailureText
           : undefined;
+      const completedDotReturnCommit =
+        lifecycleResponse?.status === 'completed' && ownInvId && !collectiveBoundTurn && deps.dotReplyTarget
+          ? (message: AppendMessageInput) =>
+              commitCompletedRouteResponse(deps, {
+                responseMessageId: lifecycleResponse.messageId,
+                invocationId: ownInvId,
+                terminal: { status: 'completed', completedAt: lifecycleResponse.completedAt },
+                message,
+                targetCats: [],
+                allowDotReturn: true,
+                triggerMessageId,
+                admitWake: options.commitCompletedA2AWake,
+                userId,
+                ownerAuthProvenance,
+                threadId,
+                callerCatId: msg.catId as CatId,
+                ...(options.parentInvocationId ? { parentInvocationId: options.parentInvocationId } : {}),
+              })
+          : undefined;
       const failedA2AReportCommit =
         lifecycleResponse?.status === 'failed' &&
         options.a2aTriggerMessageId &&
@@ -1973,6 +2000,7 @@ export async function* routeParallel(
               ...(msg.tracing ? { tracing: msg.tracing } : {}),
             },
           };
+          const terminalCommit = completedDotReturnCommit ?? failedA2AReportCommit;
           let storedMsg = null;
           if (deps.freshnessOutputCommitCoordinator && ownInvId) {
             outputCommitDecision = await deps.freshnessOutputCommitCoordinator.commit({
@@ -1984,7 +2012,7 @@ export async function* routeParallel(
               originTriggerMessageId: currentUserMessageId ?? options.a2aTriggerMessageId ?? null,
               message: streamMessageInput,
               ...(lifecycleResponse ? { lifecycleResponse } : {}),
-              ...(failedA2AReportCommit ? { commitLifecycleResponse: failedA2AReportCommit } : {}),
+              ...(terminalCommit ? { commitLifecycleResponse: terminalCommit } : {}),
             });
             if (options.persistenceContext) {
               options.persistenceContext.outputCommitDecisions = {
@@ -1994,8 +2022,8 @@ export async function* routeParallel(
             }
             storedMsg = await deps.messageStore.getById(outputCommitDecision.messageId);
           } else if (lifecycleResponse && ownInvId) {
-            storedMsg = failedA2AReportCommit
-              ? await failedA2AReportCommit(streamMessageInput)
+            storedMsg = terminalCommit
+              ? await terminalCommit(streamMessageInput)
               : await commitLifecycleResponseFromAppendInput(
                   deps.messageStore,
                   lifecycleResponse.messageId,
@@ -2122,6 +2150,8 @@ export async function* routeParallel(
             };
             const answerBearingNoText =
               hasRichBlocks || Boolean(thinking && renderThinkingChunks(thinking).trim().length > 0);
+            const terminalCommit =
+              (answerBearingNoText ? completedDotReturnCommit : undefined) ?? failedA2AReportCommit;
             let storedNoText = null;
             let noTextOutputCommitDecision: OutputCommitDecision | undefined;
             if (answerBearingNoText && deps.freshnessOutputCommitCoordinator && ownInvId) {
@@ -2134,7 +2164,7 @@ export async function* routeParallel(
                 originTriggerMessageId: currentUserMessageId ?? options.a2aTriggerMessageId ?? null,
                 message: noTextMessageInput,
                 ...(lifecycleResponse ? { lifecycleResponse } : {}),
-                ...(failedA2AReportCommit ? { commitLifecycleResponse: failedA2AReportCommit } : {}),
+                ...(terminalCommit ? { commitLifecycleResponse: terminalCommit } : {}),
               });
               noTextOutputCommitDecision = decision;
               if (options.persistenceContext) {
@@ -2145,8 +2175,8 @@ export async function* routeParallel(
               }
               storedNoText = await deps.messageStore.getById(decision.messageId);
             } else if (lifecycleResponse && ownInvId) {
-              storedNoText = failedA2AReportCommit
-                ? await failedA2AReportCommit(noTextMessageInput)
+              storedNoText = terminalCommit
+                ? await terminalCommit(noTextMessageInput)
                 : await commitLifecycleResponseFromAppendInput(
                     deps.messageStore,
                     lifecycleResponse.messageId,

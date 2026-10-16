@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runAnnotationIncomingContinuity } from './annotation-incoming-continuity.journey.mjs';
+import { runChatHistoryControls } from './f322-chat-history-controls.journey.mjs';
 import { createChatProofHarness } from './f322-chat-proof-harness.mjs';
 import { runChatReadingColumnJourney } from './f322-chat-reading-column.mjs';
 import { buildChatProof, origin } from './fixtures/f322-chat-real-page-build.mjs';
@@ -28,6 +29,9 @@ const evidenceDir = process.env.F322_CHAT_EVIDENCE_DIR ?? path.join(os.tmpdir(),
 export async function runChatRealPageJourney(t, browser) {
   mkdirSync(evidenceDir, { recursive: true });
   const built = await buildChatProof();
+  await t.test('latest control stays clear of message records and shares the works total', () =>
+    runChatHistoryControls(browser, built, path.join(evidenceDir, 'history-controls')),
+  );
   await t.test('annotation survives incoming messages while typing', () =>
     runAnnotationIncomingContinuity(browser, built, path.join(evidenceDir, 'annotation-continuity')),
   );

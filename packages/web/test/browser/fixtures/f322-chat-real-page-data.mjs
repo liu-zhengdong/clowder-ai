@@ -122,6 +122,10 @@ export function createChatProofApi(now = Date.now(), crowded = false, surface = 
       });
     }
     if (url.pathname === '/api/cats') return reply({ cats: roster });
+    if (url.pathname === `/api/threads/${CURRENT_THREAD}/artifacts` && method === 'GET') {
+      assert.equal(url.searchParams.get('view'), 'works');
+      return reply({ view: 'works', artifacts: [], total: 0, complete: true, workLineage: 'resolved' });
+    }
     if (url.pathname === '/api/config/cat-order') return reply({ catOrder: roster.map((cat) => cat.id) });
     if (url.pathname === '/api/routing/preview' && method === 'POST') {
       // Recipient preview is a read, despite its POST transport. Only this exact

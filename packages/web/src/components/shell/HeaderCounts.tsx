@@ -1,5 +1,6 @@
 'use client';
 
+import { useThreadArtifacts } from '@/hooks/useThreadArtifacts';
 import { useChatStore } from '@/stores/chatStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { AppTooltip } from '../AppTooltip';
@@ -26,7 +27,7 @@ function HeaderChip({
   testId: string;
 }) {
   const t = useShellCopy(headerCountsCopy);
-  const accessibleName = t.accessibleName(count ? `${label} ${count}` : label, tip);
+  const accessibleName = t.accessibleName(count !== undefined ? `${label} ${count}` : label, tip);
   return (
     <AppTooltip label={tip} detail={tipDetail} side="bottom">
       <button
@@ -39,24 +40,30 @@ function HeaderChip({
       >
         <span style={{ color: 'var(--shell-muted)' }}>{icon}</span>
         <span>{label}</span>
-        {count ? <span className="tabular-nums">{count}</span> : null}
+        {count !== undefined ? <span className="tabular-nums">{count}</span> : null}
       </button>
     </AppTooltip>
   );
 }
 
 /**
- * 作品 (this conversation). Opens the existing 产物 panel at its current-conversation scope.
- * No number on purpose: what counts as a "作品" (a family of versions the user opens, annotates and adopts) is F232/F309's
- * admission rule and is not implemented yet — attachment/artifact row counts must not stand in for it.
+ * Shares Home and All Works' canonical projection. Remounting the reader on a thread change prevents
+ * the previous conversation's total from appearing while the new owner's read starts.
  */
-export function ThreadWorksButton() {
+export function ThreadWorksButton({ threadId }: { threadId: string }) {
+  return <ThreadWorksCount key={threadId} threadId={threadId} />;
+}
+
+function ThreadWorksCount({ threadId }: { threadId: string | undefined }) {
   const t = useShellCopy(headerCountsCopy);
   const setWorkspaceMode = useChatStore((s) => s.setWorkspaceMode);
+  const { total, complete, loading, error } = useThreadArtifacts(threadId, 'works');
+  const count = complete && !loading && !error && total !== null ? total : undefined;
   return (
     <HeaderChip
       icon={<WorksIcon className="h-4 w-4" />}
       label={t.works}
+      count={count}
       tip={t.worksTip}
       onClick={() => setWorkspaceMode('artifacts')}
       testId="header-works"
@@ -77,7 +84,7 @@ export function ThreadTasksButton() {
     <HeaderChip
       icon={<ShellGlyph name="checkSquare" className="h-4 w-4" />}
       label={t.tasks}
-      count={open}
+      count={open || undefined}
       tip={t.tasksTip}
       tipDetail={total > 0 ? t.taskDetail(open, total) : undefined}
       onClick={() => setWorkspaceMode('tasks')}
