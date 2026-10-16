@@ -15,6 +15,7 @@ import {
   startF309OrdinaryWorkspaceJourney,
   stopF309OrdinaryWorkspaceJourney,
 } from './f309-ordinary-workspace-journey-runtime.mjs';
+import { verifyTextAnnotationWorkBoundary } from './f309-text-annotation-work-boundary.mjs';
 
 async function selectPlaces(page, f, kind) {
   const original = page.locator(`[data-message-id="${f.publication.id}"]`);
@@ -297,6 +298,8 @@ export function registerNativeArtworkLightboxJourneys() {
           await verifyNativeArtworkCatalogues(page, returned, observations.catalogues);
           assert.deepEqual(session.errors, []);
           assert.deepEqual(f.owner.errors, []);
+          if ((kind === 'png' && width === 1440) || (kind === 'webp' && width === 390))
+            observations.textAnnotationBoundary = await verifyTextAnnotationWorkBoundary(page, f, evidence, width);
           observations.returned = true;
           observations.calls = session.calls;
         } catch (error) {
