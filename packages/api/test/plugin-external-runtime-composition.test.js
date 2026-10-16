@@ -281,6 +281,11 @@ test('production composition constructs and recovers K-2D but exposes no startup
   assert.match(source, /historyImport:/);
   assert.match(source, /createPluginManagerRuntimeComposition\(\{/);
   assert.match(source, /new MachineOfficialPluginCatalog\(\{/);
+  assert.match(
+    source,
+    /bundledEntries:\s*OFFICIAL_BUNDLED_CATALOG_ENTRIES/,
+    'production Manager must discover the complete Host-shipped bundle list rather than selecting only dot',
+  );
   assert.match(source, /validateCatalog: validatePluginCatalog/);
   assert.match(source, /loadMachinePluginCatalog\(OFFICIAL_PLUGIN_CATALOG_URL\)/);
   assert.match(source, /replacesRepositoryPluginId:\s*'video-analysis'/);

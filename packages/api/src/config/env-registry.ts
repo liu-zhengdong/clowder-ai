@@ -377,7 +377,7 @@ export const ENV_VARS: EnvDefinition[] = [
   },
   {
     name: 'CAT_CAFE_REPO_FULL_NAME',
-    defaultValue: 'zts212653/cat-cafe',
+    defaultValue: 'zts212653/clowder-ai',
     description: 'F233 Phase C feat trajectory collector 调 gh CLI 用的 owner/repo（GitHub PR 元数据查询）',
     category: 'server',
     sensitive: false,
@@ -385,7 +385,7 @@ export const ENV_VARS: EnvDefinition[] = [
   },
   {
     name: 'CAT_CAFE_VERDICT_REPO_FULL_NAME',
-    defaultValue: 'CAT_CAFE_REPO_FULL_NAME or zts212653/cat-cafe',
+    defaultValue: 'CAT_CAFE_REPO_FULL_NAME or zts212653/clowder-ai',
     description:
       'F248 verdict publisher canonical owner/repo; automatic, pre-push, and managed agent-shell publication fail closed on target mismatch',
     category: 'server',
@@ -911,17 +911,6 @@ export const ENV_VARS: EnvDefinition[] = [
     restartRequired: true,
   },
   {
-    name: 'DRAFT_TTL_SECONDS',
-    defaultValue: '(无过期)',
-    description: '草稿过期时间',
-    category: 'storage',
-    sensitive: false,
-    runtimeEditable: false,
-    label: '草稿保留',
-    settingsGroup: 'lifecycle',
-    restartRequired: true,
-  },
-  {
     name: 'TRANSCRIPT_DATA_DIR',
     defaultValue: '<项目根>/data/transcripts',
     description: '猫猫的对话录制文件存放位置',
@@ -976,7 +965,7 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'CLI_TIMEOUT_MS',
     defaultValue: DEFAULT_CLI_TIMEOUT_LABEL,
-    description: 'CLI 自动终止超时（0 = 关闭，仅人工取消）',
+    description: '成员无输出超时：到时按停止处理，回复记为超时失败（占用 CPU 时最多 2 倍；0 = 关闭，仅人工停止）',
     category: 'cli',
     sensitive: false,
     runtimeEditable: false,
@@ -1529,13 +1518,13 @@ export const ENV_VARS: EnvDefinition[] = [
   },
   {
     name: 'CAT_CAFE_CODEX_CARRIER',
-    defaultValue: 'exec_json',
+    defaultValue: 'cli',
     description:
-      'F254 Codex 双向 carrier（exec_json 默认；app_server 仅用于显式 canary）。支持 per-cat 覆盖：Hub 成员编辑器「接入方式（Carrier）」写入 cli.carrier，优先级高于本 env',
+      '旧版 Codex carrier 兼容选择器；仅在成员配置未声明 canonical carrier/transport/cli.carrier 时读取，新配置应使用成员 carrier 字段',
     category: 'codex',
     sensitive: false,
     runtimeEditable: false,
-    allowedValues: ['exec_json', 'app_server'],
+    allowedValues: ['cli', 'exec_json', 'app_server'],
   },
   {
     name: 'CAT_CAFE_CODEX_OAUTH_TRANSPORT',
@@ -2325,7 +2314,6 @@ export const SYSTEM_VARS: ReadonlySet<string> = new Set([
   'CLI_TIMEOUT_MS',
   'CORS_ALLOW_PRIVATE_NETWORK',
   'DEFAULT_OWNER_USER_ID',
-  'DRAFT_TTL_SECONDS',
   'FRONTEND_PORT',
   'FRONTEND_URL',
   'LOG_LEVEL',

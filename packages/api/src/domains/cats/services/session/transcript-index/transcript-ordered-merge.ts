@@ -1,9 +1,10 @@
-const FIELDS = ['source', 'seq', 'event_no', 'invocation_id', 'hash', 'byte_offset', 'byte_length', 'projection'];
+const FIELDS = ['source', 'seq', 'event_no', 'invocation_id', 'hash', 'byte_offset', 'byte_length'];
 
 /**
  * Merge compact source rows by their shared positions, retaining counted duplicates.
  * Source fragments may be a prefix, suffix, or have a failed disk append in the middle.
  * A newer disk suffix must remain after the frozen buffer, rather than moving ahead of it.
+ * Only pointers cross the window sorts; the caller materializes projections after ordering.
  * Queries are internal literals; all payloads stay in the existing JSONL/buffer sources.
  */
 export function orderedTranscriptMergeSql(
@@ -18,10 +19,12 @@ export function orderedTranscriptMergeSql(
   const supplementalFields = FIELDS.map((field) => `s.${field}`).join(', ');
   return `
     WITH primary_rows AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${identity} ORDER BY order_no) AS occurrence
+      SELECT ${FIELDS.join(', ')}, order_no,
+        ROW_NUMBER() OVER (PARTITION BY ${identity} ORDER BY order_no) AS occurrence
       FROM (${primaryQuery})
     ), supplemental_rows AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY ${identity} ORDER BY order_no) AS occurrence
+      SELECT ${FIELDS.join(', ')}, order_no,
+        ROW_NUMBER() OVER (PARTITION BY ${identity} ORDER BY order_no) AS occurrence
       FROM (${supplementalQuery})
     ), matched AS (
       SELECT s.*, p.order_no AS primary_position

@@ -3,7 +3,9 @@
 import { useChatStore } from '@/stores/chatStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { AppTooltip } from '../AppTooltip';
+import { headerCountsCopy } from './header-counts.shell-copy';
 import { ShellGlyph, WorksIcon } from './ShellIcons';
+import { useShellCopy } from './shell-copy';
 
 function HeaderChip({
   icon,
@@ -23,7 +25,8 @@ function HeaderChip({
   onClick: () => void;
   testId: string;
 }) {
-  const accessibleName = count ? `${label} ${count}，${tip}` : `${label}，${tip}`;
+  const t = useShellCopy(headerCountsCopy);
+  const accessibleName = t.accessibleName(count ? `${label} ${count}` : label, tip);
   return (
     <AppTooltip label={tip} detail={tipDetail} side="bottom">
       <button
@@ -48,12 +51,13 @@ function HeaderChip({
  * admission rule and is not implemented yet — attachment/artifact row counts must not stand in for it.
  */
 export function ThreadWorksButton() {
+  const t = useShellCopy(headerCountsCopy);
   const setWorkspaceMode = useChatStore((s) => s.setWorkspaceMode);
   return (
     <HeaderChip
       icon={<WorksIcon className="h-4 w-4" />}
-      label="作品"
-      tip="这条对话的作品"
+      label={t.works}
+      tip={t.worksTip}
       onClick={() => setWorkspaceMode('artifacts')}
       testId="header-works"
     />
@@ -65,16 +69,17 @@ export function ThreadWorksButton() {
  * loads for the open thread. Zero stays unnumbered because "not loaded yet" and "none" are indistinguishable in that store.
  */
 export function ThreadTasksButton() {
+  const t = useShellCopy(headerCountsCopy);
   const setWorkspaceMode = useChatStore((s) => s.setWorkspaceMode);
   const total = useTaskStore((s) => s.tasks.length);
   const open = useTaskStore((s) => s.tasks.filter((t) => t.status !== 'done').length);
   return (
     <HeaderChip
       icon={<ShellGlyph name="checkSquare" className="h-4 w-4" />}
-      label="任务"
+      label={t.tasks}
       count={open}
-      tip="这条对话的任务"
-      tipDetail={total > 0 ? `${open} 项未完成 · 共 ${total} 项` : undefined}
+      tip={t.tasksTip}
+      tipDetail={total > 0 ? t.taskDetail(open, total) : undefined}
       onClick={() => setWorkspaceMode('tasks')}
       testId="header-tasks"
     />

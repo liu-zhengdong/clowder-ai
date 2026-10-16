@@ -108,7 +108,7 @@ function formatRoutingPreflight(
       : undefined;
   const actionCopy =
     disposition === 'rejected'
-      ? `本次未执行。${retryAt !== undefined ? `自动调用可在 ${new Date(retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 后重新尝试。` : ''}`
+      ? `本次未执行，这条消息会等待你重试。${retryAt !== undefined ? `后续新的自动发送可在 ${new Date(retryAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 后重新检查。` : ''}`
       : target.ownerAttempt === true
         ? '这次仍会按你的选择尝试。'
         : '本次仍按原目标尝试。';
@@ -132,7 +132,7 @@ function formatA2AFollowupAvailable(
 }
 
 function formatWarning(parsed: Record<string, unknown>): VisibleSystemInfoResult | null {
-  if (parsed?.type !== 'warning') return null;
+  if (parsed?.type !== 'warning' || parsed.presentation !== 'user_action_required') return null;
 
   const warningText = typeof parsed.message === 'string' ? parsed.message : '';
   return {
@@ -219,25 +219,9 @@ function formatInvocationPreempted(parsed: Record<string, unknown>): VisibleSyst
   };
 }
 
-function formatSilentCompletion(
-  parsed: Record<string, unknown>,
-  resolveCatName: ResolveCatName,
-  fallbackCatId?: string,
-): VisibleSystemInfoResult | null {
-  if (parsed?.type !== 'silent_completion') return null;
-
-  const detail = typeof parsed.detail === 'string' ? parsed.detail : '';
-  const catId = typeof parsed.catId === 'string' ? parsed.catId : (fallbackCatId ?? 'Cat');
-  return {
-    content: detail || `${resolveCatName(catId)} completed without a text response.`,
-    variant: 'info',
-  };
-}
-
 export function formatVisibleSystemInfo(
   parsed: Record<string, unknown>,
   resolveCatName: ResolveCatName = identityCatName,
-  fallbackCatId?: string,
 ): VisibleSystemInfoResult | null {
   return (
     formatA2AFollowupAvailable(parsed, resolveCatName) ??
@@ -248,8 +232,7 @@ export function formatVisibleSystemInfo(
     (parsed?.type === 'a2a_role_rejected' ? formatRoleRejected(parsed, resolveCatName) : null) ??
     formatRoutingPreflight(parsed, resolveCatName) ??
     formatModeSwitchProposal(parsed, resolveCatName) ??
-    formatInvocationPreempted(parsed) ??
-    formatSilentCompletion(parsed, resolveCatName, fallbackCatId)
+    formatInvocationPreempted(parsed)
   );
 }
 

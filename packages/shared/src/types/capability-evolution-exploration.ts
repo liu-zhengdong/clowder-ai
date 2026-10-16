@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { evolutionAssetReviewBlockerV1Schema } from './capability-evolution-asset-review.js';
+import { evolutionAssetReviewBlockerV1Schema, evolutionOwnerHrefSchema } from './capability-evolution-asset-review.js';
 import {
   evolutionExplorationConditionsSchema,
+  evolutionExplorationMediaSchema,
   evolutionExplorationMetricSchema,
   evolutionExplorationNodeRefSchema,
   evolutionExplorationReadFailureSchema,
@@ -22,10 +23,26 @@ const baseNode = {
   title: bounded(240),
   summary: bounded(4_000),
   sourceRef: ownerTruthRefV1Schema,
-  changes: z.array(z.object({ label: bounded(240), detail: bounded(2_000), sourceRef: exact }).strict()).max(32),
+  changes: z
+    .array(
+      z
+        .object({
+          label: bounded(240),
+          detail: bounded(2_000),
+          sourceRef: exact,
+          ownerHref: evolutionOwnerHrefSchema.optional(),
+        })
+        .strict(),
+    )
+    .max(32),
   parentEdges: z
     .array(z.object({ parentNodeRef: evolutionExplorationNodeRefSchema, sourceRef: ownerTruthRefV1Schema }).strict())
     .max(32),
+  /** A publisher-bound cover frame; fetching bytes still uses exact Program/experiment/record guards. */
+  preview: z
+    .object({ experimentRef: exact, recordRef: exact, media: evolutionExplorationMediaSchema })
+    .strict()
+    .optional(),
 };
 export const evolutionExplorationNodeSchema = z.discriminatedUnion('kind', [
   z
@@ -150,6 +167,16 @@ function validateExperiments(review: Review, ctx: z.RefinementCtx) {
       ctx.addIssue({ code: 'custom', message: 'experiment must belong to a published node' });
     if (new Set(experiment.metrics.map((metric) => metric.key)).size !== experiment.metrics.length)
       ctx.addIssue({ code: 'custom', message: 'metric definitions must be unique' });
+  }
+  for (const node of review.nodes) {
+    if (!node.preview) continue;
+    const experiment = experiments.get(refIdentity(node.preview.experimentRef));
+    if (
+      !experiment ||
+      refIdentity(experiment.nodeRef) !== refIdentity(node.nodeRef) ||
+      node.preview.media.kind !== 'image'
+    )
+      ctx.addIssue({ code: 'custom', message: 'cover must bind an image in this published node experiment' });
   }
   const detailKeys = new Set<string>();
   for (const detail of review.details) {

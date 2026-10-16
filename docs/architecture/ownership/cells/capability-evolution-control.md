@@ -16,6 +16,7 @@ code_anchors:
   - packages/shared/src/types/capability-evolution.ts
   - packages/shared/src/types/capability-evolution-preparation.ts
   - packages/shared/src/types/capability-evolution-metabolism.ts
+  - packages/shared/src/types/capability-evolution-message-source.ts
   - packages/api/src/infrastructure/capability-evolution/program-event-log.ts
   - packages/api/src/infrastructure/capability-evolution/program-event-appender.ts
   - packages/api/src/infrastructure/capability-evolution/program-service.ts
@@ -28,6 +29,7 @@ code_anchors:
   - packages/api/src/infrastructure/capability-evolution/change/program-change-snapshot.ts
   - packages/api/src/infrastructure/capability-evolution/change/program-lineage.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-adapter.ts
+  - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-harness-lineage.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-ledger.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-ledger-contract.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-port.ts
@@ -58,6 +60,7 @@ code_anchors:
   - packages/web/src/components/capability-evolution/EvolutionProgramSurface.tsx
   - packages/web/src/components/capability-evolution/preparation/EvolutionPreparationWorkspace.tsx
   - packages/web/src/components/capability-evolution/EvolutionChangePanel.tsx
+  - packages/web/src/components/capability-evolution/EvolutionUseSourceDock.tsx
 doc_anchors:
   - docs/features/F311-capability-evolution-workspace.md
   - docs/features/F299-workspace-invocation-trajectory.md
@@ -82,6 +85,7 @@ static_scan_hints: [capability-evolution-control, Evolution Program, inv:<id>, d
 cited_by:
   - {feature: F311, date: 2026-08-28, delta: "Gate 0A freezes a thin production-only Program control cell and its owner-reference join contract"}
   - {feature: F314, date: 2026-09-12, delta: "F100 request-review owner adds exact version/use/action receipts; F311 still consumes refs only"}
+  - {feature: F311, date: 2026-10-14, delta: "F100 exposes the owner-reviewed F314 historical source index and receipt-derived exact-use Chat provenance without moving owner truth"}
 ---
 
 # Capability Evolution Control
@@ -132,9 +136,16 @@ Consumer evidence: `request-review-*.test.js`, `capability-evolution-asset-revie
 Claim guard: wrong Program/cycle/case action, unrelated target, non-holder callback, non-strict/originless consumption author, immutable-scope drift, rollback without its changed receipt, self or mismatched reviewer/HEAD/source, unattested runtime mount, missing fresh outcome and restart replay all fail closed before the F100 ledger changes or F311 can advance.
 
 Architecture cell: `capability-evolution-control`
+Map delta: extend the existing F100 owner read projection with the owner-reviewed F314 historical source index, and project an exact-use receipt onto the already-canonical F117 message row; no Program, Approval, adoption/use, message-body, rollback, or inbox authority moves.
+Why: the v2 journey needs to read real development-process history without turning calendar proximity into adoption, and a later review result needs durable source navigation that cannot be inferred from prose.
+Canonical source: `request-review-harness-lineage.ts#projectRequestReviewHarnessExploration` + `request-review-use-receipt.ts#RequestReviewUseReceiptService.recordLocalReview` + `MessageStore.ts#StoredMessage.extra.evolutionUseSourceV1`.
+Consumer evidence: `rg -n "explorationReview|evolutionUseSourceV1|EvolutionUseSourceDock" packages/shared/src packages/api/src packages/web/src` plus `pnpm check:browser-consumers`.
+Claim guard: “historical browsing is not adoption or efficacy; a Chat source exists only after an exact terminal use receipt; rollback remains governed navigation” → generator/adapter/use-receipt/Redis/Chat tests plus the S6 canonical browser journey → red on inferred actual-use, malformed provenance, pre-receipt attachment, optimistic candidate adoption, or a Program write from either source link.
+
+Architecture cell: `capability-evolution-control`
 Map delta: none — F117/MessageStore retains direct-message lifecycle and body truth; F311 adds one read-only owner-surface resolver and stores only the caller-supplied canonical refs after validation.
 Why: a natural operator correction can be source evidence without being an F281 disposition; validating its existing message identity must not create an F300 substitute or a centralized feedback ledger.
-Canonical source: `packages/api/src/domains/cats/services/stores/ports/MessageStore.ts#IMessageStore.getById` + `docs/features/F117-message-delivery-lifecycle.md#Phase-A-deliveryStatus-字段--后端收口`
+Canonical source: `packages/api/src/domains/cats/services/stores/ports/MessageStore.ts#IMessageStore.getById` + `docs/features/F117-message-delivery-lifecycle.md`
 Consumer evidence: `rg -n "createEvolutionOwnerSurfaceResolvers|sourceResolvers" packages/api/src/index.ts packages/api/src/infrastructure/capability-evolution packages/api/test/capability-evolution-owner-surface-resolvers.test.js`
 Claim guard: “only a live, publicly visible direct owner message in the exact owner thread resolves” → `capability-evolution-owner-surface-resolvers.test.js` → red when owner, thread, source provenance, visibility, deletion, delivery, instrumentation, or read-port truth is absent.
 

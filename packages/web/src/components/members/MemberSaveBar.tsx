@@ -17,7 +17,8 @@ export function MemberSaveBar({
 }) {
   const t = useMemberText();
   const copy = useMembersCopy();
-  const [bounds, setBounds] = useState<{ left: number; width: number; visible: boolean } | null>(null);
+  const unchanged = !creating && e.dirtyCount === 0;
+  const [bounds, setBounds] = useState<{ left: number; width: number; bottom: number; visible: boolean } | null>(null);
   useEffect(() => {
     const host = anchor.current?.closest<HTMLElement>('[data-trajectory-origin-scroll]');
     if (!host) return;
@@ -25,13 +26,19 @@ export function MemberSaveBar({
       const rect = host.getBoundingClientRect();
       const left = Math.max(0, rect.left);
       const right = Math.min(window.innerWidth, rect.right);
+      const top = Math.max(0, rect.top);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
       const next = {
         left: (left + right) / 2,
         width: Math.max(0, right - left - 24),
-        visible: rect.width > 0 && rect.height > 0 && right > left && getComputedStyle(host).visibility !== 'hidden',
+        bottom: window.innerHeight - bottom,
+        visible: right > left && bottom > top && getComputedStyle(host).visibility !== 'hidden',
       };
       setBounds((previous) =>
-        previous?.left === next.left && previous?.width === next.width && previous?.visible === next.visible
+        previous?.left === next.left &&
+        previous?.width === next.width &&
+        previous?.bottom === next.bottom &&
+        previous?.visible === next.visible
           ? previous
           : next,
       );
@@ -44,11 +51,13 @@ export function MemberSaveBar({
       ancestors.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
     }
     window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
     measure();
     return () => {
       observer.disconnect();
       ancestors.disconnect();
       window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
     };
   }, [anchor]);
   // Workspace floats translate their host. Keep viewport coordinates out of that containing block.
@@ -56,14 +65,24 @@ export function MemberSaveBar({
   return createPortal(
     <section
       className="members-v2 member-save-bar"
-      aria-label={t('未保存修改')}
-      style={bounds ? { left: bounds.left, maxWidth: bounds.width } : undefined}
+      aria-label={t(unchanged ? '保存成员设置' : '未保存修改')}
+      style={
+        bounds
+          ? { left: bounds.left, maxWidth: bounds.width, bottom: `calc(${bounds.bottom}px + var(--member-save-gap))` }
+          : undefined
+      }
     >
-      <span>{creating ? t('添加后默认启用，可以在列表里关掉') : copy.changes(e.dirtyCount)}</span>
+      <span role="status">
+        {creating
+          ? t('添加后默认启用，可以在列表里关掉')
+          : unchanged
+            ? t('没有未保存的修改')
+            : copy.changes(e.dirtyCount)}
+      </span>
       <button
         type="button"
         className="member-button"
-        disabled={e.saving}
+        disabled={e.saving || unchanged}
         onClick={() => (creating ? void e.requestClose() : e.discard())}
       >
         {creating ? t('取消') : t('放弃')}
@@ -71,7 +90,7 @@ export function MemberSaveBar({
       <button
         type="button"
         className="member-button member-primary"
-        disabled={e.saving || e.restoringCloudIdentity || e.saveBlockedByProfileBinding}
+        disabled={unchanged || e.saving || e.restoringCloudIdentity || e.saveBlockedByProfileBinding}
         onClick={onSave}
       >
         {e.saving ? t('保存中…') : creating ? t('添加') : t('保存')}

@@ -35,10 +35,12 @@ for (const [language, width, offset] of [
     const observe = (button) => {
       const rect = button.getBoundingClientRect();
       const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const host = document.querySelector('[data-trajectory-origin-scroll]').getBoundingClientRect();
       return {
         rect: rect.toJSON(),
         inViewport: rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth,
         hittable: button === hit || button.contains(hit),
+        withinHost: rect.top >= host.top && rect.bottom <= host.bottom,
       };
     };
     try {
@@ -48,17 +50,22 @@ for (const [language, width, offset] of [
         await page.evaluate((x) => {
           // react-rnd's translated Workspace float is a fixed-position containing block.
           const host = document.querySelector('#root');
-          host.style.transform = `translateX(${x}px)`;
+          host.style.transform = `translate(${x}px, 80px)`;
           host.style.width = `calc(100vw - ${x}px)`;
+          host.style.height = 'calc(100vh - 160px)';
         }, offset);
       await page.getByRole('button', { name: /烁烁.*gemini38/ }).click();
-      await page.locator('select[aria-label="Transport"]').selectOption('agy-native');
       const save = page.getByRole('button', { name: language === 'en' ? 'Save' : '保存', exact: true });
       await save.waitFor();
+      assert.equal(await save.isDisabled(), true, 'An unchanged member still has a visible Save action');
+      assert.equal((await save.evaluate(observe)).hittable, true);
+      await screenshot('unchanged');
+      await page.locator('select[aria-label="Transport"]').selectOption('agy-native');
       const first = await save.evaluate(observe);
       await screenshot('before-save');
       assert.equal(first.inViewport, true, JSON.stringify(first));
       assert.equal(first.hittable, true, JSON.stringify(first));
+      assert.equal(first.withinHost, true, 'Save must stay inside the visible editor host, including its bottom edge');
       if (offset) {
         await page.locator('#root').evaluate((host) => {
           host.style.display = 'none';
@@ -111,6 +118,7 @@ for (const [language, width, offset] of [
       }
       await save.click();
       await page.getByTestId('member-list-page').waitFor();
+      assert.ok((await page.locator('tr[data-cat-id="gemini38"]').innerText()).includes(expected.model));
       const writes = state.writes.filter((write) => write.path === '/api/cats/gemini38');
       assert.equal(writes.length, language === 'en' && width === 390 ? 2 : 1);
       assert.equal(state.writes.filter((write) => write.path !== '/api/cats/gemini38').length, 0);
@@ -136,7 +144,12 @@ for (const [language, width, offset] of [
           .inputValue(),
         producer.root,
       );
-      assert.equal(await save.count(), 0, 'No unsaved edits remain after readback');
+      assert.equal(await save.isVisible(), true, 'Save remains discoverable after readback');
+      assert.equal(await save.isDisabled(), true, 'No unchanged configuration is submitted');
+      assert.equal(
+        await page.locator('.member-save-bar [role="status"]').innerText(),
+        language === 'en' ? 'No unsaved changes' : '没有未保存的修改',
+      );
       await screenshot('readback');
       if (screenshots)
         writeFileSync(

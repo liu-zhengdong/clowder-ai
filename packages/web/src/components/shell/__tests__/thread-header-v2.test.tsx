@@ -11,6 +11,7 @@ vi.mock('@/stores/taskStore', () => ({
 }));
 
 import { ThreadTasksButton, ThreadWorksButton } from '../HeaderCounts';
+import { writeShellLanguage } from '../shell-language';
 
 describe('F322 thread-scoped header facts', () => {
   let host: HTMLDivElement;
@@ -28,6 +29,7 @@ describe('F322 thread-scoped header facts', () => {
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    writeShellLanguage('zh');
     data.tasks = [];
     host = document.createElement('div');
     document.body.append(host);
@@ -40,6 +42,7 @@ describe('F322 thread-scoped header facts', () => {
   afterEach(() => {
     act(() => root.unmount());
     host.remove();
+    writeShellLanguage('zh');
     vi.restoreAllMocks();
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
@@ -64,5 +67,21 @@ describe('F322 thread-scoped header facts', () => {
     data.tasks = [{ status: 'done' }];
     render();
     expect(host.querySelector('[data-testid="header-tasks"]')?.textContent).toBe('任务');
+  });
+  it('switches both labels and accessible descriptions to English without changing counts or destinations', () => {
+    data.tasks = [{ status: 'doing' }, { status: 'done' }];
+    render();
+    act(() => writeShellLanguage('en'));
+    const works = host.querySelector<HTMLButtonElement>('[data-testid="header-works"]');
+    const tasks = host.querySelector<HTMLButtonElement>('[data-testid="header-tasks"]');
+    expect(works?.textContent).toBe('Works');
+    expect(tasks?.textContent).toBe('Tasks1');
+    expect(works?.getAttribute('aria-label')).toBe('Works, Works in this conversation');
+    expect(tasks?.getAttribute('aria-label')).toBe('Tasks 1, Tasks in this conversation');
+    act(() => {
+      works?.click();
+      tasks?.click();
+    });
+    expect(data.mode.mock.calls).toEqual([['artifacts'], ['tasks']]);
   });
 });

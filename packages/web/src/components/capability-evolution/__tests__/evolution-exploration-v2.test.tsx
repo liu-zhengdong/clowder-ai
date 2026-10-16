@@ -105,7 +105,8 @@ describe('v2 exploration reading', () => {
     expect(host.textContent).toContain('本项目版本 · 1');
     expect(host.textContent).toContain('公开归档 · 2');
     expect(host.textContent).toContain('派生自：独立公开归档');
-    expect(host.textContent).toContain('未登记父边');
+    expect(host.textContent).toContain('目录没登记部分版本是从哪版改来的，所以不连线');
+    expect(host.textContent).not.toContain('未登记父边');
     expect(host.textContent).toContain('当前生效：待来源核验');
     const full = [...host.querySelectorAll('button')].find((button) => button.textContent === '完整谱系');
     expect(full).toBeDefined();

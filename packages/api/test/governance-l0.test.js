@@ -31,6 +31,14 @@ describe('governance-l0 compiler (#747)', () => {
   const root = findProjectRoot();
   const sharedRules = readFileSync(join(root, 'cat-cafe-skills', 'refs', 'shared-rules.md'), 'utf-8');
 
+  it('projects the distinction between A2A routing and human progress from its source', () => {
+    const l0 = compileGovernanceL0FromMarkdown(sharedRules);
+    assert.ok(l0.includes('面向co-creator的进度不受此限制'));
+    assert.ok(l0.includes('耗时工作'));
+    const revised = sharedRules.replace('面向co-creator的进度不受此限制', 'SOURCE-PROGRESS-BOUNDARY');
+    assert.ok(compileGovernanceL0FromMarkdown(revised).includes('SOURCE-PROGRESS-BOUNDARY'));
+  });
+
   it('injects the source-owned end-of-turn human request rule without the disk-compression example', () => {
     const l0 = compileGovernanceL0FromMarkdown(sharedRules);
     assert.match(l0, /收尾仍需.+决定或操作/);
@@ -102,7 +110,8 @@ describe('governance-l0 compiler (#747)', () => {
     assert.ok(l0.includes('共享状态文件'));
     assert.ok(l0.includes('只在 main 改'));
     assert.ok(l0.includes('fallback 层数检测'));
-    assert.ok(l0.includes('创意-实现解耦'));
+    assert.ok(!l0.includes('创意-实现解耦'), 'retired Siamese restriction must not enter active L0');
+    assert.ok(!l0.includes('Dry Run Gate'), 'retired signature gate must not enter active L0');
     // Decision funnel projection (four-cat discussion 2026-06-01)
     assert.ok(l0.includes('决策漏斗'), 'missing decision funnel section');
     assert.ok(l0.includes('能翻代码解决的不要问人'), 'missing self-resolve reflex');
@@ -162,7 +171,6 @@ describe('governance-l0 compiler (#747)', () => {
       '不允许 self-merge',
       '同一文件',
       '新增 ≥3 层',
-      '发现问题 ≠ 动手实现',
       // Decision funnel drift guards
       '能翻代码解决的不要问人',
       'SOP 流程推进不是决策',
@@ -198,14 +206,15 @@ describe('governance-l0 compiler (#747)', () => {
   });
 
   it('accepts public-sanitized family labels in governance protocol headings (outbound sync)', () => {
-    const sanitizedSharedRules = sharedRules
-      .replace('### 缅因猫 fallback 层数检测协议', '### Maine Coon fallback 层数检测协议')
-      .replace('### 暹罗猫 创意-实现解耦协议', '### Siamese 创意-实现解耦协议');
+    const sanitizedSharedRules = sharedRules.replace(
+      '### 缅因猫 fallback 层数检测协议',
+      '### Maine Coon fallback 层数检测协议',
+    );
 
     const l0 = compileGovernanceL0FromMarkdown(sanitizedSharedRules);
 
     assert.ok(l0.includes('Maine Coon fallback 层数检测'));
-    assert.ok(l0.includes('Siamese 创意-实现解耦'));
+    assert.ok(!l0.includes('创意-实现解耦'));
   });
 
   it('loads base shared-rules.md and returns source metadata', async () => {

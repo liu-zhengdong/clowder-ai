@@ -49,14 +49,16 @@ const sidebar = params.get('sidebar') !== '0';
 const resizable = params.get('resizable') === '1';
 if (resizable) useSidebarStore.getState().setWidth(300);
 const surface = params.get('surface') === '1';
-const messages = [
+const messages: ChatMessageData[] = [
   {
+    from: { kind: 'user', userId: 'owner-proof' },
     id: 'proof-user',
     type: 'user' as const,
     content: '这张封面可以。保留标题和猫猫的位置，再看看聊天区的输入操作。',
     timestamp: Date.now() - 180_000,
   },
   {
+    from: { kind: 'agent', catId: 'codex-astra' },
     id: 'proof-cat',
     type: 'assistant' as const,
     catId: 'codex-astra',

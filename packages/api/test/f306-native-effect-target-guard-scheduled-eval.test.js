@@ -71,15 +71,16 @@ describe('F306 scheduled-eval native guard closure', () => {
   test('models constrained GitHub pull-request reads against a remote repository target', () => {
     for (const { command, target } of [
       {
-        command: 'gh pr view 4368 --repo zts212653/cat-cafe --json number,title,headRefOid,mergeable,mergeStateStatus',
+        command:
+          'gh pr view 4368 --repo zts212653/clowder-ai --json number,title,headRefOid,mergeable,mergeStateStatus',
         target: 'github://zts212653/cat-cafe/pull/4368',
       },
       {
-        command: 'gh pr checks 4368 --repo zts212653/cat-cafe --required',
+        command: 'gh pr checks 4368 --repo zts212653/clowder-ai --required',
         target: 'github://zts212653/cat-cafe/pull/4368',
       },
       {
-        command: 'gh pr list --repo zts212653/cat-cafe --state open --limit 30 --json number,headRefOid',
+        command: 'gh pr list --repo zts212653/clowder-ai --state open --limit 30 --json number,headRefOid',
         target: 'github://zts212653/cat-cafe/pulls',
       },
       {
@@ -103,15 +104,15 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4368',
       },
       {
-        command: `gh pr merge 4368 --repo zts212653/cat-cafe --squash --delete-branch --match-head-commit ${head}`,
+        command: `gh pr merge 4368 --repo zts212653/clowder-ai --squash --delete-branch --match-head-commit ${head}`,
         target: 'github://zts212653/cat-cafe/pull/4368',
       },
       {
-        command: `gh pr merge 4368 --squash --admin --repo zts212653/cat-cafe --match-head-commit ${head}`,
+        command: `gh pr merge 4368 --squash --admin --repo zts212653/clowder-ai --match-head-commit ${head}`,
         target: 'github://zts212653/cat-cafe/pull/4368',
       },
       {
-        command: `gh pr merge 4368 -R zts212653/cat-cafe -s -d --match-head-commit ${head}`,
+        command: `gh pr merge 4368 -R zts212653/clowder-ai -s -d --match-head-commit ${head}`,
         target: 'github://zts212653/cat-cafe/pull/4368',
       },
     ]) {
@@ -131,11 +132,11 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4404',
       },
       {
-        command: 'gh pr close 4404 --repo zts212653/cat-cafe',
+        command: 'gh pr close 4404 --repo zts212653/clowder-ai',
         target: 'github://zts212653/cat-cafe/pull/4404',
       },
       {
-        command: 'gh pr close 4404 -R zts212653/cat-cafe',
+        command: 'gh pr close 4404 -R zts212653/clowder-ai',
         target: 'github://zts212653/cat-cafe/pull/4404',
       },
     ]) {
@@ -151,8 +152,8 @@ describe('F306 scheduled-eval native guard closure', () => {
       'gh pr close 4404 -c superseded',
       'gh pr close 4404 --delete-branch',
       'gh pr close 4404 -d',
-      'gh pr close 4404 --repo zts212653/cat-cafe --repo zts212653/cat-cafe',
-      'gh pr close 4404 --repo zts212653/cat-cafe --unknown',
+      'gh pr close 4404 --repo zts212653/clowder-ai --repo zts212653/clowder-ai',
+      'gh pr close 4404 --repo zts212653/clowder-ai --unknown',
       'gh pr close 4404 && echo closed',
     ]) {
       assert.equal(constrainedGhPullRequestOperation(command), null, command);
@@ -166,11 +167,11 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4404',
       },
       {
-        command: 'gh pr close 4404 --repo zts212653/cat-cafe',
+        command: 'gh pr close 4404 --repo zts212653/clowder-ai',
         target: 'github://zts212653/cat-cafe/pull/4404',
       },
       {
-        command: 'gh pr close 4404 -R zts212653/cat-cafe',
+        command: 'gh pr close 4404 -R zts212653/clowder-ai',
         target: 'github://zts212653/cat-cafe/pull/4404',
       },
     ]) {
@@ -286,16 +287,16 @@ describe('F306 scheduled-eval native guard closure', () => {
       'gh pr close 4404 -c superseded',
       'gh pr close 4404 --delete-branch',
       'gh pr close 4404 -d',
-      'gh pr close 4404 --repo zts212653/cat-cafe --unknown',
+      'gh pr close 4404 --repo zts212653/clowder-ai --unknown',
       'gh pr list --limit 0',
       'gh pr list --web',
       '/tmp/gh pr merge 4368 --squash --delete-branch',
       '/tmp/ps -p 123',
       '/tmp/lsof -iTCP:3012',
       '/tmp/test -e /tmp/cat-cafe-pr4368',
-      'gh pr comment 4369 --repo zts212653/cat-cafe --body approved',
+      'gh pr comment 4369 --repo zts212653/clowder-ai --body approved',
       'gh api repos/zts212653/cat-cafe/pulls/4369 -X PATCH -f state=closed',
-      'gh pr view 4369 --repo zts212653/cat-cafe --web',
+      'gh pr view 4369 --repo zts212653/clowder-ai --web',
       'sqlite3 .cat-cafe/evidence.sqlite "SELECT count(*) FROM recall_events"',
       'sqlite3 -readonly .cat-cafe/evidence.sqlite "DELETE FROM recall_events"',
       "sqlite3 -readonly .cat-cafe/evidence.sqlite \"SELECT writefile('/tmp/leak', 'x')\"",

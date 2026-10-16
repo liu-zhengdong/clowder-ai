@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { evolutionAssetReviewV1Schema } from '@cat-cafe/shared';
+import { evolutionAssetReviewV1Schema, evolutionExplorationReviewV1Schema } from '@cat-cafe/shared';
 import {
   PROGRAM_ADAPTER_CAPABILITIES,
   ProgramAdapterRegistry,
@@ -40,6 +40,70 @@ const CURRENT_SKILL_SOURCE = [
 const CURRENT_SEMANTIC_VERSION = requestReviewSemanticVersion(CURRENT_SKILL_SOURCE);
 const PARENT_ANCHOR = 'Accepted-Source-Ref: <free prose>';
 const PARENT_SEMANTIC_VERSION = requestReviewSemanticVersionFromAnchor(PARENT_ANCHOR);
+const HARNESS_LINEAGE = {
+  schemaVersion: 1,
+  status: 'owner-reviewed-source-index',
+  snapshotCommit: '1'.repeat(40),
+  ownerReviewCommit: '6'.repeat(40),
+  ownerReviewRef: 'docs/discussions/f314-incident-archive/lineage/2026-10-14-owner-review.md',
+  since: '2026-09-01',
+  members: { SOP: ['docs/SOP.md'], 共享规则: ['cat-cafe-skills/refs/shared-rules.md'] },
+  releases: [
+    {
+      id: 'H01',
+      date: '2026-09-01',
+      parent: null,
+      version: `sha256:${'1'.repeat(64)}`,
+      members: ['SOP'],
+      commits: [
+        {
+          sha: '2'.repeat(40),
+          authoredAt: '2026-09-01T10:00:00.000Z',
+          subject: 'first harness revision',
+          members: ['SOP'],
+        },
+      ],
+    },
+    {
+      id: 'H02',
+      date: '2026-09-02',
+      parent: null,
+      version: `sha256:${'3'.repeat(64)}`,
+      members: ['共享规则'],
+      commits: [
+        {
+          sha: '4'.repeat(40),
+          authoredAt: '2026-09-02T10:00:00.000Z',
+          subject: 'second harness revision',
+          members: ['共享规则'],
+        },
+      ],
+    },
+  ],
+  cases: [
+    {
+      caseId: 'F',
+      documentedOn: '2026-09-19',
+      occurredOn: '2026-09-20',
+      kind: 'incident',
+      summary: 'Gate 续办掉球',
+      link: '../2026-09-19-continuous-team-collaboration/README.md#case-f',
+      browsingBucket: 'H02',
+      actualUseStatus: 'unconfirmed',
+      sourceTextSha256: '5'.repeat(64),
+      citedMemberCommits: [
+        {
+          sha: '4'.repeat(10),
+          fullSha: '4'.repeat(40),
+          authoredAt: '2026-09-02T10:00:00.000Z',
+          members: ['共享规则'],
+          subject: 'second harness revision',
+          relation: 'documented_delivery',
+        },
+      ],
+    },
+  ],
+};
 
 /** Canonical asset identity per F314:227 */
 const CANONICAL_ASSET_KIND = 'skill';
@@ -70,6 +134,10 @@ function stubPort(overrides = {}) {
     readSkillFileAt: async (_commitOid, filePath) => {
       if (filePath.includes('SKILL.md')) return CURRENT_SKILL_SOURCE;
       throw new Error(`unexpected file: ${filePath}`);
+    },
+    readHarnessLineageAt: async (commitOid) => {
+      assert.equal(commitOid, FAKE_HEAD_OID);
+      return HARNESS_LINEAGE;
     },
     ...overrides,
   };
@@ -646,6 +714,62 @@ describe('F100 request-review owner adapter', () => {
 
       assert.equal(requestReviewSemanticVersion(before), requestReviewSemanticVersion(after));
       assert.match(requestReviewSemanticVersion(before), /^[a-f0-9]{64}$/);
+    });
+  });
+
+  describe('F314 historical exploration', () => {
+    it('publishes reviewed daily history as non-adopted archive nodes without inventing chronological ancestry', async () => {
+      const adapter = createRequestReviewOwnerAdapter({ port: stubPort() });
+      const result = await adapter.explorationReview({ programRef, objectRef });
+
+      assert.equal(evolutionExplorationReviewV1Schema.safeParse(result).success, true);
+      assert.equal(result.status, 'resolved');
+      assert.equal(result.nodes.length, 2);
+      assert.ok(result.nodes.every((entry) => entry.kind === 'public_archive'));
+      assert.ok(result.nodes.every((entry) => entry.parentEdges.length === 0));
+      assert.equal(
+        result.nodes[0].changes[0].ownerHref,
+        `https://github.com/zts212653/clowder-ai/commit/${'2'.repeat(40)}`,
+      );
+      assert.match(result.nodes[0].summary, /不代表发布、加载或采用/);
+      assert.ok(result.blockers.some((entry) => entry.code === 'historical_index_not_adoption'));
+    });
+
+    it('keeps cases descriptive and returns exact source detail only when selected', async () => {
+      const adapter = createRequestReviewOwnerAdapter({ port: stubPort() });
+      const catalog = await adapter.explorationReview({ programRef, objectRef });
+      assert.equal(catalog.status, 'resolved');
+      assert.equal(catalog.experiments.length, 1);
+      assert.equal(catalog.details.length, 0);
+      const experiment = catalog.experiments[0];
+      assert.equal(experiment.conditions.threshold.status, 'unknown');
+      assert.match(experiment.conditions.limitation, /实际沿用版本未确认/);
+      assert.equal(
+        experiment.conditions.preparationRefs.find((entry) => entry.label === 'F314 owner 核对').href,
+        `https://github.com/zts212653/clowder-ai/blob/${'6'.repeat(40)}/docs/discussions/f314-incident-archive/lineage/2026-10-14-owner-review.md`,
+      );
+
+      const selected = await adapter.explorationReview({
+        programRef,
+        objectRef,
+        selectedNodeRef: experiment.nodeRef,
+        selectedExperimentRef: experiment.experimentRef,
+      });
+      assert.equal(evolutionExplorationReviewV1Schema.safeParse(selected).success, true);
+      assert.equal(selected.status, 'resolved');
+      assert.equal(selected.details.length, 1);
+      assert.equal(selected.details[0].records[0].result.status, 'unknown');
+      assert.match(selected.details[0].records[0].result.label, /不是版本效用判定/);
+      assert.match(selected.details[0].records[0].sources[0].href, /github\.com\/zts212653\/cat-cafe\/blob/);
+    });
+
+    it('fails closed when the reviewed generated index is malformed', async () => {
+      const adapter = createRequestReviewOwnerAdapter({
+        port: stubPort({ readHarnessLineageAt: async () => ({ ...HARNESS_LINEAGE, cases: [{ invented: true }] }) }),
+      });
+      const result = await adapter.explorationReview({ programRef, objectRef });
+      assert.equal(result.status, 'invalid');
+      assert.equal(result.blockers[0].code, 'owner_historical_index_invalid');
     });
   });
 });

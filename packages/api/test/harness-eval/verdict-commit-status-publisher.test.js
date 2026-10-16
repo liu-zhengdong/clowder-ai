@@ -11,7 +11,7 @@ describe('verdict commit status publisher', () => {
     const calls = [];
     await publishVerdictCommitStatuses(
       {
-        repoFullName: 'zts212653/cat-cafe',
+        repoFullName: 'zts212653/clowder-ai',
         headSha: 'a'.repeat(40),
         statuses: [
           {
@@ -45,7 +45,7 @@ describe('verdict commit status publisher', () => {
     const calls = [];
     const runner = async (args) => calls.push(args);
     const valid = {
-      repoFullName: 'zts212653/cat-cafe',
+      repoFullName: 'zts212653/clowder-ai',
       headSha: 'a'.repeat(40),
       statuses: [
         {
@@ -56,7 +56,7 @@ describe('verdict commit status publisher', () => {
       ],
     };
     const invalidInputs = [
-      { ...valid, repoFullName: 'zts212653/cat-cafe\n--hostname=evil' },
+      { ...valid, repoFullName: 'zts212653/clowder-ai\n--hostname=evil' },
       { ...valid, headSha: 'HEAD' },
       { ...valid, statuses: [{ ...valid.statuses[0], context: 'bad\ncontext' }] },
       { ...valid, statuses: [{ ...valid.statuses[0], context: 'x'.repeat(101) }] },

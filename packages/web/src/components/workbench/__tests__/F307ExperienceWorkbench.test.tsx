@@ -491,6 +491,47 @@ describe('F307 zero-surface canonical Home invariant', () => {
   });
 
   it.each([
+    'v2',
+    'classic',
+  ] as const)('preserves %s status identity while recently closed titles follow presentation and language', async (presentation) => {
+    writeShellPresentation(presentation);
+    writeShellLanguage('zh');
+    const status = createWorkspaceDestinationSurface(
+      { kind: 'host', id: 'status', label: '状态与会话', description: '来源原文', searchTerms: 'status' },
+      'thread-a',
+    )!;
+    useF307ExperienceWorkbenchStore.setState({
+      layout: createInitialWorkbenchState([status]),
+      hydrated: true,
+    });
+    await renderWorkbench();
+    const close = container.querySelector<HTMLButtonElement>(
+      presentation === 'v2'
+        ? '[data-tab-surface-id="workspace:host:status"] [data-workbench-tab-control="close"]'
+        : '[data-testid="f307-close-workspace"]',
+    )!;
+    await act(async () => close.click());
+    const toggle = container.querySelector<HTMLButtonElement>('[data-testid="f307-recently-closed-toggle"]')!;
+    await act(async () => toggle.click());
+    const restore = container.querySelector<HTMLButtonElement>('[data-testid="f307-restore-workspace"]')!;
+    expect(restore.textContent).toBe('恢复 状态与会话');
+    await act(async () => writeShellLanguage('en'));
+    expect(container.querySelector('[data-testid="f307-restore-workspace"]')).toBe(restore);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(restore.textContent).toBe(presentation === 'v2' ? 'Restore Status & sessions' : '恢复 状态与会话');
+    expect(useF307ExperienceWorkbenchStore.getState().layout.recentlyClosed).toEqual([status]);
+    await act(async () => writeShellLanguage('zh'));
+    expect(restore.textContent).toBe('恢复 状态与会话');
+    await act(async () => writeShellLanguage('en'));
+    await act(async () => restore.click());
+    expect(useF307ExperienceWorkbenchStore.getState().layout).toMatchObject({
+      surfaces: [status],
+      activeSurfaceId: status.id,
+      recentlyClosed: [],
+    });
+  });
+
+  it.each([
     ['artifacts', 'launcher'],
     ['schedule', 'launcher'],
     ['artifacts', 'tab'],

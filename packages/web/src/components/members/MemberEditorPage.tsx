@@ -176,8 +176,6 @@ export function MemberEditorPage({
                     modelOptions={e.modelOptions}
                     availableProfiles={e.availableProfiles}
                     loadingProfiles={e.loadingProfiles}
-                    effectiveCodexCarrier={cat?.codexCarrier}
-                    codexLocalCapable={cat ? cat.cli != null : true}
                     onChange={e.patchForm}
                   />
                 )}
@@ -224,7 +222,7 @@ export function MemberEditorPage({
                       codexSpeedVisible={
                         e.form.clientId === 'openai' &&
                         e.selectedProfile?.authType === 'oauth' &&
-                        !e.form.acpEnabled &&
+                        e.form.carrier !== 'acp' &&
                         (cat ? cat.cli != null : true)
                       }
                       codexFastSupported={supportsCodexFastModel(e.form.defaultModel)}
@@ -260,7 +258,7 @@ export function MemberEditorPage({
               )}
             </div>
           </div>
-          {(!cat || e.dirtyCount > 0) && <MemberSaveBar editor={e} creating={!cat} anchor={main} onSave={save} />}
+          <MemberSaveBar editor={e} creating={!cat} anchor={main} onSave={save} />
           <UnifiedAuthModal
             open={e.showAuthModal && e.createAccountClient !== undefined}
             initialClientId={e.createAccountClient}

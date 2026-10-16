@@ -35,7 +35,7 @@ import {
 import { invalidateCliCommand } from './cli-resolve.js';
 import { resolveWindowsSpawnPlan } from './cli-spawn-win.js';
 import { buildUnixSupervisedSpawnPlan } from './cli-supervised-process.js';
-import { resolveCliTimeoutMs } from './cli-timeout.js';
+import { registerProcessActivity } from './process-activity-registry.js';
 
 export { resolveCliSupervisorNodeArgs } from './cli-supervised-process.js';
 
@@ -106,7 +106,7 @@ export function withVerdictGhGuardEnv<T extends Record<string, string | null | u
   }
   if (!mutable.CAT_CAFE_VERDICT_REPO_FULL_NAME) {
     mutable.CAT_CAFE_VERDICT_REPO_FULL_NAME =
-      process.env.CAT_CAFE_VERDICT_REPO_FULL_NAME ?? process.env.CAT_CAFE_REPO_FULL_NAME ?? 'zts212653/cat-cafe';
+      process.env.CAT_CAFE_VERDICT_REPO_FULL_NAME ?? process.env.CAT_CAFE_REPO_FULL_NAME ?? 'zts212653/clowder-ai';
   }
   return env;
 }
@@ -362,8 +362,10 @@ export async function* spawnCli(
   }
   const doSpawn: SpawnFn = deps?.spawnFn ?? defaultSpawn;
   const livenessWarningDrainIntervalMs = deps?.livenessWarningDrainIntervalMs ?? LIVENESS_WARNING_DRAIN_INTERVAL_MS;
-  // Default timeout is configurable via CLI_TIMEOUT_MS env var; 0 disables timeout.
-  const timeoutMs = resolveCliTimeoutMs(options.timeoutMs);
+  // Only a caller that asks for a response timeout gets one (probes and other one-off commands).
+  // F117 KD-22: a dispatched member's timeout is its invocation's, driven by CLI_TIMEOUT_MS — never
+  // a second one here.
+  const timeoutMs = options.timeoutMs ?? 0;
 
   // Log only flag names (--foo) and arg count — never raw values.
   // Multiple providers pass prompt text via different shapes (positional,
@@ -492,6 +494,10 @@ export async function* spawnCli(
   const stdoutDrain = child.stdout ? new CliExitOutputDrain(child.stdout) : undefined;
   let exitDrainTimer: ReturnType<typeof setTimeout> | undefined;
   let exitObserved = false;
+  let resolveProcessExit!: () => void;
+  const processExit = new Promise<void>((resolve) => {
+    resolveProcessExit = resolve;
+  });
   let resolveExitDrain!: () => void;
   const exitDrainComplete = new Promise<void>((resolve) => {
     resolveExitDrain = resolve;
@@ -499,6 +505,7 @@ export async function* spawnCli(
   const observeProcessExit = (): void => {
     if (exitObserved) return;
     exitObserved = true;
+    resolveProcessExit();
     stdoutDrain?.start();
     exitDrainTimer = setTimeout(() => {
       stdoutDrain?.finish();
@@ -679,13 +686,17 @@ export async function* spawnCli(
   let localFinalTerminal: 'completed' | 'failed' | null = null;
 
   // F118 Phase B: Initialize liveness probe
+  let unregisterProcessActivity: (() => void) | undefined;
   if (options.livenessProbe && child.pid !== undefined) {
     probe = new ProcessLivenessProbe(child.pid, options.livenessProbe);
     probe.start();
     // F152: Register probe for OTel agentLiveness gauge
     if (options.invocationId) {
       const catId = options.env?.CAT_CAFE_CAT_ID ?? 'unknown';
-      registerLivenessProbe(options.invocationId, catId, () => probe!.getState());
+      const liveProbe = probe;
+      registerLivenessProbe(options.invocationId, catId, () => liveProbe.getState());
+      // F117 KD-22: the member output timeout defers while this process is still using CPU.
+      unregisterProcessActivity = registerProcessActivity(options.invocationId, () => liveProbe.activity());
     }
   }
 
@@ -712,6 +723,7 @@ export async function* spawnCli(
     finalStage: terminationController.getFinalStage(),
   });
 
+  let streamCompleted = false;
   try {
     if (!stdoutDrain) {
       throw new Error(`CLI process ${options.command} has no stdout`);
@@ -1163,7 +1175,16 @@ export async function* spawnCli(
         cliDiagnostics,
       };
     }
+    streamCompleted = true;
   } finally {
+    if (!streamCompleted) {
+      // Protocol rejection/consumer return bypasses the normal drain below the
+      // yield loop. Keep caller-owned credentials and leases alive until the
+      // supervised process exits; sending SIGTERM/SIGKILL is not exit evidence.
+      // Wait for OS exit, not inherited stdio, which may remain open afterward.
+      killChild();
+      if (!childExited) await processExit;
+    }
     if (exitDrainTimer) clearTimeout(exitDrainTimer);
     stdoutDrain?.dispose();
     drainBufferedStderr();
@@ -1180,6 +1201,7 @@ export async function* spawnCli(
     probe?.stop();
     // F152: Unregister probe from OTel gauge
     if (options.invocationId) unregisterLivenessProbe(options.invocationId);
+    unregisterProcessActivity?.();
     killChild();
 
     // F153 Phase B: End CLI session span with appropriate status

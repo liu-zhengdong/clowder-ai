@@ -231,7 +231,7 @@ describe('classifyGitHubExecutionFailure', () => {
 
   it('assembles the exact enum from raw check, job, and annotation JSON', async () => {
     const fixture = rawGitHubFixture(['Account spending limit reached before the job started.']);
-    const result = await fetchPrCiStatus('zts212653/cat-cafe', 3276, { warn() {} }, fixture);
+    const result = await fetchPrCiStatus('zts212653/clowder-ai', 3276, { warn() {} }, fixture);
     assert.equal(result.checks[0].executionFailure, 'billing_spending_limit_zero_step');
     assert.equal(result.checkRollup, 'present');
     assert.ok(fixture.commands.some((args) => args[0] === 'api' && args[1].includes('/check-runs?')));
@@ -272,13 +272,13 @@ describe('classifyGitHubExecutionFailure', () => {
 
   it('keeps a raw billing-shaped check unclassified when annotations are absent', async () => {
     const fixture = rawGitHubFixture([]);
-    const result = await fetchPrCiStatus('zts212653/cat-cafe', 3276, { warn() {} }, fixture);
+    const result = await fetchPrCiStatus('zts212653/clowder-ai', 3276, { warn() {} }, fixture);
     assert.equal(Object.hasOwn(result.checks[0], 'executionFailure'), false);
   });
 
   it('does not splice a same-name job and check-run from different executions', async () => {
     const fixture = rawGitHubFixture(['Account spending limit reached before the job started.'], 999);
-    const result = await fetchPrCiStatus('zts212653/cat-cafe', 3276, { warn() {} }, fixture);
+    const result = await fetchPrCiStatus('zts212653/clowder-ai', 3276, { warn() {} }, fixture);
     assert.equal(Object.hasOwn(result.checks[0], 'executionFailure'), false);
   });
 });

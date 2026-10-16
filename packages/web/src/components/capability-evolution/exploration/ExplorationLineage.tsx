@@ -3,12 +3,30 @@
 import { type EvolutionExplorationNodeV1, refIdentity } from '@cat-cafe/shared';
 import { type ReactNode, useId, useMemo, useRef } from 'react';
 import { ExplorationIcon } from './ExplorationIcon';
-import { LINEAGE_NODE_SIZE, layoutExplorationLineage, lineageDetailLevel } from './exploration-lineage';
+import {
+  LINEAGE_NODE_SIZE,
+  layoutExplorationLineage,
+  layoutExplorationLineageV2,
+  lineageDetailLevel,
+  sparseLineageEdgeRoute,
+} from './exploration-lineage';
 import type { ExplorationReading } from './exploration-reading';
 import { lineageLabels } from './lineage-labels';
 import { useLineageCamera } from './use-lineage-camera';
 
 type Viewport = ExplorationReading['viewport'];
+
+function positionLineage(
+  nodes: EvolutionExplorationNodeV1[],
+  collapsed: string[],
+  direction: 'map' | 'vertical',
+  v2: boolean,
+) {
+  return v2
+    ? layoutExplorationLineageV2(nodes, collapsed, direction)
+    : { ...layoutExplorationLineage(nodes, collapsed, direction), regions: [] };
+}
+
 export function ExplorationLineage({
   nodes,
   selected,
@@ -19,6 +37,7 @@ export function ExplorationLineage({
   onViewport,
   onSelect,
   direction = 'map',
+  v2 = false,
 }: {
   nodes: EvolutionExplorationNodeV1[];
   selected?: string;
@@ -29,24 +48,25 @@ export function ExplorationLineage({
   onViewport(value: Viewport): void;
   onSelect(node: EvolutionExplorationNodeV1): void;
   direction?: 'map' | 'vertical';
+  v2?: boolean;
 }) {
   const instructionsId = useId();
   const drag = useRef<{ id: number; x: number; y: number; start: Viewport; moved: boolean } | null>(null);
   const positioned = useMemo(
-    () => layoutExplorationLineage(nodes, viewport.collapsed, direction),
-    [nodes, viewport.collapsed, direction],
+    () => positionLineage(nodes, viewport.collapsed, direction, v2),
+    [nodes, viewport.collapsed, direction, v2],
   );
+  const expandedPositioned = useMemo(() => positionLineage(nodes, [], direction, v2), [nodes, direction, v2]);
   const density = lineageDetailLevel(viewport.zoom);
   const { host, size } = useLineageCamera(positioned, selected, viewport, onViewport);
   const minimumZoom = Math.max(
     0.001,
     Math.min(1, size.width / positioned.width, size.height / positioned.height) * 0.8,
   );
-  const labels = lineageLabels(positioned, viewport, size, selected);
+  const labels = lineageLabels(positioned, viewport, size, selected, v2);
   const suppressClick = useRef(false);
   const locate = () => {
-    const all = layoutExplorationLineage(nodes, [], direction);
-    const target = all.nodes.find((node) => node.key === selected);
+    const target = expandedPositioned.nodes.find((node) => node.key === selected);
     const readableZoom = Math.max(1, viewport.zoom);
     if (target)
       onViewport({
@@ -62,14 +82,15 @@ export function ExplorationLineage({
     const width = host.current?.clientWidth;
     const height = host.current?.clientHeight;
     if (!width || !height) return;
-    const all = layoutExplorationLineage(nodes, [], direction);
-    const scale = Math.max(0.001, Math.min(1, width / all.width, height / all.height));
+    const paddedWidth = expandedPositioned.width;
+    const paddedHeight = expandedPositioned.height;
+    const scale = Math.max(0.001, Math.min(1, width / paddedWidth, height / paddedHeight));
     onViewport({
       ...viewport,
       collapsed: [],
       framing: 'fit',
-      x: (width - all.width * scale) / 2,
-      y: (height - all.height * scale) / 2,
+      x: (width - paddedWidth * scale) / 2,
+      y: (height - paddedHeight * scale) / 2,
       zoom: scale,
     });
   };
@@ -85,7 +106,7 @@ export function ExplorationLineage({
     });
   };
   return (
-    <section className="exploration-lineage" aria-label="版本谱系画布" data-density={density}>
+    <section className="exploration-lineage" aria-label="版本谱系画布" data-density={density} data-label-beside={v2}>
       <div className="exploration-section-heading">
         <div className="exploration-canvas-tools" role="group" aria-label="谱系导航">
           <button
@@ -178,18 +199,38 @@ export function ExplorationLineage({
             transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
           }}
         >
+          {positioned.regions.map((region) => (
+            <section
+              key={region.key}
+              className="exploration-canvas-region"
+              aria-label={`谱系分组：${region.label}`}
+              style={{
+                left: region.left,
+                top: region.top,
+                width: region.width,
+                height: region.height,
+              }}
+            >
+              <h4 style={{ transform: `scale(${1 / viewport.zoom})` }}>{region.label}</h4>
+            </section>
+          ))}
           <svg aria-hidden="true" width={positioned.width} height={positioned.height} className="exploration-edges">
             {positioned.nodes.flatMap((item) =>
               item.node.parentEdges.map((edge) => {
                 const parent = positioned.nodes.find((node) => node.key === refIdentity(edge.parentNodeRef));
                 if (!parent) return null;
+                const sparseRoute =
+                  v2 && density === 'points' ? sparseLineageEdgeRoute(parent, item, viewport.zoom) : null;
                 return (
                   <path
                     key={`${parent.key}:${item.key}`}
+                    data-edge-route={sparseRoute ? 'label-clear' : 'direct'}
                     d={
-                      direction === 'vertical'
-                        ? `M${parent.x + 88},${parent.y + 56} C${parent.x + 88},${(parent.y + item.y) / 2 + 56} ${item.x + 88},${(parent.y + item.y) / 2 + 56} ${item.x + 88},${item.y + 56}`
-                        : `M${parent.x + 88},${parent.y + 56} C${(parent.x + item.x) / 2 + 88},${parent.y + 56} ${(parent.x + item.x) / 2 + 88},${item.y + 56} ${item.x + 88},${item.y + 56}`
+                      sparseRoute
+                        ? sparseRoute.map((point, index) => `${index ? 'L' : 'M'}${point.x},${point.y}`).join(' ')
+                        : direction === 'vertical'
+                          ? `M${parent.x + 88},${parent.y + 56} C${parent.x + 88},${(parent.y + item.y) / 2 + 56} ${item.x + 88},${(parent.y + item.y) / 2 + 56} ${item.x + 88},${item.y + 56}`
+                          : `M${parent.x + 88},${parent.y + 56} C${(parent.x + item.x) / 2 + 88},${parent.y + 56} ${(parent.x + item.x) / 2 + 88},${item.y + 56} ${item.x + 88},${item.y + 56}`
                     }
                     vectorEffect="non-scaling-stroke"
                     style={{ strokeWidth: 1.2 / viewport.zoom }}

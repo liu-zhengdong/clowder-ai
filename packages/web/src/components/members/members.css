@@ -107,9 +107,10 @@
   scroll-margin-top: 16px;
 }
 .member-save-bar {
+  --member-save-gap: 20px;
   background: var(--shell-ink);
   border-radius: 12px;
-  bottom: 20px;
+  bottom: var(--member-save-gap);
   color: var(--shell-work);
   display: flex;
   align-items: center;
@@ -287,9 +288,9 @@
     flex-wrap: wrap;
   }
   .member-save-bar {
+    --member-save-gap: 12px;
     width: calc(100% - 24px);
     justify-content: space-between;
-    bottom: 12px;
   }
   .member-save-bar > span {
     flex: 1;

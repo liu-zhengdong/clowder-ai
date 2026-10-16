@@ -18,6 +18,7 @@ const productionCss = [
 let browser, script, css;
 const originalCwd = process.cwd();
 const records = Array.from({ length: 18 }, (_, index) => ({
+  from: { kind: 'agent', catId: 'codex61-sol' },
   id: `old-${index}`,
   type: 'assistant',
   catId: 'codex61-sol',
@@ -136,6 +137,7 @@ async function open(
               breedId: 'maine-coon',
               avatar: '/avatars/codex.png',
               mentionPatterns: ['@codex61-sol'],
+              carrier: 'cli',
               clientId: 'openai',
               defaultModel: 'gpt-6.1-sol',
               color: { primary: '#5B8C5A', secondary: '#D4E6D3' },

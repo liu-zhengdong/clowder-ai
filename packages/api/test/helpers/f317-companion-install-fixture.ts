@@ -115,7 +115,7 @@ export async function modernCompanionInstallFixture(
   const saved = messages.append({
     userId: owner,
     threadId: 'home',
-    catId: null,
+    from: { kind: 'user', userId: owner },
     content: 'preserved',
     mentions: [],
     timestamp: 1,

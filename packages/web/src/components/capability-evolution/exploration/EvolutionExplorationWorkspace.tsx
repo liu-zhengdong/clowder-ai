@@ -14,6 +14,7 @@ import { ExplorationIcon } from './ExplorationIcon';
 import { ExplorationNavigation } from './ExplorationNavigation';
 import { ExplorationOutcome } from './ExplorationOutcome';
 import { ExplorationPairedResults } from './ExplorationPairedResults';
+import { ExplorationPublicShowcase } from './ExplorationPublicShowcase';
 import { ExplorationSourceStatus } from './ExplorationSourceStatus';
 import { ExplorationSummary } from './ExplorationSummary';
 import { useExplorationWorkspace } from './use-exploration-workspace';
@@ -139,6 +140,16 @@ export function EvolutionExplorationWorkspace({
             </p>
             <p>正在读：{node.title}</p>
           </section>
+          <ExplorationPublicShowcase
+            key={JSON.stringify([
+              projection.program.workspaceId,
+              projection.program.programId,
+              refIdentity(projection.program.objectRef),
+              refIdentity(catalog.sourceRef),
+            ])}
+            projection={projection}
+            catalog={catalog}
+          />
           <ExplorationNavigation workspace={workspace} v2 />
         </>
       )}
@@ -187,7 +198,7 @@ export function EvolutionExplorationWorkspace({
                 <div key={`${item.label}:${index}`}>
                   <h4>{item.label}</h4>
                   <p>{item.detail}</p>
-                  <EvolutionSource label="依据" source={item.sourceRef} />
+                  <EvolutionSource label="依据" source={item.sourceRef} href={item.ownerHref} />
                 </div>
               ))}
             </section>

@@ -44,6 +44,7 @@ export function ExplorationLineageDialog({
         direction={workspace.reading.lineageLayout ?? 'map'}
         onViewport={(viewport) => workspace.change({ viewport })}
         onSelect={workspace.selectNode}
+        v2={allSources}
       />
     </dialog>
   );

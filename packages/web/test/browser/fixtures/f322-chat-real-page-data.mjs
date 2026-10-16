@@ -16,6 +16,7 @@ export const cats = [
   displayName,
   breedId: 'maine-coon',
   breedDisplayName: '缅因猫',
+  carrier: 'cli',
   clientId: 'openai',
   avatar: `/avatars/family/${id}.png`,
   color: { primary, secondary: '#eeeeee' },
@@ -152,6 +153,14 @@ export function createChatProofApi(now = Date.now(), crowded = false, surface = 
     }
     if (url.pathname === '/api/config/conversation-view')
       return reply({ stored: null, effective: { mode: 'group' }, source: 'product' });
+    if (url.pathname === '/api/config/message-disposition' && method === 'GET')
+      return reply({
+        productDefault: 'next_work',
+        global: null,
+        thread: null,
+        effective: 'next_work',
+        source: 'product',
+      });
     if (url.pathname === `/api/threads/${CURRENT_THREAD}/composer-draft`) {
       if (method !== 'GET') {
         if (body.expectedRevision !== revision) return reply({ error: 'conflict' }, 409);
@@ -164,12 +173,14 @@ export function createChatProofApi(now = Date.now(), crowded = false, surface = 
       return reply({
         messages: [
           {
+            from: { kind: 'user', userId: 'owner-proof' },
             id: 'reading-human',
             catId: null,
             content: '请把这段真实使用中的长对话放回阅读栏，保留原有内容和操作。'.repeat(20),
             timestamp: now - 2000,
           },
           {
+            from: { kind: 'agent', catId: 'codex-astra' },
             id: 'reading-cat',
             catId: 'codex-astra',
             origin: 'stream',
@@ -216,7 +227,7 @@ export function createChatProofApi(now = Date.now(), crowded = false, surface = 
     if (surface && ['/api/health', '/api/ready'].includes(url.pathname)) return reply({ status: 'ok', ready: true });
     if (url.pathname === '/api/messages' && method === 'POST') {
       sent.push(body);
-      return reply({ ok: true, id: `accepted-${sent.length}` });
+      return reply({ status: 'queued', userMessageId: `accepted-${sent.length}` });
     }
     const thread = threads.find((entry) => url.pathname === `/api/threads/${entry.id}`);
     if (thread) {

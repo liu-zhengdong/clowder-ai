@@ -89,27 +89,51 @@ const unifiedSource = (extra = {}) => ({
   ...extra,
 });
 // F310's unified owner read (version 1). The default is the proven complete empty set.
-const unifiedRead = (overrides = {}) => ({
-  version: 1,
-  status: 'available',
-  scope: 'owner_all_projects',
-  identity: { ownerUserId: 'owner-1' },
-  observedAt: 3,
-  sources: {
-    approvals: unifiedSource(),
-    needsMe: unifiedSource({ coverage: 'current_linked_F310_five_producers' }),
-    structuredChoices: unifiedSource({ coverage: 'pending_f306_structured_choices' }),
-  },
-  readWindow: { startedAt: 1, endedAt: 3, consistency: 'independent_source_reads' },
-  consistency: { state: 'verified', reasons: [] },
-  items: [],
-  totalCount: 0,
-  attentionCount: (overrides.items ?? []).filter(
-    (item) => item.approval?.resolution === 'open' || item.choiceRequest !== undefined,
-  ).length,
-  page: { offset: 0, limit: 20, scope: 'known_rows', hasMore: false },
-  ...overrides,
-});
+const unifiedRead = (overrides = {}) => {
+  const read = {
+    version: 1,
+    status: 'available',
+    scope: 'owner_all_projects',
+    identity: { ownerUserId: 'owner-1' },
+    observedAt: 3,
+    sources: {
+      approvals: unifiedSource(),
+      needsMe: unifiedSource({ coverage: 'current_linked_F310_five_producers' }),
+      structuredChoices: unifiedSource({ coverage: 'pending_f306_structured_choices' }),
+    },
+    readWindow: { startedAt: 1, endedAt: 3, consistency: 'independent_source_reads' },
+    consistency: { state: 'verified', reasons: [] },
+    items: [],
+    totalCount: 0,
+    attentionCount: (overrides.items ?? []).filter(
+      (item) => item.approval?.resolution === 'open' || item.choiceRequest !== undefined,
+    ).length,
+    page: { offset: 0, limit: 20, scope: 'known_rows', hasMore: false },
+    ...overrides,
+  };
+  // These synthetic owner reads represent a fresh personal view with no ignored items.
+  // Real-route journeys below return their own canonical preference projection.
+  read.sources.personalPreferences = unifiedSource({ coverage: 'owner_personal_ignored_items' });
+  read.items = read.items.map((item) => ({
+    ...item,
+    preferenceCoordinate: { kind: 'mailbox', decisionRef: item.decisionRef, version: `fixture:${item.decisionRef}` },
+  }));
+  read.personalView = { mode: 'visible', preferenceRevision: 0 };
+  if (read.totalCount !== undefined && read.attentionCount !== undefined) {
+    Object.assign(read.personalView, {
+      originalTotalCount: read.totalCount,
+      visibleTotalCount: read.totalCount,
+      ignoredTotalCount: 0,
+      originalAttentionCount: read.attentionCount,
+      visibleAttentionCount: read.attentionCount,
+      ignoredAttentionCount: 0,
+    });
+  } else {
+    delete read.totalCount;
+    delete read.attentionCount;
+  }
+  return read;
+};
 const approvalRow = (id, summary) => ({
   decisionRef: `approval:F128:${id}`,
   kind: 'approval',
@@ -181,7 +205,7 @@ async function openProof({
   // Offered every other /api request first; returns { status?, body, raw?, abort? } to answer it, or null to fall through.
   api = () => null,
   session = { userId: 'owner-1' },
-  ready = '待办，暂无',
+  ready = language === 'en' ? 'To-do, None' : '待办，暂无',
 } = {}) {
   const page = await browser.newPage({ viewport });
   page.setDefaultTimeout(5_000);
@@ -243,6 +267,15 @@ async function openProof({
       }
       // Non-mention scenarios have no handling receipt. Real-owner journeys override
       // this exact GET via `api`; every other unknown endpoint still fails closeProof.
+      if (request.method() === 'GET' && url.pathname === '/api/config/ignored-items') {
+        return handler.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({ ownerUserId: session.userId, revision: 0, entries: [] }),
+        });
+      }
+      if (request.method() === 'GET' && url.pathname === '/api/approval-hub/settled') {
+        return handler.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], count: 0 }) });
+      }
       if (request.method() === 'GET' && url.pathname === '/api/concierge/work/mentions/last-handling') {
         return handler.fulfill({
           contentType: 'application/json',
@@ -264,12 +297,14 @@ async function openProof({
           cats: [
             {
               id: 'opus',
+              carrier: 'cli',
               displayName: '布偶猫',
               color: { primary: '#7966a8', secondary: '#eeeaf8' },
               avatar: '/shell/catball-E-28px.png',
             },
             {
               id: 'glm52',
+              carrier: 'cli',
               displayName: '狸花猫',
               variantLabel: 'GLM-5.2',
               color: { primary: '#9b744f', secondary: '#f3eadf' },
@@ -374,7 +409,8 @@ test('mailbox moves focus into its panel and Escape returns to the exact rail bu
     await dialog.waitFor();
     // A proven empty read has no row to take focus, so focus lands on the panel's close button.
     assert.equal(await page.getByTestId('mailbox-close').evaluate((el) => el === document.activeElement), true);
-    assert.equal(await page.getByTestId('mailbox-empty').textContent(), '暂无待办');
+    assert.equal(await page.getByTestId('mailbox-group-decisions').locator('p').textContent(), '暂无等你决定的事');
+    assert.equal(await page.getByTestId('mailbox-group-mentions').locator('p').textContent(), '暂无 @你 请求');
     await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('dialog').count(), 0);
     assert.equal(await page.getByTestId('mailbox-button').evaluate((el) => el === document.activeElement), true);
@@ -402,7 +438,7 @@ test('mailbox shows all real rows while the badge counts only qualified decision
     assert.equal(await page.getByTestId('rail-badge-count').textContent(), '1');
     assert.ok(
       proof.requests.includes(
-        'GET /api/concierge/work/decisions?view=unified&includeUserMentions=true&offset=0&limit=20',
+        'GET /api/concierge/work/decisions?view=unified&includeUserMentions=true&offset=0&limit=20&personalView=visible',
       ),
     );
     await page.getByTestId('mailbox-button').click();
@@ -488,12 +524,12 @@ test('待办 is a full-height panel beside the rail: rows open one at a time, it
       true,
       'the panel must not cover the rail button that opened it',
     );
-    // The entry navigation retains the proven total beside its active destination.
+    // The entry navigation counts qualified decisions; every other row remains in its group.
     assert.equal(await page.getByRole('tab').count(), 0);
     assert.equal(await page.getByRole('navigation', { name: '待办入口', exact: true }).count(), 1);
     assert.equal(await page.getByTestId('mailbox-tab-needs-me').getAttribute('aria-current'), 'page');
-    assert.equal(await page.getByTestId('mailbox-tab-count').textContent(), '3');
-    assert.equal((await page.getByTestId('mailbox-tab-needs-me').textContent())?.replace(/\s/g, ''), '需要我处理3');
+    assert.equal(await page.getByTestId('mailbox-tab-count').textContent(), '1');
+    assert.equal((await page.getByTestId('mailbox-tab-needs-me').textContent())?.replace(/\s/g, ''), '需要我处理1');
 
     const toggles = page.getByTestId('mailbox-item-toggle');
     assert.deepEqual(await toggles.evaluateAll((els) => els.map((el) => el.getAttribute('aria-expanded'))), [
@@ -1067,7 +1103,7 @@ test('the complete header stays in its real shell pane through keyboard navigati
       const proof = await openProof({
         viewport: { width, height: 900 },
         language,
-        ready: '作品，这条对话的作品',
+        ready: language === 'en' ? 'Works, Works in this conversation' : '作品，这条对话的作品',
       });
       const { page } = proof;
       try {
@@ -1536,7 +1572,7 @@ test('accepted chat real page: sidebar, composer and control ownership', async (
   await runChatRealPageJourney(t, browser);
 });
 
-test('v2 decides a complete F128 proposal in its mailbox and retains the canonical result in the same position', async () => {
+test('v2 decides a complete F128 proposal and retains its result while preserving the other grouped rows', async () => {
   const proposal = {
     proposalId: 'direct-approval',
     status: 'pending',
@@ -1637,7 +1673,7 @@ test('v2 decides a complete F128 proposal in its mailbox and retains the canonic
   const { page } = proof;
   try {
     await page.getByTestId('mailbox-button').click();
-    await page.getByTestId('mailbox-item-toggle').nth(1).click();
+    await page.getByTestId('mailbox-item-toggle').filter({ hasText: proposal.title }).click();
     await page.getByTestId('mailbox-proposal-reason').waitFor();
     await page
       .getByTestId('approve-btn')
@@ -1647,11 +1683,11 @@ test('v2 decides a complete F128 proposal in its mailbox and retains the canonic
     assert.match(await page.getByTestId('mailbox-item-body').textContent(), /执行者：狸花猫/);
     const contractText = await page.getByTestId('mailbox-item-body').textContent();
     assert.match(contractText, /父对话：thread-return/);
-    assert.match(contractText, /autonomous（下游自治，无强制回报）/);
+    assert.match(contractText, /回报：不回报/);
     assert.ok(contractText.includes('隔离审批验证 (task:work:isolated-approval)'));
     assert.ok(contractText.includes(proposal.approvedDevelopmentScope.acceptedSourceRef));
     assert.ok(contractText.includes(proposal.approvedDevelopmentScope.acceptedRevision));
-    assert.equal(await page.getByTestId('mailbox-open-original').textContent(), '在原处看这条提议');
+    assert.equal(await page.getByTestId('mailbox-open-original').textContent(), '在原处打开');
     const evidenceDir = process.env.F322_MAILBOX_EVIDENCE_DIR;
     if (evidenceDir) {
       mkdirSync(evidenceDir, { recursive: true });
@@ -1668,14 +1704,15 @@ test('v2 decides a complete F128 proposal in its mailbox and retains the canonic
     releaseConfirmation();
     await page.getByTestId('mailbox-retained-line').filter({ hasText: '对话已开' }).waitFor();
     assert.match(await page.getByTestId('mailbox-retained-line').textContent(), /已同意 · 对话已开/);
-    const children = await page
-      .locator('#mailbox-tabpanel')
-      .locator('ul > li')
-      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-testid')));
-    assert.deepEqual(children, ['mailbox-item', 'mailbox-retained-result', 'mailbox-item']);
-    assert.equal(await page.getByTestId('mailbox-tab-count').textContent(), '2');
-    await page.getByTestId('mailbox-filter-batch').click();
-    await page.getByTestId('approval-tab-history').click();
+    const otherRows = await page
+      .getByTestId('mailbox-group-other')
+      .getByTestId('mailbox-item-toggle')
+      .allTextContents();
+    assert.equal(otherRows.length, 2);
+    assert.ok(otherRows[0].includes(before.summary) && otherRows[1].includes(after.summary));
+    assert.equal(await page.getByTestId('mailbox-group-results').getByTestId('mailbox-retained-result').count(), 1);
+    assert.equal(await page.getByTestId('mailbox-tab-count').textContent(), '0');
+    await page.getByTestId('mailbox-records').click();
     await page.getByTestId('approval-tab-history').waitFor();
     assert.equal(
       await page
@@ -1685,7 +1722,8 @@ test('v2 decides a complete F128 proposal in its mailbox and retains the canonic
       true,
     );
     await page.getByRole('button', { name: '‹ 返回待办', exact: true }).click();
-    await page.getByTestId('mailbox-filter-batch').click();
+    await page.getByTestId('mailbox-records').click();
+    await page.getByTestId('approval-tab-pending').click();
     await page.getByTestId('approval-filter-bar').waitFor();
     await page.getByRole('button', { name: '‹ 返回待办', exact: true }).click();
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
@@ -1753,7 +1791,8 @@ test('v2 second-layer 已过期 finds the canonical item without permitting a pr
   });
   try {
     await proof.page.getByTestId('mailbox-button').click();
-    await proof.page.getByTestId('mailbox-filter-batch').click();
+    await proof.page.getByTestId('mailbox-records').click();
+    await proof.page.getByTestId('approval-tab-pending').click();
     await proof.page.getByTestId('approval-filter-stale').click();
     await proof.page.getByText(item.summary, { exact: true }).waitFor();
     assert.equal(await proof.page.getByTestId('approval-empty-state').count(), 0);
@@ -1804,7 +1843,8 @@ test('v2 safe batch excludes the unknown-result approval and submits only the id
     await page.getByTestId('approve-btn').click();
     await waitForSessionText(page, '没能确认提交结果，重新读取后仍待决定');
     assert.deepEqual(posts, ['/api/dispatch-proposals/unknown-first/approve']);
-    await page.getByTestId('mailbox-filter-batch').click();
+    await page.getByTestId('mailbox-records').click();
+    await page.getByTestId('approval-tab-pending').click();
     const held = page.getByTestId('mailbox-tools-item-unknown-first');
     const idle = page.getByTestId('mailbox-tools-item-idle-second');
     await held.getByTestId('mailbox-approval-reread').waitFor();

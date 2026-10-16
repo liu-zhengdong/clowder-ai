@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { verifyPrReviewEventWaitCoverage } from '../dist/infrastructure/github/pr-review-event-wait-coverage.js';
 
 const INPUT = {
-  repoFullName: 'zts212653/cat-cafe',
+  repoFullName: 'zts212653/clowder-ai',
   prNumber: 2856,
   triggerCommentId: 4936000000,
 };

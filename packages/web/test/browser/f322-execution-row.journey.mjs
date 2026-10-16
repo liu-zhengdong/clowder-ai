@@ -45,6 +45,7 @@ const cats = [
     avatar: `/avatars/${id}.png`,
     color: { primary: ['#9B7EBD', '#5B8C5A', '#5B9BD5'][n], secondary: '#eeeeee' },
     mentionPatterns: [`@${id}`, `@${['宪宪', '砚砚', '烁烁'][n]}`],
+    carrier: 'cli',
     clientId: 'fixture',
     defaultModel: 'fixture',
   })),
@@ -57,6 +58,7 @@ const cats = [
     avatar: '/avatars/sonnet.png',
     color: { primary: '#7C3AED', secondary: '#eeeeee' },
     mentionPatterns: ['@sonnet', '@宪宪'],
+    carrier: 'cli',
     clientId: 'fixture',
     defaultModel: 'fixture',
   },
@@ -205,8 +207,8 @@ function finish({ errors, unexpected }) {
 
 test('every state of the design renders its words in a fixed 36px row', async () => {
   const expected = {
-    working: /^宪宪（Opus 5\.5） 正在工作 \d+:\d{2}$/,
-    queue: /^宪宪（Opus 5\.5） 正在工作 \d+:\d{2} · 排队 2$/,
+    working: /^宪宪 · Opus 5\.5 处理中 \d+:\d{2}$/,
+    queue: /^宪宪 · Opus 5\.5 处理中 \d+:\d{2} · 排队 2$/,
     several: /^3 项运行中 · 排队 5$/,
     silent: /^没有动静 \d+:\d{2}$/,
     stopping: /^正在停止 \d+:\d{2}$/,
@@ -285,7 +287,10 @@ test('several runs: one ■ per run in the panel, each stopping only its own run
   await shot(session.page, 'several-open');
   const runs = session.page.locator('[data-testid="execution-row-run"]');
   assert.equal(await runs.count(), 3);
-  await runs.filter({ hasText: '砚砚' }).locator('button').click();
+  await runs
+    .filter({ hasText: '砚砚' })
+    .getByRole('button', { name: 'Stop codex live_invocation exec-codex', exact: true })
+    .click();
   await expectCalls(session, [
     `POST /api/threads/${THREAD}/executions/live/exec-codex/cancel`,
     'GET /api/executions/active?projectPath=%2Fpreview',

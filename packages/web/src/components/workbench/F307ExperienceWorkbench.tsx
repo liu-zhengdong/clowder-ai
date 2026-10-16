@@ -12,6 +12,7 @@ Real-shell host for the shared F307 Workbench kernel.
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { ListenModePlayer } from '@/components/listen-mode/ListenModePlayer';
 import { defaultSettingsSectionPath } from '@/components/settings/settings-entry-path';
+import { openMailbox } from '@/components/shell/mailbox/mailbox-navigation';
 import { resolveShellCopy, useShellCopy } from '@/components/shell/shell-copy';
 import { readShellLanguage } from '@/components/shell/shell-language';
 import { resolveShellNavTarget } from '@/components/shell/shell-navigation';
@@ -57,7 +58,9 @@ import {
   createWorkspaceDestinationSurface,
   createWorkspaceModeSurface,
   resolveFileTarget,
+  resolveWorkspaceDestinationTarget,
 } from './real-surface-adapters';
+import { retiredWorkspaceDestination } from './retired-workspace-destinations';
 import { returnFileCard } from './return-file-card';
 import type { ToolsReturnRequest } from './use-tools-viewport-return';
 import { useWorkspaceDestinationAdmission } from './use-workspace-destination-admission';
@@ -123,14 +126,18 @@ function RecentlyClosedSurfaces({
   dispatch,
   onRestore,
   copy,
+  retireLegacy,
 }: {
   layout: WorkbenchLayoutState;
   dispatch: (action: WorkbenchAction) => void;
   onRestore: () => void;
   copy: typeof workspaceChromeCopy.zh;
+  retireLegacy: boolean;
 }) {
+  const isV2 = useShellPresentation() === 'v2';
   const [expanded, setExpanded] = useState(false);
-  if (layout.recentlyClosed.length === 0) return null;
+  const restorable = layout.recentlyClosed.filter((surface) => !retireLegacy || !retiredWorkspaceDestination(surface));
+  if (restorable.length === 0) return null;
   return (
     <aside
       className="shrink-0 border-t border-cafe-subtle bg-[var(--console-panel-bg)] px-3 py-2"
@@ -145,10 +152,10 @@ function RecentlyClosedSurfaces({
           aria-label={expanded ? copy.recentlyClosed.collapse : copy.recentlyClosed.expand}
           data-testid="f307-recently-closed-toggle"
         >
-          {copy.recentlyClosed.label(layout.recentlyClosed.length)}
+          {copy.recentlyClosed.label(restorable.length)}
         </button>
         {expanded &&
-          layout.recentlyClosed.map((surface) => (
+          restorable.map((surface) => (
             <button
               key={surface.id}
               type="button"
@@ -164,7 +171,11 @@ function RecentlyClosedSurfaces({
               className="rounded-lg bg-cafe-surface-sunken px-2 py-1 text-micro font-semibold text-cafe-secondary hover:text-cafe"
               data-testid={`f307-restore-${surface.type}`}
             >
-              {copy.recentlyClosed.restore(surface.title)}
+              {copy.recentlyClosed.restore(
+                isV2 && resolveWorkspaceDestinationTarget(surface)?.destinationRef === 'host:status'
+                  ? copy.statusSurface.label
+                  : surface.title,
+              )}
             </button>
           ))}
       </div>
@@ -503,13 +514,36 @@ export function F307ExperienceWorkbench({
   const zeroTopology = projection.visibleSurfaceIds.length === 0;
   const foregroundUnavailable =
     foregroundSurfaceId != null && !layout.surfaces.some((surface) => surface.id === foregroundSurfaceId);
-  const homeFocused = homeOpen || zeroTopology || foregroundSurfaceId === null || foregroundUnavailable;
+  const selectedWorkspaceSurface = layout.surfaces.find((surface) => surface.id === layout.activeSurfaceId);
+  const retiredSelected =
+    isV2 &&
+    visible &&
+    !homeOpen &&
+    foregroundSurfaceId !== null &&
+    selectedWorkspaceSurface &&
+    (foregroundSurfaceId === undefined || foregroundSurfaceId === selectedWorkspaceSurface.id)
+      ? retiredWorkspaceDestination(selectedWorkspaceSurface)
+      : null;
+  const homeFocused =
+    homeOpen || zeroTopology || foregroundSurfaceId === null || foregroundUnavailable || !!retiredSelected;
   const activeWorkspaceSurface = homeFocused
     ? undefined
     : layout.surfaces.find((surface) => surface.id === layout.activeSurfaceId);
   useEffect(() => {
     if (foregroundSurfaceId != null) setHomeOpen(false);
   }, [foregroundSurfaceId]);
+  useEffect(() => {
+    if (!hydrated || !retiredSelected || !selectedWorkspaceSurface) return;
+    dispatch({
+      type: 'close-surface',
+      surfaceId: selectedWorkspaceSurface.id,
+      entitlement: { kind: 'user', reason: 'surface-tab' },
+    });
+    exitMainAreaAttention();
+    onOpenHome?.();
+    setHomeOpen(true);
+    if (retiredSelected === 'mailbox') openMailbox();
+  }, [dispatch, exitMainAreaAttention, hydrated, onOpenHome, retiredSelected, selectedWorkspaceSurface]);
   // A queued explicit request wins initial foreground restoration; a later foreground input still closes Home.
   useWorkspaceExecutionRequest(threadId, setHomeOpen);
   const topologyContract = zeroTopologyContract(hydrated, zeroTopology, homeFocused);
@@ -534,7 +568,7 @@ export function F307ExperienceWorkbench({
       ? [layout.sidecar]
       : []),
     ...layout.recentlyClosed.filter((surface) => surface.type !== 'thread-replay' && !openSurfaceIds.has(surface.id)),
-  ];
+  ].filter((surface) => !isV2 || !retiredWorkspaceDestination(surface));
   const openSurfaceFromOwner = (
     nextSurface: WorkspaceSurfaceDescriptor,
     sourceSurfaceId: string,
@@ -590,7 +624,7 @@ export function F307ExperienceWorkbench({
   }, [destinationAdmission.message]);
   const selectRecentSurface = (requested: WorkspaceSurfaceDescriptor) => {
     const current = useF307ExperienceWorkbenchStore.getState().layout;
-    const surface = selectRecentSurfaces(current, threadId).find((candidate) => candidate.id === requested.id);
+    const surface = selectRecentSurfaces(current, threadId, isV2).find((candidate) => candidate.id === requested.id);
     if (!surface) return;
     const entitlement = { kind: 'user' as const, reason: 'workspace-home-selection' as const };
     if (current.surfaces.some((candidate) => candidate.id === surface.id))
@@ -886,7 +920,7 @@ export function F307ExperienceWorkbench({
                 captureSettingsOrigin();
                 onOpenAppRoute(resolveShellNavTarget(href, threadId ? `/thread/${encodeURIComponent(threadId)}` : '/'));
               }}
-              recentSurfaces={selectRecentSurfaces(layout, threadId)}
+              recentSurfaces={selectRecentSurfaces(layout, threadId, isV2)}
               onSelectRecentSurface={selectRecentSurface}
               repository={repository}
               worktreeId={worktreeId}
@@ -1030,6 +1064,7 @@ export function F307ExperienceWorkbench({
           dispatch={dispatchInput}
           onRestore={() => setHomeOpen(false)}
           copy={controlCopy}
+          retireLegacy={isV2}
         />
       )}
     </section>

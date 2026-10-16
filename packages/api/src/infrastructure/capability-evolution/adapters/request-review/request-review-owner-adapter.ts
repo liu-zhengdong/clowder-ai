@@ -23,6 +23,7 @@ import {
   type ProgramAdapterDescriptorV1,
   type ProgramAdapterOperation,
 } from '../program-adapter-registry.js';
+import { projectRequestReviewHarnessExploration } from './request-review-harness-lineage.js';
 import {
   REQUEST_REVIEW_OWNER_FEATURE_ID,
   REQUEST_REVIEW_SKILL_FILE,
@@ -73,6 +74,8 @@ export interface RequestReviewOwnerPort {
   readSkillFileAt(commitOid: string, filePath: string): Promise<string>;
   /** Lists newest-first commits that touched the file, with the exact blob at each commit. */
   listFileHistoryAt(commitOid: string, filePath: string, limit: number): Promise<RequestReviewGitVersion[]>;
+  /** Reads the owner-reviewed F314 historical index from the same pinned repository cut. */
+  readHarnessLineageAt(commitOid: string): Promise<unknown>;
 }
 
 export interface RequestReviewGitVersion {
@@ -334,6 +337,41 @@ export function createRequestReviewOwnerAdapter(options: RequestReviewOwnerAdapt
     }
   };
 
+  const explorationReview: NonNullable<ProgramAdapter['explorationReview']> = async (input) => {
+    const envelope = { schemaVersion: 1 as const, programRef: input.programRef, objectRef: input.objectRef };
+    if (
+      input.objectRef.ownerFeatureId !== REQUEST_REVIEW_OWNER_FEATURE_ID ||
+      input.objectRef.ownerStateRef !== TARGET_STATE_REF_PREFIX
+    ) {
+      return {
+        ...envelope,
+        status: 'invalid' as const,
+        blockers: [{ code: 'owner_exploration_scope_mismatch', ownerRef: input.objectRef }],
+      };
+    }
+    try {
+      const headOid = await port.gitHeadOid();
+      const projection = projectRequestReviewHarnessExploration(
+        input,
+        await port.readHarnessLineageAt(headOid),
+        new Date().toISOString(),
+      );
+      return (
+        projection ?? {
+          ...envelope,
+          status: 'invalid' as const,
+          blockers: [{ code: 'owner_historical_index_invalid', ownerRef: input.objectRef }],
+        }
+      );
+    } catch {
+      return {
+        ...envelope,
+        status: 'unavailable' as const,
+        blockers: [{ code: 'owner_historical_index_unavailable', ownerRef: input.objectRef }],
+      };
+    }
+  };
+
   return {
     descriptor,
     observe: delegate('observe'),
@@ -344,5 +382,6 @@ export function createRequestReviewOwnerAdapter(options: RequestReviewOwnerAdapt
     freshOutcome: delegate('freshOutcome'),
     rollback: delegate('rollback'),
     versionReview,
+    explorationReview,
   };
 }
