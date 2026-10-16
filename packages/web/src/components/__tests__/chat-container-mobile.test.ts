@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatContainer } from '@/components/ChatContainer';
+import { useArtworkLightboxScope } from '@/components/content-review/ArtworkLightboxScope';
 import { writeShellPresentation } from '@/components/shell/shell-presentation';
 import { ThreadChatRuntimeProvider } from '@/components/thread-chat';
 import { createArtifactReviewSurface } from '@/components/workbench/artifact-review-surface';
@@ -159,8 +160,9 @@ vi.mock('../ChatContainerHeader', () => ({
     onToggleSidebar: () => void;
     onToggleStatusPanel: () => void;
     onOpenMessageSearch?: () => void;
-  }) =>
-    React.createElement(
+  }) => {
+    const lightbox = useArtworkLightboxScope();
+    return React.createElement(
       'div',
       { 'data-testid': 'header' },
       React.createElement('button', {
@@ -175,7 +177,20 @@ vi.mock('../ChatContainerHeader', () => ({
       }),
       props.onOpenMessageSearch &&
         React.createElement('button', { type: 'button', onClick: props.onOpenMessageSearch }, '查找消息'),
-    ),
+      React.createElement('button', {
+        type: 'button',
+        'data-testid': 'open-artwork-lightbox',
+        onClick: () =>
+          lightbox?.open({
+            url: '/uploads/original.png',
+            title: '原作品',
+            alt: '原作品',
+            mediaType: 'image',
+            surface: null,
+          }),
+      }),
+    );
+  },
 }));
 vi.mock('../ThreadSidebar', () => ({
   ThreadSidebar: (props: { onClose: () => void }) =>
@@ -402,9 +417,11 @@ describe('ChatContainer mobile interactions', () => {
   });
 
   it.each([
-    false,
-    true,
-  ])('keeps the search trip in Chat and withdraws only the covered mobile controls (desktop=%s)', (desktop) => {
+    { desktop: false, cover: 'workspace' },
+    { desktop: true, cover: 'workspace' },
+    { desktop: false, cover: 'artwork' },
+    { desktop: true, cover: 'artwork' },
+  ])('keeps the search trip while $cover covers Chat (desktop=$desktop)', ({ desktop, cover }) => {
     writeShellPresentation('v2');
     mockMatchMedia(desktop);
     const id = 'a7eafdfa-513c-4129-8acd-9f4cc8df1aa1';
@@ -434,13 +451,23 @@ describe('ChatContainer mobile interactions', () => {
       const input = container.querySelector('[data-testid="chat-input"]');
       expect(controls()).not.toBeNull();
       expect(chat?.contains(controls())).toBe(true);
-      mockRightPanelMode = 'workspace';
-      mockRightPanelOpen = true;
-      act(() => root.render(renderChatContainer('test-thread')));
-      expect(controls() !== null).toBe(desktop);
+      if (cover === 'artwork') {
+        act(() => container.querySelector<HTMLButtonElement>('[data-testid="open-artwork-lightbox"]')?.click());
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+      } else {
+        mockRightPanelMode = 'workspace';
+        mockRightPanelOpen = true;
+        act(() => root.render(renderChatContainer('test-thread')));
+      }
+      expect(controls() !== null).toBe(cover === 'workspace' && desktop);
       expect(localStorage.getItem(key)).toBe(saved);
-      mockRightPanelOpen = false;
-      act(() => root.render(renderChatContainer('test-thread')));
+      if (cover === 'artwork') {
+        act(() => document.querySelector<HTMLButtonElement>('[role="dialog"] button')?.click());
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+      } else {
+        mockRightPanelOpen = false;
+        act(() => root.render(renderChatContainer('test-thread')));
+      }
       expect(controls()).not.toBeNull();
       expect(container.querySelector('[data-testid="chat-input"]')).toBe(input);
       expect(localStorage.getItem(key)).toBe(saved);

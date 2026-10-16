@@ -50,6 +50,11 @@ import {
 } from '../../agents/invocation/queue-ledger/QueueLedger.js';
 import type { MessageMetadata } from '../../types.js';
 import { compareCursors, cursorFor, parseCursor } from '../cursor.js';
+import {
+  type LifecycleAppendRecoveryInput,
+  type LifecycleAppendRecoveryResult,
+  prepareLifecycleAppendRecovery,
+} from '../lifecycle-append-recovery.js';
 import type { MessageDeliveryBoundary } from '../message-delivery-boundary.js';
 import { messageFrom } from '../message-from.js';
 import { notifyMessageTimelineChange } from '../notify-message-timeline-change.js';
@@ -1009,6 +1014,7 @@ export type CommitLifecycleResponseTerminalResult =
 
 export type LifecycleInputDispatchPatch = {
   inputRead?: LifecycleInputReadReceipt;
+  appendAcceptance?: 'pending' | 'accepted';
   orderKey: string;
   producerInvocationId?: string;
   targetId: string;
@@ -1034,6 +1040,7 @@ export interface LifecycleAppendAdmissionInput {
     responseMessageId: string;
     /** Optional adapter capability; presentation only. */
     inputReadSupported?: boolean;
+    awaitingAcceptance?: boolean;
     /** Exact time this source was admitted to the target response. */
     dispatchedAt: number;
   }[];
@@ -1045,23 +1052,6 @@ export type CommitLifecycleAppendAdmissionResult =
       kind: 'conflict';
       reason: 'invalid_input' | 'scope_mismatch' | 'input_lifecycle_conflict' | 'response_lifecycle_conflict';
     }
-  | { kind: 'not_found' };
-
-export interface LifecycleAppendRejectionInput {
-  threadId: string;
-  entryId: string;
-  inputMessageIds: readonly string[];
-  failureMessageIds: readonly string[];
-  run: {
-    targetId: string;
-    invocationId: string;
-    responseMessageId: string;
-  };
-}
-
-export type CommitLifecycleAppendRejectionResult =
-  | { kind: 'applied' | 'replayed'; messages: StoredMessage[] }
-  | { kind: 'conflict'; reason: 'invalid_input' | 'scope_mismatch' | 'lifecycle_conflict' }
   | { kind: 'not_found' };
 
 type AssignLifecycleDispatchTargetsResult =
@@ -1213,6 +1203,8 @@ export function advanceLifecycleInputDispatchMetadata(
 ): LifecycleInputDispatchMetadataResult {
   if (patch.inputRead !== undefined && !isLifecycleInputReadReceipt(patch.inputRead))
     return { kind: 'conflict', reason: 'invalid_transition' };
+  if (patch.appendAcceptance !== undefined && !['pending', 'accepted'].includes(patch.appendAcceptance))
+    return { kind: 'conflict', reason: 'invalid_transition' };
   const identity = {
     kind: 'input' as const,
     orderKey: patch.orderKey,
@@ -1232,6 +1224,7 @@ export function advanceLifecycleInputDispatchMetadata(
             statusMessageId: patch.statusMessageId,
             ...(patch.dispatchedAt !== undefined ? { dispatchedAt: patch.dispatchedAt } : {}),
             ...(patch.inputRead ? { inputRead: patch.inputRead } : {}),
+            ...(patch.appendAcceptance ? { appendAcceptance: patch.appendAcceptance } : {}),
           },
         ],
       },
@@ -1262,6 +1255,7 @@ export function advanceLifecycleInputDispatchMetadata(
             statusMessageId: patch.statusMessageId,
             ...(patch.dispatchedAt !== undefined ? { dispatchedAt: patch.dispatchedAt } : {}),
             ...(patch.inputRead ? { inputRead: patch.inputRead } : {}),
+            ...(patch.appendAcceptance ? { appendAcceptance: patch.appendAcceptance } : {}),
           },
         ],
       },
@@ -1269,6 +1263,17 @@ export function advanceLifecycleInputDispatchMetadata(
   }
   if (existing.statusMessageId !== patch.statusMessageId) {
     return { kind: 'conflict', reason: 'status_message_mismatch' };
+  }
+  if (patch.appendAcceptance === 'accepted' && existing.appendAcceptance === 'pending') {
+    return {
+      kind: 'applied',
+      lifecycle: {
+        ...current,
+        dispatchRefs: refs.map((ref) =>
+          ref.targetId === patch.targetId ? { ...ref, appendAcceptance: 'accepted' } : ref,
+        ),
+      },
+    };
   }
   // Read evidence cannot advance or revert execution phase. A terminal commit
   // may race the observer, so preserve the latest durable phase atomically.
@@ -1346,11 +1351,16 @@ function appendLifecycleResponseInputsMetadata(
     return { kind: 'conflict' };
   }
   if (hasEntry) return { kind: 'replayed' };
+  if (
+    input.inputMessageIds.length === 0 &&
+    (current.latestInputTimelineOrderAt ?? 0) >= input.latestInputTimelineOrderAt
+  )
+    return { kind: 'replayed' };
   return {
     kind: 'applied',
     lifecycle: {
       ...current,
-      inputEntryIds: [...current.inputEntryIds, input.entryId],
+      inputEntryIds: input.inputMessageIds.length ? [...current.inputEntryIds, input.entryId] : current.inputEntryIds,
       inputMessageIds: [...current.inputMessageIds, ...input.inputMessageIds],
       latestInputTimelineOrderAt: Math.max(current.latestInputTimelineOrderAt ?? 0, input.latestInputTimelineOrderAt),
     },
@@ -1397,6 +1407,7 @@ export function prepareLifecycleAppendAdmission(
         statusMessageId: run.responseMessageId,
         dispatchedAt: run.dispatchedAt,
         ...(run.inputReadSupported ? { inputRead: { status: 'pending' as const } } : {}),
+        ...(run.awaitingAcceptance ? { appendAcceptance: 'pending' as const } : {}),
       });
       if (transition.kind === 'conflict') return { kind: 'conflict', reason: 'input_lifecycle_conflict' };
       if (transition.kind === 'applied') {
@@ -1425,109 +1436,6 @@ export function prepareLifecycleAppendAdmission(
     if (transition.kind === 'conflict') return { kind: 'conflict', reason: 'response_lifecycle_conflict' };
     if (transition.kind === 'applied') replayed = false;
     lifecycles.push(transition.kind === 'applied' ? transition.lifecycle : message.lifecycle!);
-  }
-  return { kind: 'prepared', lifecycles, replayed };
-}
-
-function removeLifecycleResponseInputs(
-  current: Extract<LifecycleStoredMessageMetadata, { kind: 'response' }>,
-  entryId: string,
-  inputMessageIds: readonly string[],
-): { kind: 'applied'; lifecycle: typeof current } | { kind: 'replayed' } | { kind: 'conflict' } {
-  const hasEntry = current.inputEntryIds.includes(entryId);
-  const ids = new Set(inputMessageIds);
-  const present = current.inputMessageIds.filter((id) => ids.has(id));
-  if (!hasEntry && present.length === 0) return { kind: 'replayed' };
-  if (!hasEntry || present.length !== ids.size) return { kind: 'conflict' };
-  return {
-    kind: 'applied',
-    lifecycle: {
-      ...current,
-      inputEntryIds: current.inputEntryIds.filter((id) => id !== entryId),
-      inputMessageIds: current.inputMessageIds.filter((id) => !ids.has(id)),
-    },
-  };
-}
-
-export function prepareLifecycleAppendRejection(
-  messages: readonly StoredMessage[],
-  input: LifecycleAppendRejectionInput,
-):
-  | { kind: 'prepared'; lifecycles: LifecycleStoredMessageMetadata[]; replayed: boolean }
-  | CommitLifecycleAppendRejectionResult {
-  if (
-    !input.threadId ||
-    !input.entryId ||
-    !input.run.targetId ||
-    !input.run.invocationId ||
-    !input.run.responseMessageId ||
-    input.inputMessageIds.length === 0 ||
-    input.failureMessageIds.length !== input.inputMessageIds.length ||
-    new Set(input.inputMessageIds).size !== input.inputMessageIds.length ||
-    new Set(input.failureMessageIds).size !== input.failureMessageIds.length
-  ) {
-    return { kind: 'conflict', reason: 'invalid_input' };
-  }
-  if (messages.length !== input.inputMessageIds.length + 1) return { kind: 'not_found' };
-  if (messages.some((message) => message.threadId !== input.threadId)) {
-    return { kind: 'conflict', reason: 'scope_mismatch' };
-  }
-
-  const lifecycles: LifecycleStoredMessageMetadata[] = [];
-  let replayed = true;
-  for (let index = 0; index < input.inputMessageIds.length; index += 1) {
-    const lifecycle = messages[index]!.lifecycle;
-    if (!lifecycle || lifecycle.kind === 'delivery_failure') {
-      return { kind: 'conflict', reason: 'lifecycle_conflict' };
-    }
-    const refs = lifecycle.dispatchRefs ?? [];
-    const matching = refs.filter((ref) => ref.targetId === input.run.targetId);
-    if (matching.length !== 1) return { kind: 'conflict', reason: 'lifecycle_conflict' };
-    const current = matching[0]!;
-    const failureMessageId = input.failureMessageIds[index]!;
-    if (current.phase === 'settled' && current.statusMessageId === failureMessageId) {
-      lifecycles.push(lifecycle);
-      continue;
-    }
-    if (current.phase !== 'dispatched' || current.statusMessageId !== input.run.responseMessageId) {
-      return { kind: 'conflict', reason: 'lifecycle_conflict' };
-    }
-    replayed = false;
-    lifecycles.push({
-      ...lifecycle,
-      dispatchRefs: refs.map((ref) =>
-        ref.targetId === input.run.targetId
-          ? {
-              targetId: input.run.targetId,
-              phase: 'settled' as const,
-              statusMessageId: failureMessageId,
-              dispatchedAt: ref.dispatchedAt,
-            }
-          : ref,
-      ),
-    });
-  }
-
-  const response = messages[input.inputMessageIds.length]!;
-  const responseLifecycle = response.lifecycle;
-  if (
-    responseLifecycle?.kind !== 'response' ||
-    responseLifecycle.targetId !== input.run.targetId ||
-    responseLifecycle.invocationId !== input.run.invocationId
-  ) {
-    return { kind: 'conflict', reason: 'lifecycle_conflict' };
-  }
-  const publicInputIds = messages
-    .slice(0, input.inputMessageIds.length)
-    .filter((message) => message.visibility !== 'whisper')
-    .map((message) => message.id);
-  const removal = removeLifecycleResponseInputs(responseLifecycle, input.entryId, publicInputIds);
-  if (removal.kind === 'conflict') return { kind: 'conflict', reason: 'lifecycle_conflict' };
-  if (removal.kind === 'replayed') {
-    lifecycles.push(responseLifecycle);
-  } else {
-    replayed = false;
-    lifecycles.push(removal.lifecycle);
   }
   return { kind: 'prepared', lifecycles, replayed };
 }
@@ -2314,10 +2222,10 @@ export interface IMessageStore {
   commitLifecycleAppendAdmission(
     input: LifecycleAppendAdmissionInput,
   ): CommitLifecycleAppendAdmissionResult | Promise<CommitLifecycleAppendAdmissionResult>;
-  /** Compensate a provider rejection without leaving the input attached to a response that never read it. */
-  commitLifecycleAppendRejection(
-    input: LifecycleAppendRejectionInput,
-  ): CommitLifecycleAppendRejectionResult | Promise<CommitLifecycleAppendRejectionResult>;
+  commitLifecycleAppendRecovery(
+    input: LifecycleAppendRecoveryInput,
+    ledgerStore: QueueLedgerStore,
+  ): LifecycleAppendRecoveryResult | Promise<LifecycleAppendRecoveryResult>;
   /**
    * F098-D: CAS transition queued → delivered at an admitted timestamp.
    * `deliveryTransitioned` is true only when this call won; false on a state no-op.
@@ -3951,19 +3859,22 @@ export class MessageStore {
     return { kind: 'applied', messages: (messages as StoredMessage[]).map((message) => structuredClone(message)) };
   }
 
-  commitLifecycleAppendRejection(input: LifecycleAppendRejectionInput): CommitLifecycleAppendRejectionResult {
-    const ids = [...input.inputMessageIds, input.run.responseMessageId];
-    const messages = ids.map((id) => this.messages.find((message) => message.id === id));
-    if (messages.some((message) => !message)) return { kind: 'not_found' };
-    const prepared = prepareLifecycleAppendRejection(messages as StoredMessage[], input);
-    if (prepared.kind !== 'prepared') return prepared;
-    if (prepared.replayed) {
-      return { kind: 'replayed', messages: (messages as StoredMessage[]).map((message) => structuredClone(message)) };
-    }
-    for (let index = 0; index < messages.length; index += 1) {
-      messages[index]!.lifecycle = structuredClone(prepared.lifecycles[index]!);
-    }
-    return { kind: 'applied', messages: (messages as StoredMessage[]).map((message) => structuredClone(message)) };
+  commitLifecycleAppendRecovery(
+    input: LifecycleAppendRecoveryInput,
+    ledgerStore: QueueLedgerStore,
+  ): LifecycleAppendRecoveryResult {
+    if (!(ledgerStore instanceof InMemoryQueueLedgerStore))
+      throw new Error('Append recovery requires the matching memory Queue ledger');
+    const source = this.messages.find((message) => message.id === input.entry.payload.messageId);
+    const response = this.messages.find((message) => message.id === input.failure.responseMessageId);
+    if (!source || !response) return { kind: 'not_found' };
+    const current = ledgerStore.getNow(input.entry.threadId, input.entry.id);
+    const prepared = prepareLifecycleAppendRecovery(source, response, current, input);
+    if (prepared.kind !== 'prepared') return structuredClone(prepared);
+    ledgerStore.replaceAppendRecoveryNow(current, prepared.entry);
+    source.lifecycle = structuredClone(prepared.lifecycles[0]);
+    response.lifecycle = structuredClone(prepared.lifecycles[1]);
+    return { kind: 'applied', messages: [structuredClone(source), structuredClone(response)], entry: prepared.entry };
   }
 
   /**

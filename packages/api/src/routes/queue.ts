@@ -1046,17 +1046,26 @@ export const queueRoutes: FastifyPluginAsync<QueueRoutesOptions> = async (app, o
           queueRevision,
         };
       }
+      if (result.recovery?.length) {
+        reply.status(202);
+        return {
+          outcome: 'recovered',
+          recovery: result.recovery,
+          queue: await enrichQueueEntries(invocationQueue.list(threadId, guard.userId), messageStore),
+          queueRevision: invocationQueue.snapshotRevision(threadId, guard.userId),
+        };
+      }
       const status = result.reason === 'custody_unavailable' ? 503 : result.reason === 'provider_rejected' ? 502 : 409;
       reply.status(status);
       return {
         error:
           result.reason === 'append_unavailable'
-            ? '当前 Agent Client 已不再接受 Append'
+            ? '当前回复已不能接收补充，消息仍保留在队列中'
             : result.reason === 'state_changed'
               ? 'Queue 或 Active Run 已变化，请刷新后重试'
               : result.reason === 'provider_rejected'
-                ? '部分或全部 Agent Client 拒绝了 Append；失败回执已保留'
-                : 'Append 持久化暂不可用',
+                ? '这次补充未能确认送达，正在核对消息状态'
+                : '暂时无法更新消息状态，请稍后核对',
         code: result.reason.toUpperCase(),
         ...(result.rejectedTargetIds ? { rejectedTargetIds: result.rejectedTargetIds } : {}),
       };

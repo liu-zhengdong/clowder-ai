@@ -18,7 +18,7 @@
  * 虽然参数可选（兼容测试），但生产代码必须显式传入。
  */
 
-import type { CatId, CatRoutingError, MessageContent, MessageFrom } from '@cat-cafe/shared';
+import type { CatId, CatRoutingError, MessageContent } from '@cat-cafe/shared';
 import { catRegistry, escapeRegExp } from '@cat-cafe/shared';
 import type {
   RoutingPreviewReason,
@@ -44,16 +44,14 @@ import { SessionManager } from '../../session/SessionManager.js';
 import type { ISessionSealer } from '../../session/SessionSealer.js';
 import type { TranscriptReader } from '../../session/TranscriptReader.js';
 import type { TranscriptWriter } from '../../session/TranscriptWriter.js';
-import { messageFrom } from '../../stores/message-from.js';
 import { DeliveryCursorStore } from '../../stores/ports/DeliveryCursorStore.js';
 import type { IDraftStore } from '../../stores/ports/DraftStore.js';
-import type { IMessageStore, StoredMessage } from '../../stores/ports/MessageStore.js';
+import type { IMessageStore } from '../../stores/ports/MessageStore.js';
 import type { ISessionChainStore } from '../../stores/ports/SessionChainStore.js';
 import type { ITaskStore } from '../../stores/ports/TaskStore.js';
 import type { IThreadStore, ThreadRoutingPolicyV1 } from '../../stores/ports/ThreadStore.js';
 import { DEFAULT_THREAD_ID } from '../../stores/ports/ThreadStore.js';
 import type { IWorkflowSopStore } from '../../stores/ports/WorkflowSopStore.js';
-import { getTimelineOrderTime } from '../../stores/visibility.js';
 import type { AgentMessage, AgentRouteIntent, AgentService, ClaudeCompactionHooksFactory } from '../../types.js';
 import type { InvocationRegistry } from '../invocation/InvocationRegistry.js';
 import {
@@ -67,32 +65,11 @@ import type { RouteExecutionOptions, RouteOptions, RouteStrategyDeps } from '../
 import { routeParallel } from '../routing/route-parallel.js';
 import { routeSerial } from '../routing/route-serial.js';
 import { appendContextAttachmentsToPrompt } from './context-attachment-prompt.js';
+import { findLastUserMentions } from './last-user-mentions.js';
 
 const log = createModuleLogger('agent-router');
 const routeTracer = trace.getTracer('cat-cafe-api', '0.1.0');
 
-/**
- * F194 Phase Z5 AC-Z16: 无 @ fallback 回看最近 thread messages 找上一条 user message
- * 的 mentions。
- *
- * Spec 窗口 = N=5 USER messages OR 时间窗口 1h（防远古 mentions 主导 fallback）。
- *
- * 实现 = 以 USER message 为停止条件分页扫 thread messages（不是固定 thread message
- * 窗口）：cat-to-cat handoff / vision guard / cross-post 等 cat 消息不消耗 user count
- * 也不能挤掉远一点的 user mention。
- *
- * 砚砚 review 历程：
- *   R1 P1：原实现 `getByThread(threadId, 5)` 取最近 5 条 thread messages，user @ 后
- *     只要 5 条 cat/vision-guard 就把 user mention 挤出窗口 → Bug D 复活。
- *   R2 P1：R2 改成 `getByThread(threadId, 50)` + 反向数 N=5 user msgs + 1h cutoff，
- *     但仍然是单页 thread window — 51+ 条 cat 消息夹中间就退化回原 bug。
- *   R3 P1（当前）：改成分页 loop（getByThread 拉首页 → 不够再 getByThreadBefore
- *     拿历史页），停在 N=5 USER msgs / 1h cutoff / 没有更多消息。
- *     defensive 上限 = Z5_PAGE_SIZE * Z5_MAX_PAGES = 250 条 thread messages。
- */
-const Z5_PAGE_SIZE = 50;
-const Z5_USER_MESSAGE_COUNT_LIMIT = 5;
-const Z5_TIME_WINDOW_MS = 60 * 60 * 1000; // 1h
 const MENTION_TOKEN_BOUNDARY_RE = /[\s,.:;!?()[\]{}<>，。！？、：；（）【】《》「」『』〈〉]/;
 const HANDLE_CONTINUATION_RE = /[a-z0-9_.-]/;
 const QUOTE_BEFORE_MENTION_RE = /["'“”‘’]/;
@@ -871,88 +848,6 @@ export class AgentRouter {
     return this.resolveConversationTargetsAtAdmission(targets, threadId, content);
   }
 
-  /**
-   * F194 Phase Z5 AC-Z16: 无 @ fallback 优先用上一条 user message 的 mentions，
-   * 不让 thread 里其他猫的发言（如 vision guard cross-post）抢路由 fallback。
-   *
-   * 用户心智模型："no @ = 继续刚才 @ 的猫里的一只"，不是"thread 里最近发言的猫"，
-   * 也不是把上一轮 parallel mentions 全量延续成新一轮并发。
-   *
-   * user message 严格定义：`from.kind === 'user'`。
-   *   - cat-to-cat handoff (A2A) 有 catId → NOT a user message
-   *   - vision guard cross-post 有 catId → NOT a user message
-   *   - system/external/plugin sender → NOT a user message
-   *
-   * 时间窗口：回看最近 N=5 条 user messages，防止远古 mentions 主导 fallback。
-   * 在 N 条窗口内找到的最近一条 user message 后，取第一个 routable mention
-   * 作为 deterministic single-cat fallback。
-   */
-  private async findRecentUserMentionFallback(threadId: string): Promise<CatId[] | null> {
-    if (!this.messageStore) return null;
-    // F194 Phase Z5 R2 (砚砚 R1 P1#1): MessageStore interface 允许 sync 数组 OR async Promise
-    // (memory mock 是同步，Redis 生产是 async)。必须 await 才能拿到 Redis 实际数据。
-    // F194 Phase Z5 R4 (砚砚 R3 P1): 改为分页扫 — 以 USER message 数 / 时间窗口为
-    // 停止条件，而不是固定 thread message 窗口。
-    //   首页 = getByThread(threadId, PAGE_SIZE) — 最近 PAGE_SIZE 条 (ascending by score)
-    //   历史页 = getByThreadBefore(threadId, oldest.score, PAGE_SIZE, oldest.id) — 再往前
-    //   每页内反向扫，遇 user msg 计 user count，遇有 mentions 直接 return。
-    // F194 Phase Z5 R10 (cloud Codex round-6 P2): 去掉固定 page cap，仅靠 spec stop conditions
-    //   (5 user msgs / 1h cutoff / no more history) 收敛。固定 page cap 在高流量 thread
-    //   (vision-guard / handoff > 250) 仍可能漏掉真正的 user @ → 退化回 participantsWithActivity。
-    //   1h cutoff 通过 effective score 时间维度天然 bound 扫描深度（cat msg score 最终 < cutoff
-    //   时整页都比 cutoff 老，user msg cutoff 触发 return null），不会无限循环。
-    // Cursor + cutoff use the same publication-order score as Redis. Real-cat
-    // speech stays at authoring time; ordinary queued user work uses delivery.
-    const effectiveOrderTime = (message: StoredMessage): number => getTimelineOrderTime(message);
-    const cutoffTimestamp = Date.now() - Z5_TIME_WINDOW_MS;
-    let userMessagesSeen = 0;
-    let cursorScore: number | undefined;
-    let cursorId: string | undefined;
-
-    for (let pageIdx = 0; ; pageIdx += 1) {
-      const pageResult =
-        pageIdx === 0
-          ? this.messageStore.getByThread(threadId, Z5_PAGE_SIZE)
-          : this.messageStore.getByThreadBefore(threadId, cursorScore ?? 0, Z5_PAGE_SIZE, cursorId);
-      const page = await Promise.resolve(pageResult);
-      if (!page || !Array.isArray(page) || page.length === 0) break;
-
-      for (let i = page.length - 1; i >= 0; i -= 1) {
-        const m = page[i] as StoredMessage;
-        // MessageFrom keeps scheduler/system notices out of the user count.
-        // 否则一串 system/scheduler notice 会塞满 USER count limit，把真正的 user @ 挤出窗口外。
-        const isUserMessage = messageFrom(m).kind === 'user';
-        if (!isUserMessage) continue;
-        // F194 Phase Z5 R8 (cloud Codex round-4 P1) + R9 (砚砚 R8 P1): 1h cutoff 在 isUserMessage 之后
-        // 判断，且用 effectiveOrderTime（与 cursor 同口径）。Redis markDelivered 把 thread zset score
-        // 改成 deliveredAt，对一条 send-time 老但刚 re-delivered 的 user msg，cutoff 应按 deliveredAt
-        // 算（与 Redis 排序对齐）。非 user msg 已 continue 跳过，cutoff 不会误 trip return null。
-        const score = effectiveOrderTime(m);
-        if (score > 0 && score < cutoffTimestamp) return null;
-        userMessagesSeen += 1;
-        if (userMessagesSeen > Z5_USER_MESSAGE_COUNT_LIMIT) return null;
-        const mentions = Array.isArray(m.mentions) ? (m.mentions as string[]) : [];
-        if (mentions.length === 0) continue; // user msg without @ → skip, keep looking earlier
-        const routable = this.filterRoutableCats(mentions as CatId[]);
-        return routable.length > 0 ? [routable[0]] : null;
-      }
-
-      // 页内没找到，准备下一页 cursor = 当前页最旧消息（ascending → page[0]）。
-      // R9: cursor.score = effectiveOrderTime(page[0]) 与 Redis zset score 一致。
-      const oldest = page[0] as StoredMessage;
-      if (typeof oldest?.id !== 'string') break;
-      const oldestScore = effectiveOrderTime(oldest);
-      if (oldestScore <= 0) break;
-      // F194 Phase Z5 R11 (砚砚 R10 P2): page-level cutoff — page[0] 是当前页最旧 effective score，
-      // 如果它已经早于 cutoff，下一页只会更老（pages 按 effective score asc），无须再翻。
-      // 防止高流量 thread (无 user msg in 1h) 把 unbounded loop 拖成全量历史扫描。
-      if (oldestScore < cutoffTimestamp) return null;
-      cursorScore = oldestScore;
-      cursorId = oldest.id;
-    }
-    return null;
-  }
-
   /** Pick a deterministic fallback cat when policy filters out all candidates. */
   private pickFallbackCat(exclude: Set<string>): CatId | null {
     const def = getDefaultCatId() as string;
@@ -1285,9 +1180,20 @@ export class AgentRouter {
     // callers retain named identities so an unavailable member reports its cause.
     const targets = options?.publicConversation ? this.filterRoutableCats(mentionedCats) : mentionedCats;
     if (targets.length > 0) {
-      return { targetCats: targets, reason: { kind: 'current_message_mentions' } };
+      const unavailableTargets = options?.publicConversation
+        ? this.filterKnownCats(mentionedCats).filter((id) => !this.isRoutableCat(id))
+        : [];
+      return {
+        targetCats: targets,
+        reason: { kind: 'current_message_mentions' },
+        ...(unavailableTargets.length ? { unavailableTargets } : {}),
+      };
     }
-    return this.resolveImplicitTargetPreview(message, threadId, options);
+    const result = await this.resolveImplicitTargetPreview(message, threadId, options);
+    const unavailableTargets = this.filterKnownCats(mentionedCats).filter((id) => !this.isRoutableCat(id));
+    return unavailableTargets.length
+      ? { ...result, unavailableTargets: [...new Set([...unavailableTargets, ...(result.unavailableTargets ?? [])])] }
+      : result;
   }
 
   /** One policy owner for implicit preview, common send and queued public recovery. */
@@ -1312,25 +1218,31 @@ export class AgentRouter {
       | undefined = prospective
       ? { preferredCats: [...(options?.prospectivePreferredCats ?? [])] }
       : await this.threadStore?.get(threadId);
+    const unavailableTargets: CatId[] = [];
+    const project = (candidates: CatId[], kind: Exclude<RoutingPreviewReasonKind, 'thread_policy'>) => ({
+      ...this.applyRoutingPolicyForPreview(thread, message, candidates, kind),
+      ...(unavailableTargets.length ? { unavailableTargets: [...new Set(unavailableTargets)] } : {}),
+    });
     const rawPref = Array.isArray(thread?.preferredCats) ? thread.preferredCats : [];
     const validPreferred = this.filterRoutableCats(rawPref);
     const preferredSet = new Set(validPreferred.map(String));
 
     // #58: explicit #ideate with multiple preferred cats → dispatch all.
     if (/#ideate\b/i.test(message) && validPreferred.length > 1) {
-      return this.applyRoutingPolicyForPreview(thread, message, validPreferred, 'preferred_parallel');
+      return project(validPreferred, 'preferred_parallel');
     }
 
     // F229: a concierge duty cat overrides implicit history, while an explicit
     // mention in the current message still won above.
     if (!prospective && thread?.threadKind === 'concierge' && validPreferred.length > 0) {
-      return this.applyRoutingPolicyForPreview(thread, message, validPreferred, 'concierge_preferred');
+      return project(validPreferred, 'concierge_preferred');
     }
 
     if (!prospective && this.threadStore) {
-      const userMentionFallback = await this.findRecentUserMentionFallback(threadId);
-      if (userMentionFallback && userMentionFallback.length > 0) {
-        return this.applyRoutingPolicyForPreview(thread, message, userMentionFallback, 'previous_user_mentions');
+      const mentions = await findLastUserMentions(this.messageStore, threadId);
+      for (const catId of this.filterKnownCats(mentions)) {
+        if (this.isRoutableCat(catId)) return project([catId], 'previous_user_mentions');
+        unavailableTargets.push(catId);
       }
 
       const participantsWithActivity = await this.threadStore.getParticipantsWithActivity(threadId);
@@ -1340,28 +1252,28 @@ export class AgentRouter {
         (participant) => participant.messageCount > 0 && isHealthy(participant) && isRoutable(participant),
       );
       if (healthyReplier) {
-        return this.applyRoutingPolicyForPreview(thread, message, [healthyReplier.catId], 'recent_replier');
+        return project([healthyReplier.catId], 'recent_replier');
       }
       const preferredFallback = participantsWithActivity.find(
         (participant) =>
           isHealthy(participant) && isRoutable(participant) && preferredSet.has(participant.catId as string),
       );
       if (preferredFallback) {
-        return this.applyRoutingPolicyForPreview(thread, message, [preferredFallback.catId], 'preferred_cat');
+        return project([preferredFallback.catId], 'preferred_cat');
       }
       const anyFallback = participantsWithActivity.find(
         (participant) => isHealthy(participant) && isRoutable(participant),
       );
       if (anyFallback) {
-        return this.applyRoutingPolicyForPreview(thread, message, [anyFallback.catId], 'available_participant');
+        return project([anyFallback.catId], 'available_participant');
       }
     }
 
     if (validPreferred.length > 0) {
-      return this.applyRoutingPolicyForPreview(thread, message, [validPreferred[0]], 'preferred_cat');
+      return project([validPreferred[0]], 'preferred_cat');
     }
 
-    return this.applyRoutingPolicyForPreview(thread, message, [getDefaultCatId()], 'default_cat');
+    return project([getDefaultCatId()], 'default_cat');
   }
 
   /** Read-only projection for the v2 composer; never mutates participants. */

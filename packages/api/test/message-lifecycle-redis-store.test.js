@@ -104,42 +104,6 @@ describe(
       assert.deepEqual((await store.getById(opus.id)).lifecycle.inputEntryIds, ['entry-old', 'entry-append']);
       assert.deepEqual((await store.getById(codex.id)).lifecycle.inputMessageIds, ['message-old', input.id]);
       assert.equal((await store.commitLifecycleAppendAdmission(admission)).kind, 'replayed');
-
-      const failure = await store.append(
-        canonicalFixture({
-          userId: 'owner-redis',
-          threadId: 'thread-redis-append',
-          catId: null,
-          content: 'codex carrier closed',
-          mentions: [],
-          timestamp: 110,
-          lifecycle: {
-            kind: 'delivery_failure',
-            orderKey: '110:failure-codex',
-            from: { kind: 'system', service: 'message_delivery' },
-            status: 'failed',
-            sourceEntryId: 'entry-append',
-            inputMessageId: input.id,
-            requestedTargets: ['codex'],
-            reason: 'control_carrier_replaced',
-            createdAt: 110,
-          },
-        }),
-      );
-      const rejection = {
-        threadId: 'thread-redis-append',
-        entryId: 'entry-append',
-        inputMessageIds: [input.id],
-        failureMessageIds: [failure.id],
-        run: { targetId: 'codex', invocationId: 'turn-codex', responseMessageId: codex.id },
-      };
-      assert.equal((await store.commitLifecycleAppendRejection(rejection)).kind, 'applied');
-      assert.deepEqual((await store.getById(input.id)).lifecycle.dispatchRefs, [
-        { targetId: 'opus', phase: 'dispatched', statusMessageId: opus.id, dispatchedAt: 101 },
-        { targetId: 'codex', phase: 'settled', statusMessageId: failure.id, dispatchedAt: 102 },
-      ]);
-      assert.deepEqual((await store.getById(codex.id)).lifecycle.inputMessageIds, ['message-old']);
-      assert.equal((await store.commitLifecycleAppendRejection(rejection)).kind, 'replayed');
     });
 
     test('publishes a lifecycle response to cursor reads only with its terminal body', async () => {

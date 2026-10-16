@@ -166,6 +166,11 @@ if mode == 'processing' then
     removeMessageIndex(row)
   else
     row.targets = remainingTargets
+    for _, field in ipairs({'appendPendingByTarget', 'appendRecoveryByTarget'}) do
+      if row.delivery and row.delivery[field] then
+        for target, _ in pairs(row.delivery[field]) do if retired[target] then row.delivery[field][target] = nil end end
+      end
+    end
     if row.delivery and row.delivery.routingHeldTargetIds then
       local remainingHolds = {}
       for i = 1, #row.delivery.routingHeldTargetIds do

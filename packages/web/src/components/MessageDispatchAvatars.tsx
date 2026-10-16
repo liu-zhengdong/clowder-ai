@@ -1,7 +1,12 @@
 'use client';
 
 import type { LifecycleActiveRun } from '@cat-cafe/shared';
-import { dispatchReadText, dispatchReceiptDisplay, dispatchReceiptLabel } from '@/lib/dispatch-receipt-display';
+import {
+  dispatchReadText,
+  dispatchReceiptDisplay,
+  dispatchReceiptLabel,
+  isUnconfirmedAppend,
+} from '@/lib/dispatch-receipt-display';
 import type { ChatMessage, QueueEntry } from '@/stores/chat-types';
 import { focusLineageMessage } from '@/utils/focusLineageMessage';
 import { CatAvatar } from './CatAvatar';
@@ -56,8 +61,25 @@ export function MessageDispatchAvatars({
     >
       {projections.map((projection) => {
         const label = getCatLabel(projection.targetId);
-        const processing = projection.phase === 'processing';
         const ref = message.lifecycle?.dispatchRefs?.find((candidate) => candidate.targetId === projection.targetId);
+        const uncertain = isUnconfirmedAppend(ref, message.lifecycle);
+        const checking =
+          uncertain &&
+          !message.lifecycle?.appendFailures?.find(
+            (failure) => failure.targetId === projection.targetId && failure.responseMessageId === ref?.statusMessageId,
+          )?.checkedAt;
+        const processing = projection.phase === 'processing' && !uncertain;
+        const retryEntry =
+          uncertain && !checking
+            ? pending.find((entry) =>
+                entry.recoveryActions?.some(
+                  (action) => action.kind === 'repeat_target' && action.targetCatId === projection.targetId,
+                ),
+              )
+            : undefined;
+        const retryAction = retryEntry?.recoveryActions?.find(
+          (action) => action.kind === 'repeat_target' && action.targetCatId === projection.targetId,
+        );
         const linked = projection.statusMessageId
           ? timelineMessages.find((candidate) => candidate.id === projection.statusMessageId)?.lifecycle
           : undefined;
@@ -65,19 +87,23 @@ export function MessageDispatchAvatars({
         const appended =
           response && response.inputMessageIds.indexOf(message.id) > 0 && message.timestamp > response.startedAt;
         const running = response ? response.status === 'processing' : ref?.phase !== 'settled';
-        const receipt = dispatchReceiptDisplay(ref, running);
+        const receipt = dispatchReceiptDisplay(ref, running, message.lifecycle);
         const title = dispatchReceiptLabel(receipt, label, 'recipient');
         const failedDelivery = linked?.kind === 'delivery_failure';
         const outcome = response && response.status !== 'processing' ? responseOutcome[response.status] : undefined;
-        const progress = failedDelivery
-          ? '没送到'
-          : appended
-            ? `收到，并进了${running ? '正在回' : '已结束'}的这一轮${outcome ? ` · ${outcome}` : ''} · ${dispatchReadText(receipt)}`
-            : processing
-              ? '收到，正在回…'
-              : outcome
-                ? `收到，${outcome}`
-                : '收到，回复状态待核对';
+        const progress = uncertain
+          ? checking
+            ? `正在核对 ${label} 收到没…`
+            : '已送出，没确认收到'
+          : failedDelivery
+            ? '没送到'
+            : appended
+              ? `收到，并进了${running ? '正在回' : '已结束'}的这一轮${outcome ? ` · ${outcome}` : ''} · ${dispatchReadText(receipt)}`
+              : processing
+                ? '收到，正在回…'
+                : outcome
+                  ? `收到，${outcome}`
+                  : '收到，回复状态待核对';
         const late = projection.dispatchedAt !== undefined && projection.dispatchedAt - message.timestamp > 60_000;
         return (
           <li
@@ -93,12 +119,15 @@ export function MessageDispatchAvatars({
               <span>悄悄话，只有</span>
             ) : null}
             <CatAvatar catId={projection.targetId} size={16} status={processing ? 'streaming' : undefined} />
-            <span className="font-medium text-cafe-secondary">{label}</span>
+            {!checking ? <span className="font-medium text-cafe-secondary">{label}</span> : null}
             <span>
               {late ? `${formatTime(projection.dispatchedAt!)} ` : ''}
               {progress}
             </span>
-            {projection.statusMessageId && response ? (
+            {retryEntry && retryAction?.kind === 'repeat_target' ? (
+              <QueueTargetRetryButton entry={retryEntry} action={retryAction} label="重新发送" />
+            ) : null}
+            {!checking && projection.statusMessageId && response ? (
               <button
                 type="button"
                 aria-label={`看${label}的回复`}
@@ -133,13 +162,23 @@ export function MessageDispatchAvatars({
             : [],
         );
         if (entry.targetCats.length > 0 && targets.length === 0) return retryRows;
-        const ahead = queue
-          .slice(0, queue.indexOf(entry))
-          .filter((candidate) => targets.some((target) => candidate.targetCats.includes(target))).length;
+        const ahead = queue.slice(0, queue.indexOf(entry)).filter((candidate) => {
+          const source = timelineMessages.find((item) => item.id === candidate.messageId);
+          return targets.some(
+            (target) =>
+              candidate.targetCats.includes(target) &&
+              !source?.lifecycle?.dispatchRefs?.some((ref) => ref.targetId === target),
+          );
+        }).length;
+        const waiting =
+          !entry.autoExecute ||
+          targets.length === 0 ||
+          ahead > 0 ||
+          activeRuns.some((run) => targets.includes(run.targetId) && !run.inputMessageIds.includes(message.id));
         return [
           ...retryRows,
           <li key={entry.id} className="inline-flex flex-wrap items-center gap-1" data-dispatch-queued={entry.id}>
-            <span>{agentSource ? '排队交给' : '排队中 · 等'}</span>
+            <span>{waiting ? (agentSource ? '排队交给' : '排队中 · 等') : '发送中 ·'}</span>
             {targets.map((target) => (
               <span key={target} className="inline-flex items-center gap-1">
                 <CatAvatar catId={target} size={16} />
@@ -147,7 +186,7 @@ export function MessageDispatchAvatars({
               </span>
             ))}
             <span>
-              {targets.length ? (agentSource ? '' : '接') : '选择收件猫'}
+              {targets.length ? (waiting && !agentSource ? '接' : '') : '选择收件猫'}
               {ahead > 0 ? `，前面还有 ${ahead} 条` : ''}
             </span>
           </li>,

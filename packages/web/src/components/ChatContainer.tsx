@@ -393,6 +393,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
   const messageSearchAvailable =
     isV2 &&
     viewMode === 'single' &&
+    !artworkLightbox?.work &&
     !workComposerOnlyActive &&
     !mainAreaOverlayActive &&
     (isDesktop || !statusPanelOpen);

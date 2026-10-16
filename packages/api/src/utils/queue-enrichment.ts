@@ -16,12 +16,16 @@ import type {
   QueueAuthorIntentReceipt,
   QueueRecoveryAction,
 } from '@cat-cafe/shared';
+import { appendRepeatKey } from '../domains/cats/services/agents/invocation/append-delivery-identity.js';
 import {
   type QueueEntry,
   queueEntryOwnerId,
   queueEntryTargetCats,
 } from '../domains/cats/services/agents/invocation/InvocationQueue.js';
-import { isOwnerRecoverableRoutingTarget } from '../domains/cats/services/agents/invocation/queue-routing-recovery-policy.js';
+import {
+  isOwnerRecoverableRoutingTarget,
+  isOwnerRepeatableAppendTarget,
+} from '../domains/cats/services/agents/invocation/queue-routing-recovery-policy.js';
 import type { IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
 import type { SocketManager } from '../infrastructure/websocket/index.js';
 
@@ -130,15 +134,27 @@ async function buildMessageEnrichment(
     if (!msg) continue;
     if (entry?.status === 'queued') {
       for (const targetCatId of entry.delivery.routingHeldTargetIds ?? []) {
-        if (!isOwnerRecoverableRoutingTarget(entry, msg, targetCatId)) continue;
+        const repeat = isOwnerRepeatableAppendTarget(entry, msg, targetCatId);
+        if (!repeat && !isOwnerRecoverableRoutingTarget(entry, msg, targetCatId)) continue;
+        const failure = entry.delivery.appendRecoveryByTarget?.[targetCatId];
+        if (
+          repeat &&
+          failure &&
+          (await messageStore.getByIdempotencyKey(
+            msg.userId,
+            msg.threadId,
+            appendRepeatKey(msg.id, targetCatId, failure.invocationId),
+          ))
+        )
+          continue;
         recoveryActions.push({
-          id: `retry:${entry.id}:${targetCatId}`,
+          id: `${repeat ? 'repeat' : 'retry'}:${entry.id}:${targetCatId}`,
           entryId: entry.id,
-          kind: 'retry_target',
+          kind: repeat ? 'repeat_target' : 'retry_target',
           targetCatId,
           request: {
             method: 'POST',
-            path: `/api/threads/${encodeURIComponent(entry.threadId)}/messages/${encodeURIComponent(msg.id)}/routing-targets/${encodeURIComponent(targetCatId)}/retry`,
+            path: `/api/threads/${encodeURIComponent(entry.threadId)}/messages/${encodeURIComponent(msg.id)}/routing-targets/${encodeURIComponent(targetCatId)}/${repeat ? 'repeat' : 'retry'}`,
           },
         });
       }

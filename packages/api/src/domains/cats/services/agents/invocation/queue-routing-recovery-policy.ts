@@ -7,6 +7,7 @@ export function isOwnerRecoverableRoutingTarget(
   source: StoredMessage | null | undefined,
   targetCatId: string,
 ): boolean {
+  const dispatch = source?.lifecycle?.dispatchRefs?.find((ref) => ref.targetId === targetCatId);
   return Boolean(
     source &&
       entry.owner.kind === 'user' &&
@@ -19,10 +20,40 @@ export function isOwnerRecoverableRoutingTarget(
       source.deliveryStatus !== 'canceled' &&
       source.visibility !== 'whisper' &&
       entry.targets.includes(targetCatId) &&
-      !source.lifecycle?.dispatchRefs?.some((ref) => ref.targetId === targetCatId) &&
+      !dispatch &&
       entry.kind !== 'private_input' &&
       !(entry.from.kind === 'agent' && entry.sourceCategory === 'continuation') &&
       !entry.execution.liveSessionId &&
       !entry.execution.executionScope,
+  );
+}
+
+/** A repeat is a new user input; it never changes the original uncertain delivery. */
+export function isOwnerRepeatableAppendTarget(
+  entry: QueueLedgerEntry,
+  source: StoredMessage,
+  targetCatId: string,
+): boolean {
+  const failure = entry.delivery.appendRecoveryByTarget?.[targetCatId];
+  const ref = source.lifecycle?.dispatchRefs?.find((candidate) => candidate.targetId === targetCatId);
+  return Boolean(
+    entry.owner.kind === 'user' &&
+      source.from?.kind === 'user' &&
+      entry.owner.userId === source.userId &&
+      entry.threadId === source.threadId &&
+      entry.payload.messageId === source.id &&
+      (source.visibility !== 'whisper' || source.whisperTo?.some((catId) => catId === targetCatId)) &&
+      !source.deletedAt &&
+      !source.recall &&
+      !source._tombstone &&
+      source.deliveryStatus !== 'canceled' &&
+      entry.targets.includes(targetCatId) &&
+      !entry.execution.executionScope &&
+      !entry.execution.liveSessionId &&
+      failure?.acceptance === 'unknown' &&
+      failure.checkedAt !== undefined &&
+      ref?.statusMessageId === failure.responseMessageId &&
+      ref.appendAcceptance !== 'accepted' &&
+      ref.inputRead?.status !== 'read',
   );
 }

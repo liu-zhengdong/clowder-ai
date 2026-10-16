@@ -59,7 +59,11 @@ export function appendedInputReadDisplay(source: ChatMessage, response: ChatMess
         ) ?? [])
       : [];
   const ref = refs.length === 1 ? refs[0] : undefined;
-  return dispatchReceiptDisplay(ref, lifecycle?.kind === 'response' && lifecycle.status === 'processing');
+  return dispatchReceiptDisplay(
+    ref,
+    lifecycle?.kind === 'response' && lifecycle.status === 'processing',
+    source.lifecycle,
+  );
 }
 
 /**
@@ -109,7 +113,7 @@ function AppendedInputRow({ source, label, expanded, onToggle, response, color }
       </AppTooltip>
       <span
         data-append-read-status={read.state}
-        className={`w-32 shrink-0 text-right text-label tabular-nums sm:w-36 ${read.state === 'unconfirmed' || read.state === 'unknown' ? 'text-conn-amber-text' : 'text-cafe-muted'}`}
+        className={`w-32 shrink-0 text-right text-label tabular-nums sm:w-36 ${read.state === 'unconfirmed' || read.state === 'unconfirmed_delivery' || read.state === 'unknown' ? 'text-conn-amber-text' : 'text-cafe-muted'}`}
       >
         {read.state === 'read' ? (
           <span aria-hidden="true" className="text-semantic-success">

@@ -1081,6 +1081,7 @@ export type {
   LifecycleAppendAction,
   LifecycleAppendCapability,
   LifecycleAppendExpectedRun,
+  LifecycleAppendFailure,
   LifecycleDeliveryFailureReason,
   LifecycleDeliveryFailureResult,
   LifecycleDispatchRef,
@@ -1102,6 +1103,7 @@ export type {
 } from './message-lifecycle.js';
 export {
   hasExactLifecycleProcessingDispatch,
+  isLifecycleAppendFailure,
   isLifecycleInputReadReceipt,
   isLifecycleStoredMessageMetadata,
   isMessageFrom,

@@ -524,40 +524,83 @@ merge-base 为 `40fa28ab2f609e4f36dc654817c5c5e9938a6337`）。当前 `Workspace
 F232 read projection 与 F290 dev localStorage fixture 均不满足跨 Human authority/revocation。因此 W4
 依赖被记录为 Phase B 的真实缺口，而不是把现有局部 primitive 包装成“已可用”。
 
-#### AC-B6 bounded owner-ready delivery packet（2026-10-12；提案，尚未准入）
+#### AC-B6 bounded delivery packet（2026-10-12 owner-ready；2026-10-16 已有界准入）
 
-**当前事实与责任。** 在 `main@7479f66f46` 重新核对 Feature、源码、PR 与 canonical Task 后，F309
-没有 AC-B6 的 `todo` 或 `doing` 实施 Task；唯一 `doing` Task
-`private-source-id` 仍是 GenOffice AC-A4 闭环。PR #5456 的个人 Studio/同一 Chat
-作品路径没有新增双 Human Markdown backend contract，不能计作 AC-B6。Feature accountable owner 保持
-`@codex-sol`；若下述 bounded slice 获 operator 准入，建议由 `@codex61-sol` 作为实施作者、由届时按实际
-权限/契约风险选择的一只非作者 reviewer 守门。该建议不是派工或开工事实。F290 Task038 的 consumer
-集成仍归其现 owner `@codex-sol`，不得把 consumer 责任倒灌为 F290 自建 canonical bytes/ACL。
+**当前事实与责任。** 2026-10-12 在 `main@7479f66f46` 重核时，F309 没有 AC-B6 实施 Task；唯一
+`doing` Task `private-source-id` 仍是 GenOffice AC-A4 闭环，PR #5456 的个人
+Studio/同一 Chat 作品路径也不构成双 Human Markdown backend contract。2026-10-16，operator 在 F290
+指挥线程明确要求可以新建 thread 开工该线，随后批准的执行现场 `[thread-id]` / source
+`private-source-id` 将必要 AC-B6 增量纳入一个 bounded 共同作品包，允许先于完整
+AC-A4 推进，但不开放 Phase B 其余范围。实施作者为 `@codex61-sol`，分支
+`feat/f290-shared-artifacts`；Feature accountable owner 仍为 `@codex-sol`。F290 Task038 的 consumer
+集成仍归其现 owner，不得把 consumer 责任倒灌为 F290 自建 canonical bytes/ACL。
 
 **复用的现有端口。** 本切片不是新建共享文档平台：
 
 - `packages/api/src/domains/video-studio/content-owner/service.ts#ProjectContentOwnerService` 已有 generic bytes、
   opaque owner revision、`importContent/load/settle`、`expectedOwnerRevision` CAS 与 immutable settlement
-  receipt；新增 `text/markdown` scope/adapter，复用该 owner state machine，不建第二个 bytes/version store。
+  receipt；它已经接受 `text/markdown`，无需新 bytes engine。新增的是不可变 Collective Artifact scope、
+  action authority context 与对外 adapter；原始 `load/settle` 继续是内部 port，不能直接成为浏览器 API。
 - `WorkspaceContentReviewService` 已有精确 text-range annotation；`modification/text` 与
-  `WorkspaceWritebackService` 已有 version-bound proposal/candidate/disposition/writeback 模式。把当前绑定
-  单一 `ownerUserId` 的 audience 泛化为一个 owner-authenticated collaboration scope，使两个 Human 看见
-  同一 ledger 与 CAS disposition；复用现有 store/state machine，不复制 annotation/proposal ledger。
-- `EditorSessionService` 与 collaborative-content routes 已有 actor-bound session 基础；F307 的
-  `createContentEditorSurface({contentRef, sessionRef})` / `F307OwnerSurfaceRenderer` 已能只负责 typed mount。
+  `WorkspaceWritebackService` 已有 version-bound proposal/candidate/disposition/writeback 模式。复用其 CAS、
+  operation replay 与 exact-text edit 算法，不整条搬用绑定私有 Task/F063/worktree token、并持久化完整文本
+  snapshot 的现有路径。Collective 仍只使用一个 F309 annotation/proposal ledger。
+- `EditorSessionService` 已有 actor-bound bearer rotation/restart 模式；但其 record、authority 与 routes 都绑定
+  Office provider binding 和本机 `ownerUserId`。Markdown 必须使用同一生命周期原则的 owner session，不能
+  伪造 Office binding。F307 只消费 typed `{contentRef, sessionRef}` surface/return descriptor。
 - F290 现有 authenticated Human session、`requireMembership`、membership lifecycle/revocation 与 Artifact
   lineage 是 domain constraint/source；它不成为内容 owner，也不保存正文、preview 或 change payload。
 
 **唯一必要 delta。** 首个可消费版本必须同时交付：
 
-1. F290 → content owner 的可验证 domain constraint port，至少绑定
+1. F290 → content owner 的 action-specific、可验证 domain constraint port，至少绑定
    `{serviceInstanceId, collectiveId, artifactRef/contentRef, humanId, action, membershipRevision,
    revocationEpoch, expiresAt, decisionRef}`；每次 read/projection/mutation 都 fresh revalidate，domain deny、
    expiry 或 epoch drift 必须 fail closed，最终 allow 仍由 content owner 签发 `AuthorizationDecisionRefV1`。
-2. 上述 Markdown owner adapter 与 shared collaboration scope；annotation/proposal 绑定 exact `contentRef`、
-   owner revision、actor 与 immutable history，apply 同时经过 proposal-state/revision CAS 和 owner-version CAS。
-3. owner-issued `sessionRef` 由 F307 mount；F290 只持 `contentRef`、当前 owner revision、Artifact lineage 与
+2. owner manifest 把 stable Collective Artifact scope 与 `contentRef` 绑定，并把 authority decision ref、
+   disposition id 与 request digest 纳入 operation context/fingerprint/receipt；scope 在后续 `settle` 不可更换。
+3. shared review identity 的单一接缝是 `prepareCanonicalWorkspaceReview`、`workspaceReviewIdentity`、
+   `WorkspaceContentReviewStore#getByContent/create` 与 `WorkspaceContentReviewService#requireOwnerReview`。
+   新 Collective row 使用 stable collaboration scope key，同一 scope 的两位 Human 进入同一 ledger；legacy
+   private-owner adapter 保持原语义。禁止用 synthetic `ownerUserId` 假装 collaboration scope，或只在 route
+   放宽检查而让 retained/replay/receipt 绕过 fresh auth。
+4. proposal 只持 base owner revision/digest、exact edits、actor、state 与 receipt refs；preview 从 fresh-authorized
+   owner revision 临时 materialize，不在 F290 或 F309 ledger 保留 canonical Markdown/preview bytes。apply 同时
+   经过 proposal-state/revision CAS 和 owner-version CAS。
+5. owner-issued `sessionRef` 由 F307 mount；F290 只持 `contentRef`、当前 owner revision、Artifact lineage 与
    result target。撤权必须让既有 session 立即失效，并把 revocation/authority checkpoint 持久化到重启后重判。
+
+**F309 owner veto。** 每个 read/history/replay/preview 必须先取得该 Human、该 Artifact、该 action 的 fresh
+domain allow，再由 content owner 对 immutable scope/content state 作最终 allow；任一 deny 优先。annotation/propose
+在 ledger CAS 前重判，apply 则固定为：fresh apply allow → proposal disposition CAS 选出唯一 winner → effect
+边界再次核 authority → `owner.settle(expectedOwnerRevision)` → exact receipt 后才记 accepted。授权失败、scope
+drift 或 owner CAS conflict 都不能产生 accepted truth；同 disposition 重放只返回同一 receipt，不同 payload
+复用 id 必须拒绝。事件驱动 invalidation 可加速撤权，但安全性必须来自每次操作的 owner-authority recheck，
+不能依赖旧 allow cache 或“已通知 session”。
+
+**跨 Café transport 与 custody 裁决（2026-10-16）。** 本 bounded slice 采用现有 Connector 同步连接上的
+专用 owner request/response relay，保持 canonical bytes/ledger 在现有 content owner；本轮不把
+`ProjectContentOwnerService` + F309 kernel 抽入 Collective Service 部署。后者会迁移 authority/data owner、
+引入 store/package extraction 与恢复迁移，超出“补必要接线”的准入范围；只有真实 relay 证据证明无法满足
+可达性、恢复或成本时，才以新的 owner-migration 决策重新评估。
+
+relay 必须是 bounded、ephemeral owner RPC，不得复用会持久化正文的 Channel/event outbox：Service 只保存
+Artifact directory、domain policy、owner revision/digest/receipt lineage 与 content-free request state；Markdown、
+annotation body、proposal edits、preview/candidate bytes 只在受限内存流中经过，TTL/size 有界，重启或结果丢失
+返回 unavailable，由 caller 以同 operation/disposition id 重试。Human Client 不能自报 actor、scope 或 owner
+endpoint；Service 由已认证 session 签 domain constraint 并按 artifact 内部路由到 custodian Connector，owner
+Connector 在 effect 前用 endpoint credential fresh validate，F309 adapter 再核 manifest scope 并签最终 allow。
+原始 `owner.load/settle` 无 HTTP final-authority surface；新 route 只暴露上述 adapter。原生 Markdown surface
+使用自己的 owner session，不套 `OfficeProviderBinding` 或 GenOffice renderer。
+
+access 与 custody 是两套状态：撤销/退出某一普通成员只推进该成员的 access revision，不改变其他有权成员、
+Artifact identity 或 lineage。`publishedByHumanId` 是 provenance；当前 bytes custodian 另由 connection/endpoint +
+custody revision 表示，Artifact id 不得从 `ownerConnectionId` 派生，owner endpoint 坐标也不投影给 Human Client。
+custodian connection 暂时不可达时，Artifact 仍在目录中且其他成员权限仍成立，但内容操作显式
+`owner_unavailable`；不能包装成全员 `access_denied` 或删除作品。当前 custodian Human 主动退出前必须先完成
+可验证 custody handoff，否则返回 `artifact_custody_handoff_required`；意外 revoke 则冻结新 effect、使旧
+constraint/session 失效，并等待同 owner continuity rebind 或 steward 发起的显式 handoff。handoff CAS 推进
+custody/access epoch，旧 endpoint、旧 domain decision 与旧 owner session 永远不能恢复写权限。
 
 **完整验收切片。** 导入一份真实 sealed Markdown 为 v1；Human A 与 B 以两个独立认证 session 读取同一
 digest/revision。A 建 exact-quote annotation 与 version-bound proposal，B 在 fresh allow 下接受；系统以
@@ -567,14 +610,15 @@ replayed read、preview 与任意 mutation 当场及进程重启后均拒绝，B
 F307 只 mount、F290 持久态无 canonical bytes/preview、F309 ledger 无 Markdown bytes。owner unavailable、
 expired constraint、stale owner revision 也必须有确定性负例。
 
-**准入缺口与 Decision Packet。** 现行 Review Gate 仍规定完整 AC-A4 前不进入 Phase B；operator
-`private-source-id` / `private-source-id` 只授权组织 F290 后续交付，
-没有授予 F309 Phase B/AC-B6 实施权限。推荐的价值选择是：允许这个无新外部依赖/服务、只复用现有
-owner/F309/F307/F290 seam 的 bounded AC-B6 consumer slice 先于完整 AC-A4 开始，以解除 F290 W4 依赖；
-这不开放 Phase B 其余 AC、不签 AC-B6 完成、不启用 production。合法 start source 必须由 operator 明确接受
-本段的 scope 与 accepted Git revision，并写明 `feature:F309 / Phase B / AC-B6 bounded consumer slice`；
-原 owner 随后用该 exact Human message + 本段 anchor 走 development-work resolution，取得 canonical Task
-后方可建 worktree/写实现。未收到该决定时，本段只是一份 owner-ready package，实施状态保持未开始。
+**准入处置。** 10-12 的“尚无合法 start source”已被 10-16 的人类来源与批准子现场取代；现行
+Review Gate 对 Phase B 其余 AC 仍不变。本次 authority scope 仅为
+`feature:F309 / Phase B / AC-B6 bounded consumer slice`，不签 AC-B6 完成、不启用 production、也不迁移
+F309 owner。原 F290 Task038 `private-source-id` rev18 已把批准 source、执行子现场与
+`@codex61-sol` 单 writer 写进 canonical progress；子现场不另造镜像 Task。首个 Service domain checkpoint
+`aebb3dd407e8ac6dc75a3997cdb897e89b171e8b` 只交 Artifact directory/constraint/revoke+restart，尚不代表
+API owner、F309 ledger、surface 或完整旅程交付。当前 open PR census 未发现 content-owner/workspace-review/
+editor-session/modification 后端路径的在飞 writer；#5628 只改 MessageAnnotation marker 与 browser policy，
+不与本包后端写入面重叠。
 
 ### Phase C: Two-media Collaboration Lifecycle Completion
 

@@ -181,9 +181,9 @@ for (const isFailureReport of [false, true]) {
     assert.equal(rows.length, isFailureReport ? 0 : 1);
     if (!isFailureReport) assert.deepEqual(rows[0].targets, ['codex']);
     assert.deepEqual(
-      f.preflightCalls.map(({ ownerId, targetCatIds }) => ({ ownerId, targetCatIds })),
-      isFailureReport ? [] : [{ ownerId: 'owner', targetCatIds: ['codex'] }],
-      'home read-only availability annotation cannot veto the already admitted exact return or create a bounce',
+      f.preflightCalls,
+      [],
+      'an already admitted exact failure return must not re-enter availability-based recipient selection',
     );
     assert.equal(f.turns.listResponsePending().length, 0);
     assert.equal(f.messages.getByThread('thread').length, 2);

@@ -36,6 +36,7 @@ import {
   actionSuccessorFencesMatch,
 } from '../../../../ball-custody/ActionSuccessorAdmissionContract.js';
 import type { CloudDispatchProvenance } from '../../cloud-bridge/types.js';
+import type { LifecycleAppendRecoveryInput } from '../../stores/lifecycle-append-recovery.js';
 import {
   type AppendMessageInput,
   assertQueueMessageReplay,
@@ -77,6 +78,8 @@ type LifecycleTargetRetirementResult =
   | { outcome: 'state_changed' };
 
 export interface QueueEnqueueInput {
+  /** Server-owned deliberate repeat keeps the originally selected recipient. */
+  exactTargets?: boolean;
   /** Consumer observers register after commit and before the shared drain notification. Not persisted. */
   onQueueEntriesAdmitted?: (entries: readonly QueueEntry[], message?: StoredMessage) => void | Promise<void>;
   threadId: string;
@@ -516,7 +519,16 @@ export class InvocationQueue {
       const terminal = await this.ledgerStore.commit(row.threadId, row.id, row.claimId, 'withdrawn', Date.now());
       return terminal.outcome === 'updated' ? [terminal.entry] : [];
     }
-    const dispatchedTargets = new Set(source?.lifecycle?.dispatchRefs?.map((ref) => ref.targetId) ?? []);
+    const dispatchedTargets = new Set(
+      source?.lifecycle?.dispatchRefs
+        ?.filter(
+          (ref) =>
+            !row.delivery.appendPendingByTarget?.[ref.targetId] ||
+            ref.appendAcceptance === 'accepted' ||
+            ref.inputRead?.status === 'read',
+        )
+        .map((ref) => ref.targetId) ?? [],
+    );
     const claimedTargets = row.claimedTargetIds ?? [];
     if (claimedTargets.length > 0 && claimedTargets.every((targetId) => dispatchedTargets.has(targetId))) {
       // A response lifecycle is the durable receiver. A crash after that
@@ -720,7 +732,8 @@ export class InvocationQueue {
       throw new Error('Whisper Queue targets must be authorized recipients');
     }
     const exactTargets = Boolean(
-      message.visibility === 'whisper' ||
+      input.exactTargets ||
+        message.visibility === 'whisper' ||
         input.executionScope ||
         input.actionSuccessorFence ||
         input.waitContinuationCarrier ||
@@ -1224,6 +1237,67 @@ export class InvocationQueue {
     return restoredAll;
   }
 
+  /** Persist first-handoff custody before any native call; release its short claim only after History admission. */
+  async prepareLifecycleAppendHandoff(
+    entry: QueueEntry,
+    pending: NonNullable<QueueEntry['delivery']['appendPendingByTarget']>,
+    releaseClaim = false,
+  ): Promise<void> {
+    const current = await this.ledgerStore.get(entry.threadId, entry.id);
+    const claimId = this.ledgerClaimIds.get(entry.id);
+    if (!current || current.status !== 'claimed' || !claimId || current.claimId !== claimId)
+      throw new Error('Append preparation lost its original Queue claim');
+    const replacement = structuredClone(current);
+    replacement.delivery.appendPendingByTarget = { ...replacement.delivery.appendPendingByTarget, ...pending };
+    replacement.delivery.routingHeldTargetIds = [
+      ...new Set([...(replacement.delivery.routingHeldTargetIds ?? []), ...Object.keys(pending)]),
+    ];
+    const result = await this.ledgerStore.commit(entry.threadId, entry.id, claimId, 'claimed', Date.now(), replacement);
+    if (result.outcome !== 'updated') throw new Error('Append preparation did not commit');
+    this.cacheLedgerEntries([result.entry]);
+    if (releaseClaim && !(await this.restoreClaimedEntries(entry.threadId, [entry.id])))
+      throw new Error('Append handoff claim release did not commit');
+  }
+
+  async recoverLifecycleAppend(messageStore: IMessageStore, input: LifecycleAppendRecoveryInput) {
+    // A lost store reply cannot justify dropping the original Queue owner. Replay
+    // this one atomic transaction, never the provider call or source admission.
+    const commit = () => messageStore.commitLifecycleAppendRecovery(input, this.ledgerStore);
+    let result;
+    try {
+      result = await commit();
+    } catch {
+      result = await commit();
+    }
+    if (result.kind === 'applied' || result.kind === 'replayed') {
+      if (result.entry.status !== 'claimed') this.ledgerClaimIds.delete(result.entry.id);
+      this.forgetAdmittedEntries(result.entry.threadId, result.entry.id);
+      this.cacheLedgerEntries([result.entry]);
+    }
+    return result;
+  }
+
+  async retireReadAppendRecovery(
+    threadId: string,
+    messageId: string,
+    targetId: string,
+    responseMessageId: string,
+  ): Promise<boolean> {
+    const entryId = queueEntryId(messageId);
+    const entry = await this.ledgerStore.get(threadId, entryId);
+    if (
+      !entry ||
+      (entry.delivery.appendRecoveryByTarget?.[targetId]?.responseMessageId !== responseMessageId &&
+        entry.delivery.appendPendingByTarget?.[targetId]?.responseMessageId !== responseMessageId)
+    )
+      return false;
+    const result = await this.ledgerStore.reconcileTargets(threadId, entryId, [], [targetId], {});
+    if (result.outcome !== 'updated' && result.outcome !== 'replayed') return false;
+    this.removeCachedEntry(threadId, entryId);
+    if (result.entry) this.cacheLedgerEntries([result.entry]);
+    return true;
+  }
+
   /** Claim one queued row before an external withdrawal side effect. */
   async claimQueuedEntryForWithdrawal(threadId: string, userId: string, entryId: string): Promise<QueueEntry | null> {
     const entry = this.findEntry(threadId, userId, entryId);
@@ -1395,6 +1469,7 @@ export class InvocationQueue {
       !entry.targets.includes(targetCatId) ||
       !isOrdinaryQueueTargetEligible(entry, targetCatId) ||
       !isOrdinaryBodyReadEntry(entry) ||
+      entry.delivery.appendRecoveryByTarget?.[targetCatId] ||
       entry.payload.messageId !== messageId
     ) {
       return null;
@@ -1995,6 +2070,7 @@ export class InvocationQueue {
     catId: string,
     parentInvocationId: string | undefined,
   ): boolean {
+    if (entry.delivery.appendRecoveryByTarget?.[catId]) return false;
     // All ordinary sources follow the same saved policy and exact-parent fence.
     const authorIntent = entry.delivery.authorIntentByTarget?.[catId];
     return Boolean(

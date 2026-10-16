@@ -10,6 +10,21 @@ import {
   waitForDurableManagedGateAttemptClose,
 } from './managed-runner-durable-child.js';
 
+/** The proof belongs to this attempt and must precede any terminal settlement. */
+export function recordManagedAttemptCleanup(
+  job: DurableManagedGateJob,
+  attemptToken: string,
+  proven: boolean,
+): boolean {
+  if (job.recordStorage !== 'sqlite_v1') return true;
+  const current = rawDurableGateRecord(job);
+  return Boolean(
+    current &&
+      current.attemptToken === attemptToken &&
+      writeDurableGateRecord(job, { ...current, cleanupProven: proven, updatedAt: Date.now() }),
+  );
+}
+
 export async function cleanupManagedRecoveryAttempt(
   durableJob: DurableManagedGateJob,
   attempt: DurableManagedGateAttemptProcess,
@@ -36,15 +51,7 @@ export async function cleanupManagedRecoveryAttempt(
     pollMs,
   );
   const cleanup = { ...swept, signals: [...cooperativeSignals, ...swept.signals] };
-  if (durableJob.recordStorage === 'sqlite_v1') {
-    const current = rawDurableGateRecord(durableJob);
-    if (
-      !current ||
-      current.attemptToken !== attempt.attemptToken ||
-      !writeDurableGateRecord(durableJob, { ...current, cleanupProven: cleanup.proven, updatedAt: Date.now() })
-    ) {
-      throw new Error('managed_job_cleanup_receipt_fenced');
-    }
-  }
+  if (!recordManagedAttemptCleanup(durableJob, attempt.attemptToken, cleanup.proven))
+    throw new Error('managed_job_cleanup_receipt_fenced');
   return cleanup;
 }

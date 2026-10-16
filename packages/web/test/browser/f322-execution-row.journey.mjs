@@ -205,6 +205,52 @@ function finish({ errors, unexpected }) {
   assert.deepEqual(unexpected, [], 'requests that left the isolated origin');
 }
 
+test('unavailable recipient explanation stays visible in the actual desktop and mobile composer', async () => {
+  for (const width of [1100, 390]) {
+    const session = await open('working', {
+      mount: true,
+      width,
+      respond: (call) =>
+        call.key === 'POST /api/routing/preview'
+          ? {
+              status: 200,
+              body: { targetCats: ['codex'], reason: { kind: 'recent_replier' }, unavailableTargets: ['opus'] },
+            }
+          : null,
+    });
+    const { page } = session;
+    try {
+      const notice = page.locator('[data-testid="composer-routing-root"] output');
+      await notice.waitFor({ state: 'visible' });
+      assert.equal(await notice.innerText(), '宪宪 · Opus 5.5暂时不能用，改发给砚砚');
+      const geometry = await notice.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        return {
+          left: box.left,
+          right: box.right,
+          bottom: box.bottom,
+          height: box.height,
+          viewport: innerWidth,
+          pageWidth: document.documentElement.scrollWidth,
+          viewportHeight: innerHeight,
+        };
+      });
+      assert.ok(geometry.left >= 0 && geometry.right <= width, JSON.stringify(geometry));
+      assert.ok(geometry.height > 0 && geometry.bottom <= geometry.viewportHeight, JSON.stringify(geometry));
+      assert.ok(geometry.pageWidth <= width, JSON.stringify(geometry));
+      assert.match(await page.getByTestId('composer-routing-preview').getAttribute('aria-label'), /改发给砚砚/);
+      await page.getByTestId('composer-routing-preview').click();
+      await page.getByRole('dialog').waitFor({ state: 'visible' });
+      await page.keyboard.press('Escape');
+      await shot(page, `unavailable-recipient-${width}`);
+      measurements.push({ scene: 'unavailable-recipient', width, ...geometry });
+      finish(session);
+    } finally {
+      await page.close();
+    }
+  }
+});
+
 test('every state of the design renders its words in a fixed 36px row', async () => {
   const expected = {
     working: /^宪宪 · Opus 5\.5 处理中 \d+:\d{2}$/,

@@ -9,7 +9,7 @@ import { ThreadStore } from '../../dist/domains/cats/services/stores/ports/Threa
 import { messagesRoutes } from '../../dist/routes/messages.js';
 import { routingPreviewRoutes } from '../../dist/routes/routing-preview.js';
 
-export async function queueHttpFixture(t) {
+export async function queueHttpFixture(t, { messageStore } = {}) {
   const agents = new AgentRegistry();
   for (const catId of ['opus', 'codex', 'gemini']) {
     agents.register(catId, {
@@ -18,7 +18,7 @@ export async function queueHttpFixture(t) {
       },
     });
   }
-  const messages = new MessageStore();
+  const messages = messageStore ?? new MessageStore();
   const threads = new ThreadStore();
   const thread = threads.create('owner', 'real preview and admission');
   const registry = new InvocationRegistry();

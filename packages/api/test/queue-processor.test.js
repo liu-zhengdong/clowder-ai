@@ -1521,7 +1521,10 @@ describe('QueueProcessor over the source-row pending Queue', () => {
     assert.deepEqual(result.rejectedTargetIds, ['codex']);
     assert.equal(opusDispatch.mock.calls.length, 1);
     assert.equal(codexDispatch.mock.calls.length, 1);
-    assert.equal(await harness.queue.getDurableEntry('thread-1', admitted.entry.id), null);
+    const recovered = await harness.queue.getDurableEntry('thread-1', admitted.entry.id);
+    assert.deepEqual(recovered.targets, ['codex']);
+    assert.deepEqual(recovered.delivery.routingHeldTargetIds, ['codex']);
+    assert.equal(result.recovery[0].acceptance, 'unknown');
     assert.deepEqual(
       (await harness.messageStore.getById(admitted.message.id)).lifecycle.dispatchRefs.map((ref) => [
         ref.targetId,
@@ -1529,7 +1532,7 @@ describe('QueueProcessor over the source-row pending Queue', () => {
       ]),
       [
         ['opus', 'dispatched'],
-        ['codex', 'settled'],
+        ['codex', 'dispatched'],
       ],
     );
   });

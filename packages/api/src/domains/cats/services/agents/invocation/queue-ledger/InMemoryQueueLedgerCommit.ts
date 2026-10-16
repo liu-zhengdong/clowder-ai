@@ -95,6 +95,10 @@ function commitClaimedTarget(
   } else {
     const remaining = cloneQueueLedgerEntry(entry);
     remaining.targets = remainingTargets;
+    for (const key of ['appendPendingByTarget', 'appendRecoveryByTarget'] as const) {
+      const map = remaining.delivery[key];
+      if (map) for (const target of Object.keys(map)) if (!remainingTargets.includes(target)) delete map[target];
+    }
     if (remaining.delivery.routingHeldTargetIds) {
       remaining.delivery.routingHeldTargetIds = remaining.delivery.routingHeldTargetIds.filter((target) =>
         remainingTargets.includes(target),
