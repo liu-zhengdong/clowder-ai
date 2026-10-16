@@ -221,6 +221,8 @@
                   "mediaType": {
                     "enum": [
                       "image/png",
+                      "image/jpeg",
+                      "image/webp",
                       "video/mp4"
                     ],
                     "type": "string"
@@ -896,7 +898,7 @@
         ],
         "type": "object"
       },
-      "inputSchemaDigest": "sha256:061f685ba94c80d349418bd3d00fc723f3fc47fa52cca16b789321b0f2e242c2",
+      "inputSchemaDigest": "sha256:089249b27359e8af7b654ac7b5a8974ac446451364ec35deacfd8ea0689a42a1",
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
@@ -10012,6 +10014,8 @@
                     "mediaType": {
                       "enum": [
                         "image/png",
+                        "image/jpeg",
+                        "image/webp",
                         "video/mp4"
                       ],
                       "type": "string"
@@ -10877,7 +10881,7 @@
         ],
         "type": "object"
       },
-      "inputSchemaDigest": "sha256:ac943d25c24d04397ae072969a0ac3a41c28cdb694578e94b72d37f8fc761cb8",
+      "inputSchemaDigest": "sha256:ebf89f4a9ddf61a8166fa769c2b5eb0423be872515447f8af3d8527515f97884",
       "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,

@@ -39,7 +39,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useToastStore } from '@/stores/toastStore';
 import { captureChatReadingBeforeLayoutChange } from '@/utils/chat-layout-change';
 import { DEFAULT_ARTIFACT_WORK_CHAT_BASIS, isWorkspaceFullWindowSurface } from './artifact-work-presentation';
-import { toggleArtifactWorkFullWindow } from './artifact-work-presentation-actions';
+import { enterArtifactWorkMode, toggleArtifactWorkFullWindow } from './artifact-work-presentation-actions';
 import { restoreEvolutionMediaOrigin } from './evolution-media-navigation';
 import { useF307ExperienceWorkbenchStore } from './experience-workbench-store';
 import { F307OwnerSurfaceRenderer } from './F307OwnerSurfaceRenderer';
@@ -323,6 +323,11 @@ function useExplicitWorkspaceNavigation({
     }
     rememberWorkspaceForeground();
     setHomeOpen(false);
+    if (previewEnabled && request.presentation === 'work-mode') {
+      const accepted = useF307ExperienceWorkbenchStore.getState().layout;
+      const active = accepted.surfaces.find((item) => item.id === accepted.activeSurfaceId);
+      if (active && isWorkspaceFullWindowSurface(active, 'v2')) enterArtifactWorkMode(request.threadId, active);
+    }
     if (request.target.kind === 'evolution-home') {
       useEvolutionReading.getState().selectWorkspaceProgram(threadId ?? 'global', null);
       useEvolutionReading.getState().selectWorkspacePage(threadId ?? 'global', 'programs');

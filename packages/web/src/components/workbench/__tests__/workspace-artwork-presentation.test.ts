@@ -6,6 +6,8 @@ import { projectWorkspaceWorkHost } from '../workspace-work-host-projection';
 
 it.each([
   'cover.png',
+  'cover.jpg',
+  'cover.webp',
   'clip.mp4',
   'notes.md',
   'notes.txt',
@@ -28,6 +30,57 @@ it.each([
   expect(projected.hostEligible).toBe(true);
   expect(projected.splitPreferenceActive).toBe(true);
   expect(isWorkspaceFullWindowSurface(file, 'classic')).toBe(false);
+});
+
+it('explicit work mode suppresses the sidebar beside Chat and keeps it suppressed after full-window', () => {
+  const file = createFileSurface({ worktreeId: 'wt-a', path: 'cover.png' });
+  const input = {
+    threadId: 'thread-a',
+    viewMode: 'single' as const,
+    isDesktop: true,
+    statusPanelOpen: true,
+    rightPanelMode: 'workspace' as const,
+    shellPresentation: 'v2' as const,
+  };
+  const initial = createArtifactWorkPresentationState();
+  const presentation = {
+    ...initial,
+    session: {
+      generation: 1,
+      threadId: 'thread-a',
+      surfaceId: file.id,
+      mode: 'split' as const,
+      workMode: true as const,
+      returnHandle: {
+        host: { owner: 'chat', key: 'thread-a' },
+        workbench: { owner: 'f307', key: file.id },
+        client: file.ownerStateRef,
+        chatReadingRef: null,
+      },
+    },
+  };
+  const layout = createInitialWorkbenchState([file]);
+  expect(projectWorkspaceWorkHost(input, layout, presentation)).toMatchObject({
+    workModeActive: true,
+    suppressCafeSidebar: true,
+    fullWindowActive: false,
+  });
+  expect(projectWorkspaceWorkHost({ ...input, threadId: 'foreign' }, layout, presentation)).toMatchObject({
+    workModeActive: false,
+    suppressCafeSidebar: false,
+  });
+  expect(projectWorkspaceWorkHost(input, layout, initial).suppressCafeSidebar).toBe(false);
+  expect(projectWorkspaceWorkHost({ ...input, workModeRequested: true }, layout, initial).suppressCafeSidebar).toBe(
+    true,
+  );
+  expect(
+    projectWorkspaceWorkHost({ ...input, threadId: null, workModeRequested: true }, layout, initial)
+      .suppressCafeSidebar,
+  ).toBe(false);
+  expect(
+    projectWorkspaceWorkHost({ ...input, isDesktop: false, workModeRequested: true }, layout, initial)
+      .suppressCafeSidebar,
+  ).toBe(false);
 });
 
 it('code files and malformed file identities keep the ordinary viewer geometry', () => {

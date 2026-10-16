@@ -36,6 +36,8 @@ import { BootstrapOrchestrator } from './BootstrapOrchestrator';
 import { ChatContainerHeader } from './ChatContainerHeader';
 import { hydrateEvolutionFromCurrentUrl } from './capability-evolution/evolution-navigation';
 import { useConciergeConfirmations } from './concierge/useConciergeConfirmations';
+import { ArtworkLightboxHost } from './content-review/ArtworkLightboxHost';
+import { ArtworkLightboxProvider, useArtworkLightboxScope } from './content-review/ArtworkLightboxScope';
 import { FirstRunQuestWizard } from './FirstRunQuestWizard';
 import { BootcampGuideOverlay } from './first-run-quest/BootcampGuideOverlay';
 import { QuestBanner } from './first-run-quest/QuestBanner';
@@ -89,6 +91,14 @@ function hasConciergeConfirmationActions(messages: readonly ChatMessage[]): bool
 }
 
 export function ChatContainer({ threadId }: ChatContainerProps) {
+  return (
+    <ArtworkLightboxProvider key={threadId} threadId={threadId}>
+      <ChatContainerContent threadId={threadId} />
+    </ArtworkLightboxProvider>
+  );
+}
+
+function ChatContainerContent({ threadId }: ChatContainerProps) {
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   if (searchParams?.get('export') === 'true') {
     return <ThreadChatExport threadId={threadId} messageIds={searchParams.getAll('messageId')} />;
@@ -97,6 +107,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
 }
 
 function InteractiveChatContainer({ threadId }: ChatContainerProps) {
+  const artworkLightbox = useArtworkLightboxScope();
   const bottomChromeRef = useRef<HTMLDivElement | null>(null);
   const bottomChromeObserverRef = useRef<ResizeObserver | null>(null);
   const bottomChromeObserverRafRef = useRef<number | null>(null);
@@ -246,6 +257,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
       : null,
   );
   const [mediaComposerSurfaceId, setMediaComposerSurfaceId] = useState<string | null>(null);
+  const workModeRequest = useChatStore((state) => state.workspaceOpenRequest);
   const registeredWorkId = useRef<string | null>(null);
   const onRegisteredWorkChange = useCallback((id: string | null) => {
     if (registeredWorkId.current === id) return;
@@ -258,6 +270,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     fullWindowActive: artifactFullWindowActive,
     narrowWorkComposerActive,
     workspaceWideActive,
+    workModeActive,
     chatBasis: artifactWorkChatBasis,
     invalidateHost: invalidateArtifactWorkHost,
     resizeChatBasis: resizeArtifactWorkChatBasis,
@@ -270,6 +283,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     isDesktop,
     statusPanelOpen,
     rightPanelMode,
+    workModeRequested: workModeRequest?.threadId === threadId && workModeRequest.presentation === 'work-mode',
   });
   const workComposerOnlyActive = artifactFullWindowActive || narrowWorkComposerActive;
   const activeChatBasis =
@@ -955,20 +969,22 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     <WorkspaceChatWorkScopeProvider
       threadId={threadId}
       onRegisteredWorkChange={onRegisteredWorkChange}
-      getActiveSurfaceId={() => useF307ExperienceWorkbenchStore.getState().layout.activeSurfaceId}
+      getActiveSurfaceId={() =>
+        artworkLightbox?.work?.surface?.id ?? useF307ExperienceWorkbenchStore.getState().layout.activeSurfaceId
+      }
       isHostVisible={() => {
         const chat = useChatStore.getState();
         return (
           isV2 &&
           chat.currentThreadId === threadId &&
           (!chat.presentationLock || chat.presentationLock.ownerThreadId === threadId) &&
-          chat.rightPanelOpen &&
-          chat.rightPanelMode === 'workspace' &&
+          (!!artworkLightbox?.work || (chat.rightPanelOpen && chat.rightPanelMode === 'workspace')) &&
           document.visibilityState === 'visible'
         );
       }}
     >
       <div ref={containerRef} className="relative flex h-screen h-dvh">
+        <ArtworkLightboxHost />
         <MessageSearchOverlay
           threadId={threadId}
           host={messageSearch}
@@ -1349,12 +1365,26 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
                   ? 'artifact-full-window'
                   : workspaceWideActive
                     ? 'wide-workspace'
-                    : mainAreaOverlayActive
-                      ? 'main-area-attention'
-                      : 'right-rail'
+                    : workModeActive
+                      ? 'artwork-work-mode'
+                      : mainAreaOverlayActive
+                        ? 'main-area-attention'
+                        : 'right-rail'
             }
             data-attention-surface={mainAreaAttentionActive ? mainAreaAttentionSurfaceId : undefined}
           >
+            {workModeActive ? (
+              <div className="flex shrink-0 items-center border-b border-cafe-subtle px-3 py-2">
+                <button
+                  type="button"
+                  onClick={closeStatusPanel}
+                  className="text-xs text-cafe-secondary"
+                  data-testid="artwork-work-mode-return"
+                >
+                  ‹ 聊天
+                </button>
+              </div>
+            ) : null}
             <ContextualWorkspaceChrome
               mode={rightPanelMode}
               onFold={closeStatusPanel}

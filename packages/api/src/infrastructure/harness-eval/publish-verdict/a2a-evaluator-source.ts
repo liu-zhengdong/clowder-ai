@@ -7,6 +7,14 @@ import type { A2aEvaluatorSource } from './verdict-source-types.js';
 
 const exec = promisify(execFile);
 const CHECKOUT_NAME = 'cat-cafe-eval-a2a-current';
+// Keep the deployment coordinate plain so the canonical public exporter rewrites it.
+const CANONICAL_REPOSITORY = 'zts212653/clowder-ai';
+const CANONICAL_ORIGINS = new Set(
+  ['https://github.com/', 'git@github.com:', 'ssh://git@github.com/'].flatMap((prefix) => [
+    `${prefix}${CANONICAL_REPOSITORY}`,
+    `${prefix}${CANONICAL_REPOSITORY}.git`,
+  ]),
+);
 const MAX_RAW_BYTES = 8 * 1024 * 1024;
 const SOURCE_KEYS = ['kind', 'checkoutHeadSha', 'snapshotSha256', 'attributionSha256'];
 
@@ -101,11 +109,7 @@ export async function readA2aEvaluatorEvidence(
     git(checkout, 'rev-parse', 'HEAD'),
     git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
   ]);
-  if (
-    !/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)zts212653\/cat-cafe(?:\.git)?$/.test(
-      origin,
-    )
-  ) {
+  if (!CANONICAL_ORIGINS.has(origin)) {
     throw new Error('invalid_source_ref: designated evaluator origin is not the canonical repository');
   }
   if (owner !== 'codex' || policy !== 'never')

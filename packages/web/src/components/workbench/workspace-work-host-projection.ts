@@ -26,6 +26,7 @@ interface WorkspaceWorkHostInput {
   shellPresentation: ShellPresentation;
   currentThreadId?: string | null;
   mediaComposerSurfaceId?: string | null;
+  workModeRequested?: boolean;
 }
 
 /** Read the existing session for both shells; ownership and invalidation stay in the original controller. */
@@ -46,6 +47,15 @@ export function projectWorkspaceWorkHost(
   const sessionMatchesHost =
     presentation.session?.threadId === input.threadId && presentation.session?.surfaceId === activeSurface?.id;
   const fullWindowActive = hostEligible && sessionMatchesHost && presentation.session?.mode === 'full-window';
+  const workModeActive =
+    input.shellPresentation === 'v2' &&
+    ((hostEligible && sessionMatchesHost && presentation.session?.workMode === true) ||
+      (input.workModeRequested === true &&
+        !!input.threadId &&
+        input.viewMode === 'single' &&
+        input.isDesktop &&
+        input.statusPanelOpen &&
+        input.rightPanelMode === 'workspace'));
   const review = activeSurface && resolveArtifactReviewTarget(activeSurface);
   const publication = activeSurface && resolvePublicationTarget(activeSurface);
   const file = activeSurface && resolveFileTarget(activeSurface);
@@ -87,12 +97,16 @@ export function projectWorkspaceWorkHost(
     activeSurface,
     surfaceActive,
     workspaceWideActive,
+    workModeActive,
     hostEligible,
     fullWindowActive,
     narrowWorkComposerActive,
     // v2 file artwork shares the Artifact ratio; browser previews keep the Chat owner's ratio.
     splitPreferenceActive:
-      hostEligible && (isWorkspaceFullWindowSurface(activeSurface, 'classic') || isWorkspaceArtworkFile(activeSurface)),
-    suppressCafeSidebar: (input.shellPresentation === 'v2' && fullWindowActive) || workspaceWideActive,
+      workModeActive ||
+      (hostEligible &&
+        (isWorkspaceFullWindowSurface(activeSurface, 'classic') || isWorkspaceArtworkFile(activeSurface))),
+    suppressCafeSidebar:
+      (input.shellPresentation === 'v2' && fullWindowActive) || workspaceWideActive || workModeActive,
   };
 }

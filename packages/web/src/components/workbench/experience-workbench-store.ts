@@ -161,8 +161,18 @@ export const useF307ExperienceWorkbenchStore = create<ExperienceWorkbenchStore>(
           ? layout.activeSurfaceId
           : current.focusSurfaceId;
       const attentionSurfaceId = attentionAfterAction(current, layout, action);
+      const session = current.artifactWorkPresentation.session;
+      // Native alias/publication resolution replaces the active descriptor, not its explicit work-mode intent.
+      const resolvedWorkSession =
+        session?.workMode &&
+        action.type === 'resolve-content-surface' &&
+        session.surfaceId === action.sourceSurfaceId &&
+        layout.activeSurfaceId
+          ? { ...current.artifactWorkPresentation, session: { ...session, surfaceId: layout.activeSurfaceId } }
+          : current.artifactWorkPresentation;
       return {
         layout,
+        artifactWorkPresentation: resolvedWorkSession,
         mainAreaAttentionSurfaceId: attentionSurfaceId,
         mainAreaAttentionPresentation:
           attentionSurfaceId === null ? { kind: 'overlay' } : current.mainAreaAttentionPresentation,

@@ -72,16 +72,16 @@ describe('F306 scheduled-eval native guard closure', () => {
     for (const { command, target } of [
       {
         command:
-          'gh pr view 4368 --repo zts212653/clowder-ai --json number,title,headRefOid,mergeable,mergeStateStatus',
-        target: 'github://zts212653/cat-cafe/pull/4368',
+          'gh pr view 4368 --repo fixture-owner/fixture-repo --json number,title,headRefOid,mergeable,mergeStateStatus',
+        target: 'github://fixture-owner/fixture-repo/pull/4368',
       },
       {
-        command: 'gh pr checks 4368 --repo zts212653/clowder-ai --required',
-        target: 'github://zts212653/cat-cafe/pull/4368',
+        command: 'gh pr checks 4368 --repo fixture-owner/fixture-repo --required',
+        target: 'github://fixture-owner/fixture-repo/pull/4368',
       },
       {
-        command: 'gh pr list --repo zts212653/clowder-ai --state open --limit 30 --json number,headRefOid',
-        target: 'github://zts212653/cat-cafe/pulls',
+        command: 'gh pr list --repo fixture-owner/fixture-repo --state open --limit 30 --json number,headRefOid',
+        target: 'github://fixture-owner/fixture-repo/pulls',
       },
       {
         command: 'gh pr view 4368 --json headRefOid',
@@ -104,16 +104,16 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4368',
       },
       {
-        command: `gh pr merge 4368 --repo zts212653/clowder-ai --squash --delete-branch --match-head-commit ${head}`,
-        target: 'github://zts212653/cat-cafe/pull/4368',
+        command: `gh pr merge 4368 --repo fixture-owner/fixture-repo --squash --delete-branch --match-head-commit ${head}`,
+        target: 'github://fixture-owner/fixture-repo/pull/4368',
       },
       {
-        command: `gh pr merge 4368 --squash --admin --repo zts212653/clowder-ai --match-head-commit ${head}`,
-        target: 'github://zts212653/cat-cafe/pull/4368',
+        command: `gh pr merge 4368 --squash --admin --repo fixture-owner/fixture-repo --match-head-commit ${head}`,
+        target: 'github://fixture-owner/fixture-repo/pull/4368',
       },
       {
-        command: `gh pr merge 4368 -R zts212653/clowder-ai -s -d --match-head-commit ${head}`,
-        target: 'github://zts212653/cat-cafe/pull/4368',
+        command: `gh pr merge 4368 -R fixture-owner/fixture-repo -s -d --match-head-commit ${head}`,
+        target: 'github://fixture-owner/fixture-repo/pull/4368',
       },
     ]) {
       const verdict = decide(command);
@@ -132,12 +132,12 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4404',
       },
       {
-        command: 'gh pr close 4404 --repo zts212653/clowder-ai',
-        target: 'github://zts212653/cat-cafe/pull/4404',
+        command: 'gh pr close 4404 --repo fixture-owner/fixture-repo',
+        target: 'github://fixture-owner/fixture-repo/pull/4404',
       },
       {
-        command: 'gh pr close 4404 -R zts212653/clowder-ai',
-        target: 'github://zts212653/cat-cafe/pull/4404',
+        command: 'gh pr close 4404 -R fixture-owner/fixture-repo',
+        target: 'github://fixture-owner/fixture-repo/pull/4404',
       },
     ]) {
       assert.deepEqual(constrainedGhPullRequestOperation(command), { effect: 'remote_mutation', target }, command);
@@ -147,13 +147,13 @@ describe('F306 scheduled-eval native guard closure', () => {
       'gh pr close 0',
       'gh pr close 004404',
       'gh pr close main',
-      'gh pr close https://github.com/zts212653/clowder-ai/pull/4404',
+      'gh pr close https://github.com/fixture-owner/fixture-repo/pull/4404',
       'gh pr close 4404 --comment superseded',
       'gh pr close 4404 -c superseded',
       'gh pr close 4404 --delete-branch',
       'gh pr close 4404 -d',
-      'gh pr close 4404 --repo zts212653/clowder-ai --repo zts212653/clowder-ai',
-      'gh pr close 4404 --repo zts212653/clowder-ai --unknown',
+      'gh pr close 4404 --repo fixture-owner/fixture-repo --repo fixture-owner/fixture-repo',
+      'gh pr close 4404 --repo fixture-owner/fixture-repo --unknown',
       'gh pr close 4404 && echo closed',
     ]) {
       assert.equal(constrainedGhPullRequestOperation(command), null, command);
@@ -167,12 +167,12 @@ describe('F306 scheduled-eval native guard closure', () => {
         target: 'github://current/pull/4404',
       },
       {
-        command: 'gh pr close 4404 --repo zts212653/clowder-ai',
-        target: 'github://zts212653/cat-cafe/pull/4404',
+        command: 'gh pr close 4404 --repo fixture-owner/fixture-repo',
+        target: 'github://fixture-owner/fixture-repo/pull/4404',
       },
       {
-        command: 'gh pr close 4404 -R zts212653/clowder-ai',
-        target: 'github://zts212653/cat-cafe/pull/4404',
+        command: 'gh pr close 4404 -R fixture-owner/fixture-repo',
+        target: 'github://fixture-owner/fixture-repo/pull/4404',
       },
     ]) {
       const verdict = decide(command);
@@ -277,26 +277,26 @@ describe('F306 scheduled-eval native guard closure', () => {
       'gh pr merge 4368 --squash --body unreviewed',
       'gh pr merge 4368 --squash --match-head-commit deadbeef',
       'gh pr merge main --squash',
-      'gh pr merge https://github.com/zts212653/clowder-ai/pull/4368 --squash',
+      'gh pr merge https://github.com/fixture-owner/fixture-repo/pull/4368 --squash',
       'gh pr merge 4368 --squash -s',
       'gh pr close 0',
       'gh pr close 004404',
       'gh pr close main',
-      'gh pr close https://github.com/zts212653/clowder-ai/pull/4404',
+      'gh pr close https://github.com/fixture-owner/fixture-repo/pull/4404',
       'gh pr close 4404 --comment superseded',
       'gh pr close 4404 -c superseded',
       'gh pr close 4404 --delete-branch',
       'gh pr close 4404 -d',
-      'gh pr close 4404 --repo zts212653/clowder-ai --unknown',
+      'gh pr close 4404 --repo fixture-owner/fixture-repo --unknown',
       'gh pr list --limit 0',
       'gh pr list --web',
       '/tmp/gh pr merge 4368 --squash --delete-branch',
       '/tmp/ps -p 123',
       '/tmp/lsof -iTCP:3012',
       '/tmp/test -e /tmp/cat-cafe-pr4368',
-      'gh pr comment 4369 --repo zts212653/clowder-ai --body approved',
-      'gh api repos/zts212653/cat-cafe/pulls/4369 -X PATCH -f state=closed',
-      'gh pr view 4369 --repo zts212653/clowder-ai --web',
+      'gh pr comment 4369 --repo fixture-owner/fixture-repo --body approved',
+      'gh api repos/fixture-owner/fixture-repo/pulls/4369 -X PATCH -f state=closed',
+      'gh pr view 4369 --repo fixture-owner/fixture-repo --web',
       'sqlite3 .cat-cafe/evidence.sqlite "SELECT count(*) FROM recall_events"',
       'sqlite3 -readonly .cat-cafe/evidence.sqlite "DELETE FROM recall_events"',
       "sqlite3 -readonly .cat-cafe/evidence.sqlite \"SELECT writefile('/tmp/leak', 'x')\"",

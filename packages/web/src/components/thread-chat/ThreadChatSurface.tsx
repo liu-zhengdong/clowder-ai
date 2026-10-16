@@ -18,6 +18,7 @@ import { ConnectionStatusBar } from '../ConnectionStatusBar';
 import { getStreamingTipContexts, selectLifecycleTipMessageId } from '../capability-tip-placement';
 import { buildChatTimelineProjectionKey } from '../chat-timeline-projection-key';
 import { useCompanionConversation } from '../concierge/useCompanionConversation';
+import { useArtworkLightboxScope } from '../content-review/ArtworkLightboxScope';
 import { HubCatEditor } from '../HubCatEditor';
 import { HubCoCreatorEditor } from '../HubCoCreatorEditor';
 import { PawIcon } from '../icons/PawIcon';
@@ -33,6 +34,7 @@ import { TransferTargetPicker } from '../TransferTargetPicker';
 import { VoteActiveBar } from '../VoteActiveBar';
 import { ThreadChatHistoryNavigation } from './ThreadChatHistoryNavigation';
 import { useThreadChatRuntime } from './ThreadChatRuntimeProvider';
+import { ThreadComposerHost } from './ThreadComposerHost';
 import { ThreadExecutionLayer } from './ThreadExecutionLayer';
 import { type RegisterChatReadingPort, useThreadChatReadingPort } from './useThreadChatReadingPort';
 import { useThreadChatSelection } from './useThreadChatSelection';
@@ -105,6 +107,7 @@ export function ThreadChatSurface({
   onActivity,
   onReadingPort,
 }: ThreadChatSurfaceProps) {
+  const artworkLightbox = useArtworkLightboxScope();
   const companion = useCompanionConversation(threadId);
   // The composer is told it is hosted with the one execution row only in the new shell (see ChatInput `presentation`).
   const composerPresentation = useShellPresentation();
@@ -306,53 +309,56 @@ export function ThreadChatSurface({
         />
       </div>
 
-      <div ref={footerRef} className={footerClassName(compact, composerOnly)} data-thread-chat-footer>
-        <ThreadExecutionLayer threadId={threadId} />
-        <VoteActiveBar threadId={threadId} onEnd={() => {}} />
-        {footerLead}
-        {selection.selectionMode ? (
-          <MessageSelectionToolbar
-            threadId={threadId}
-            selectedMessageIds={selection.normalizedSelectedMessageIds}
-            onCancel={selection.clearMessageSelection}
-            onExportSuccess={selection.clearMessageSelection}
-            forwardingDisabled={connectionStatus.forwardingBlocked}
-            onForward={selection.openSelectionForward}
-          />
-        ) : (
-          <div className={composerClassName}>
-            <ChatInput
-              key={threadId}
-              presentation={composerPresentation}
-              composerContext={
-                composerPresentation === 'v2' ? <ThreadComposerContext threadId={threadId} /> : undefined
-              }
+      <ThreadComposerHost threadId={threadId}>
+        <div ref={footerRef} className={footerClassName(compact, composerOnly)} data-thread-chat-footer>
+          <ThreadExecutionLayer threadId={threadId} />
+          <VoteActiveBar threadId={threadId} onEnd={() => {}} />
+          {footerLead}
+          <div ref={artworkLightbox?.setToolsSlot} data-artwork-tools-slot />
+          {selection.selectionMode ? (
+            <MessageSelectionToolbar
               threadId={threadId}
-              onSend={(content, images, whisper, replyToId, contextAttachments, explicitTargetCats) =>
-                handleSend(content, images, undefined, whisper, replyToId, contextAttachments, explicitTargetCats, {
-                  consumeComposerDraft: true,
-                })
-              }
-              disabled={connectionStatus.isReadonly}
-              hasActiveInvocation={hasActiveInvocation}
-              uploadStatus={uploadStatus}
-              uploadError={uploadError}
-              placeholder={composerPlaceholder}
-              seed={composerSeed ?? companion.composerSeed}
-              onFocusChange={onComposerFocusChange}
+              selectedMessageIds={selection.normalizedSelectedMessageIds}
+              onCancel={selection.clearMessageSelection}
+              onExportSuccess={selection.clearMessageSelection}
+              forwardingDisabled={connectionStatus.forwardingBlocked}
+              onForward={selection.openSelectionForward}
             />
-          </div>
-        )}
-        {footerTail}
-        <TransferTargetPicker
-          open={selection.selectionForwardOpen && !connectionStatus.forwardingBlocked}
-          admissionBlocked={connectionStatus.forwardingBlocked}
-          sourceThreadId={threadId}
-          items={selection.selectedBundleItems}
-          onClose={selection.closeSelectionForward}
-          onSuccess={selection.clearMessageSelection}
-        />
-      </div>
+          ) : (
+            <div className={composerClassName}>
+              <ChatInput
+                key={threadId}
+                presentation={composerPresentation}
+                composerContext={
+                  composerPresentation === 'v2' ? <ThreadComposerContext threadId={threadId} /> : undefined
+                }
+                threadId={threadId}
+                onSend={(content, images, whisper, replyToId, contextAttachments, explicitTargetCats) =>
+                  handleSend(content, images, undefined, whisper, replyToId, contextAttachments, explicitTargetCats, {
+                    consumeComposerDraft: true,
+                  })
+                }
+                disabled={connectionStatus.isReadonly}
+                hasActiveInvocation={hasActiveInvocation}
+                uploadStatus={uploadStatus}
+                uploadError={uploadError}
+                placeholder={composerPlaceholder}
+                seed={composerSeed ?? companion.composerSeed}
+                onFocusChange={onComposerFocusChange}
+              />
+            </div>
+          )}
+          {footerTail}
+          <TransferTargetPicker
+            open={selection.selectionForwardOpen && !connectionStatus.forwardingBlocked}
+            admissionBlocked={connectionStatus.forwardingBlocked}
+            sourceThreadId={threadId}
+            items={selection.selectedBundleItems}
+            onClose={selection.closeSelectionForward}
+            onSuccess={selection.clearMessageSelection}
+          />
+        </div>
+      </ThreadComposerHost>
       {editingCat && (
         <HubCatEditor
           open
