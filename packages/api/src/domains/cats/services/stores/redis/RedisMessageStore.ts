@@ -715,6 +715,10 @@ if existingFailureId and redis.call('EXISTS', kp .. 'msg:' .. existingFailureId)
   return {2, existingFailureId}
 end
 
+if redis.call('HGET', sourceHash, 'recall') or redis.call('HGET', sourceHash, '_tombstone') then
+  return {-4, ''}
+end
+
 local existingVisibility = redis.call('HGET', sourceHash, 'visibilitySeq')
 local existingLifecycle = redis.call('HGET', sourceHash, 'lifecycle')
 if existingLifecycle == false then existingLifecycle = '' end
@@ -722,6 +726,12 @@ if sourceMode == 'queued_input' then
   if redis.call('HGET', sourceHash, 'deliveryStatus') ~= 'queued' then return {-2, ''} end
   if (existingVisibility and existingVisibility ~= '') or existingLifecycle ~= expectedSourceLifecycleRaw or
      settledSourceLifecycleRaw == '' then
+    return {-4, ''}
+  end
+elseif sourceMode == 'delivered_input' then
+  if redis.call('HGET', sourceHash, 'deliveryStatus') ~= 'delivered' or
+     not existingVisibility or existingVisibility == '' or
+     existingLifecycle ~= expectedSourceLifecycleRaw or settledSourceLifecycleRaw == '' then
     return {-4, ''}
   end
 elseif sourceMode == 'public_wake' then
@@ -764,7 +774,7 @@ if failureSeq > 9007199254730991 then
   return redis.error_reply('VISIBILITY_SEQ_EXHAUSTED: seq=' .. tostring(failureSeq))
 end
 
--- All guards passed: publish a queued input, or settle an already-public wake.
+-- All guards passed: publish a queued input, or preserve an already-public source.
 if sourceMode == 'queued_input' then
   redis.call('HSET', sourceHash,
     'deliveryStatus', 'delivered',
@@ -3742,7 +3752,16 @@ export class RedisMessageStore {
       return { kind: 'replayed', inputMessage: source, failureMessage: existingFailure };
     }
 
+    if (source.recall || source._tombstone) {
+      return { kind: 'conflict', reason: 'invalid_failure', inputMessage: structuredClone(source) };
+    }
     const isQueuedInput = source.deliveryStatus === 'queued';
+    // One sibling may already have published this input. Only settle recipients
+    // with no dispatch reference; keep the original publication coordinates.
+    const isDeliveredInput =
+      source.deliveryStatus === 'delivered' &&
+      source.lifecycle?.kind === 'input' &&
+      (source.lifecycle.dispatchRefs?.length ?? 0) > 0;
     const isPublicAgentWake =
       source.deliveryStatus === undefined &&
       messageFrom(source).kind === 'agent' &&
@@ -3755,9 +3774,8 @@ export class RedisMessageStore {
       input.failedAt < source.timestamp ||
       input.requestedTargets.some((target) => typeof target !== 'string' || target.length === 0) ||
       uniqueTargets.size !== input.requestedTargets.length ||
-      input.requestedTargets.length > 1 ||
-      (isPublicAgentWake && input.requestedTargets.length === 0) ||
-      (!isQueuedInput && !isPublicAgentWake)
+      (!isQueuedInput && input.requestedTargets.length === 0) ||
+      (!isQueuedInput && !isDeliveredInput && !isPublicAgentWake)
     ) {
       return { kind: 'conflict', reason: 'invalid_failure', inputMessage: source };
     }
@@ -3824,7 +3842,7 @@ export class RedisMessageStore {
       failureInput.contentBlocks === undefined ? '' : JSON.stringify(failureInput.contentBlocks),
       MessageKeys.idempotency('system', source.threadId, idempotencyKey),
       String(this.ttlSeconds ?? 0),
-      isPublicAgentWake ? 'public_wake' : 'queued_input',
+      isQueuedInput ? 'queued_input' : isDeliveredInput ? 'delivered_input' : 'public_wake',
       JSON.stringify(failureInput.from),
     )) as [number | string, string];
     const outcome = Number(result[0]);

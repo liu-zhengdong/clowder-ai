@@ -8,7 +8,7 @@ import { build } from 'vite';
 import { chromium } from '../../../ppt-forge/node_modules/playwright/index.mjs';
 
 test(
-  'real Append region shows optional exact read status with keyboard, hover and mobile tap',
+  'real Append region exposes exact read status in text at desktop and mobile widths',
   { timeout: 60000 },
   async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -91,7 +91,9 @@ test(
       const unsupported = page.locator('[data-appended-input-id="unsupported"] button[data-append-delivery-state]');
       const supportedIndicator = supported.locator('span[aria-hidden="true"]');
       const unsupportedIndicator = unsupported.locator('span[aria-hidden="true"]');
-      assert.equal(await supportedIndicator.evaluate((el) => getComputedStyle(el).animationName), 'pulse');
+      assert.equal(await supportedIndicator.evaluate((el) => getComputedStyle(el).animationName), 'none');
+      assert.match(await page.locator('[data-append-read-status="pending"]').innerText(), /已收到，等读取确认/);
+      assert.match(await page.locator('[data-append-read-status="unavailable"]').innerText(), /已收到，读没读查不到/);
       assert.equal(await supportedIndicator.evaluate((el) => getComputedStyle(el).width), '6px');
       assert.notEqual(
         await supportedIndicator.evaluate((el) => getComputedStyle(el).backgroundColor),
@@ -100,13 +102,11 @@ test(
       assert.equal(await unsupportedIndicator.evaluate((el) => getComputedStyle(el).animationName), 'none');
       await supported.focus();
       await page.getByRole('tooltip').waitFor();
-      const expectedTooltip =
-        /^已收到 lang · \d{2}\/\d{2} \d{2}:\d{2}:\d{2}\n请保留这个消息的准确归属，并继续原任务。$/;
-      assert.match(await page.getByRole('tooltip').innerText(), expectedTooltip);
+      assert.match(await page.getByRole('tooltip').innerText(), /已收到，等读取确认/);
       await page.keyboard.press('Escape');
       await unsupported.hover();
       await page.getByRole('tooltip').waitFor();
-      assert.match(await page.getByRole('tooltip').innerText(), expectedTooltip);
+      assert.match(await page.getByRole('tooltip').innerText(), /已收到，读没读查不到/);
       assert.equal(await unsupported.getAttribute('data-append-delivery-state'), 'unavailable');
       for (const width of [1100, 360]) {
         await page.setViewportSize({ width, height: 650 });
@@ -120,7 +120,7 @@ test(
         }
       }
       await supported.click();
-      await page.getByRole('tooltip').waitFor();
+      assert.match(await page.locator('[data-append-read-status="pending"]').innerText(), /已收到，等读取确认/);
       await page.getByRole('button', { name: 'terminal', exact: true }).click();
       await page.waitForFunction(
         () =>
@@ -129,7 +129,8 @@ test(
             ?.getAttribute('data-append-delivery-state') === 'unconfirmed',
       );
       assert.equal(await supportedIndicator.evaluate((el) => getComputedStyle(el).animationName), 'none');
-      assert.match(await supported.getAttribute('aria-label'), /已收到 lang（未确认读取）/);
+      assert.match(await supported.getAttribute('aria-label'), /已收到，没确认读到/);
+      assert.match(await page.locator('[data-append-read-status="unconfirmed"]').innerText(), /已收到，没确认读到/);
       await page.getByRole('button', { name: 'read', exact: true }).click();
       await page.waitForFunction(
         () =>
@@ -137,11 +138,32 @@ test(
             .querySelector('[data-appended-input-id="supported"] [data-append-delivery-state]')
             ?.getAttribute('data-append-delivery-state') === 'read',
       );
-      assert.match(await supported.getAttribute('aria-label'), /^已读(?:\s|$)/);
+      assert.match(await supported.getAttribute('aria-label'), /已读 \d{2}:\d{2}/);
+      assert.match(await page.locator('[data-append-read-status="read"]').innerText(), /✓ 已读/);
       assert.equal(await unsupported.getAttribute('data-append-delivery-state'), 'unavailable');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.getByRole('button', { name: 'pending', exact: true }).click();
       assert.equal(await supportedIndicator.evaluate((el) => getComputedStyle(el).animationName), 'none');
+      await page.getByRole('button', { name: 'many', exact: true }).click();
+      const list = page.locator('[data-testid="appended-input-list"]');
+      for (const width of [1100, 360]) {
+        await page.setViewportSize({ width, height: 650 });
+        const measureRows = () =>
+          list.evaluate((element) => ({
+            visible: element.getBoundingClientRect().height,
+            row: element.firstElementChild.getBoundingClientRect().height,
+            total: element.scrollHeight,
+          }));
+        const folded = await measureRows();
+        assert.ok(Math.abs(folded.visible / folded.row - 3.5) < 0.05, `${width}px shows 3.5 actual rows`);
+        assert.ok(folded.total > folded.visible, 'older inputs remain available below the fold');
+        await page.getByRole('button', { name: '展开剩余 2 条补充消息', exact: true }).click();
+        const expanded = await measureRows();
+        assert.ok(expanded.visible >= expanded.total - 1, 'expand reveals every source');
+        await page.getByRole('button', { name: '收起补充消息', exact: true }).click();
+        const refolded = await measureRows();
+        assert.ok(Math.abs(refolded.visible / refolded.row - 3.5) < 0.05, 'collapse restores the partial-row cue');
+      }
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

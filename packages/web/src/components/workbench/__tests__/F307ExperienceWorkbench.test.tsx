@@ -531,6 +531,33 @@ describe('F307 zero-surface canonical Home invariant', () => {
     });
   });
 
+  it('turns a wide Program into explicit full-window and restores the same Chat split from a named control', async () => {
+    const presentation = { kind: 'chat-workspace' as const, threadId: 'thread-a', chatBasis: 37 };
+    useF307ExperienceWorkbenchStore.setState({
+      layout: createInitialWorkbenchState([PROGRAM_SURFACE]),
+      hydrated: true,
+      mainAreaAttentionSurfaceId: PROGRAM_SURFACE.id,
+      mainAreaAttentionPresentation: presentation,
+    });
+    await renderWorkbench();
+
+    const enter = container.querySelector<HTMLButtonElement>('[data-testid="f307-enter-main-area"]');
+    expect(enter?.getAttribute('aria-label')).toBe(`整窗打开 ${PROGRAM_SURFACE.title}`);
+    await act(async () => enter?.click());
+    expect(useF307ExperienceWorkbenchStore.getState().mainAreaAttentionPresentation).toEqual({
+      ...presentation,
+      mode: 'full-window',
+    });
+
+    const back = container.querySelector<HTMLButtonElement>('[data-testid="f307-return-from-main-area"]');
+    expect(back?.textContent).toContain('回到聊天');
+    await act(async () => back?.click());
+    expect(useF307ExperienceWorkbenchStore.getState()).toMatchObject({
+      mainAreaAttentionSurfaceId: PROGRAM_SURFACE.id,
+      mainAreaAttentionPresentation: presentation,
+    });
+  });
+
   it.each([
     ['artifacts', 'launcher'],
     ['schedule', 'launcher'],
@@ -1226,6 +1253,11 @@ describe('F307 zero-surface canonical Home invariant', () => {
     const state = useF307ExperienceWorkbenchStore.getState();
     expect(state.layout.activeSurfaceId).toBe(`evolution-program:${programId}`);
     expect(state.mainAreaAttentionSurfaceId).toBe(state.layout.activeSurfaceId);
+    expect(state.mainAreaAttentionPresentation).toEqual({
+      kind: 'chat-workspace',
+      threadId: 'thread-a',
+      chatBasis: 30,
+    });
     expect(onConsumed).toHaveBeenCalledWith(1);
   });
 

@@ -181,6 +181,7 @@ async function resolveSelected(
 }
 
 type SemanticGitVersion = RequestReviewGitVersion & { semanticVersion: string };
+type CatalogGitVersion = Omit<SemanticGitVersion, 'committedAt'> & { committedAt?: string };
 
 async function semanticHistory(
   history: readonly RequestReviewGitVersion[],
@@ -205,8 +206,8 @@ async function semanticHistory(
   return resolved;
 }
 
-function buildVersionCatalog(history: readonly SemanticGitVersion[], current: SemanticGitVersion) {
-  const distinct: SemanticGitVersion[] = [];
+function buildVersionCatalog(history: readonly SemanticGitVersion[], current: CatalogGitVersion) {
+  const distinct: CatalogGitVersion[] = [];
   const seen = new Set<string>();
   for (const entry of [current, ...history]) {
     if (seen.has(entry.semanticVersion)) continue;
@@ -218,7 +219,10 @@ function buildVersionCatalog(history: readonly SemanticGitVersion[], current: Se
     const parent = distinct[index + 1];
     return {
       versionRef: requestReviewAssetVersionRef(entry.semanticVersion),
-      title: `${entry.subject} (${entry.committedAt})`.slice(0, 240),
+      title: (entry.committedAt ? `${entry.subject} (${entry.committedAt})` : `${entry.subject}（提交时间未知）`).slice(
+        0,
+        240,
+      ),
       parentEdges: parent
         ? [
             {
@@ -284,16 +288,15 @@ export function createRequestReviewOwnerAdapter(options: RequestReviewOwnerAdapt
       const currentVersionRef = requestReviewAssetVersionRef(currentSemanticVersion);
       const currentVersionRefs = [currentVersionRef];
       const resolvedHistory = await semanticHistory(history, port, headOid, currentSemanticVersion);
-      const currentHistory = resolvedHistory.find((entry) => entry.commitOid === headOid);
-      const current =
-        currentHistory ??
-        ({
-          commitOid: headOid,
-          blobOid: skillBlobOid,
-          semanticVersion: currentSemanticVersion,
-          committedAt: new Date(0).toISOString(),
-          subject: 'Current request-review skill',
-        } satisfies SemanticGitVersion);
+      const currentHistory = resolvedHistory.find(
+        (entry) => entry.blobOid === skillBlobOid && entry.semanticVersion === currentSemanticVersion,
+      );
+      const current: CatalogGitVersion = currentHistory ?? {
+        commitOid: headOid,
+        blobOid: skillBlobOid,
+        semanticVersion: currentSemanticVersion,
+        subject: 'Current request-review skill',
+      };
       const { versions, commitsByVersion } = buildVersionCatalog(resolvedHistory, current);
 
       const selected = selectedVersionRef

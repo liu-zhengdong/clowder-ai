@@ -15,6 +15,20 @@ import { lineageLabels } from './lineage-labels';
 import { useLineageCamera } from './use-lineage-camera';
 
 type Viewport = ExplorationReading['viewport'];
+const EMPTY_KEYS = new Set<string>();
+
+function lineageNodeMeta(
+  key: string,
+  currentKeys: ReadonlySet<string>,
+  adoptedKeys: ReadonlySet<string>,
+  nodeNotes?: ReadonlyMap<string, string>,
+): string | undefined {
+  const labels = [];
+  if (currentKeys.has(key)) labels.push('来源当前版本');
+  if (adoptedKeys.has(key)) labels.push('当前采用');
+  if (!labels.length && nodeNotes?.has(key)) labels.push(nodeNotes.get(key));
+  return labels.filter((label): label is string => Boolean(label)).join(' · ') || undefined;
+}
 
 function positionLineage(
   nodes: EvolutionExplorationNodeV1[],
@@ -31,6 +45,7 @@ export function ExplorationLineage({
   nodes,
   selected,
   currentKeys,
+  adoptedKeys = EMPTY_KEYS,
   nodeNotes,
   toolbarEnd,
   viewport,
@@ -42,6 +57,7 @@ export function ExplorationLineage({
   nodes: EvolutionExplorationNodeV1[];
   selected?: string;
   currentKeys: Set<string>;
+  adoptedKeys?: Set<string>;
   nodeNotes?: ReadonlyMap<string, string>;
   toolbarEnd?: ReactNode;
   viewport: Viewport;
@@ -246,6 +262,7 @@ export function ExplorationLineage({
               data-key={key}
               data-selected={key === selected}
               data-current={currentKeys.has(key)}
+              data-adopted={adoptedKeys.has(key)}
               data-label-side={labels.get(key)?.side ?? (x > positioned.width / 2 ? 'end' : 'start')}
               data-label-visible={labels.has(key)}
               data-label-above={labels.get(key)?.above ?? false}
@@ -265,9 +282,9 @@ export function ExplorationLineage({
                   <span>{node.title}</span>
                 </span>
                 <span className="exploration-node-summary">{node.changes[0]?.detail ?? node.summary}</span>
-                {(currentKeys.has(key) || nodeNotes?.has(key)) && (
+                {lineageNodeMeta(key, currentKeys, adoptedKeys, nodeNotes) && (
                   <span className="exploration-node-meta">
-                    {currentKeys.has(key) ? '当前沿用' : nodeNotes?.get(key)}
+                    {lineageNodeMeta(key, currentKeys, adoptedKeys, nodeNotes)}
                   </span>
                 )}
               </button>

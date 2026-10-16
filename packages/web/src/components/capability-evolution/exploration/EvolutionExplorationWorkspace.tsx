@@ -3,6 +3,7 @@ import { refIdentity } from '@cat-cafe/shared';
 import { useShellPresentation } from '@/components/shell/shell-presentation';
 import { EvolutionSource } from '../EvolutionVersionEvidence';
 import type { EvolutionProgramProjection } from '../evolution-program-projection';
+import { projectAssetVersions } from '../evolution-version-view';
 import { ExplorationActions } from './ExplorationActions';
 import { ExplorationCaseList } from './ExplorationCaseList';
 import { ExplorationComparison } from './ExplorationComparison';
@@ -50,6 +51,17 @@ export function EvolutionExplorationWorkspace({
     acceptComparisonScope,
     resetSelection,
   } = workspace;
+  const assetVersions = projectAssetVersions(projection, asset.catalog);
+  const adoptedVersions = assetVersions.filter((version) => version.adopted);
+  const sourceCurrentVersions = assetVersions.filter((version) => version.sourceCurrent);
+  const names = (versions: typeof assetVersions) =>
+    versions
+      .map(
+        ({ ref }) =>
+          asset.catalog?.versions.find((version) => refIdentity(version.versionRef) === refIdentity(ref))?.title ??
+          ref.assetId,
+      )
+      .join('、');
   if (!catalog)
     return (
       <section className="exploration-workspace" aria-label="探索进化">
@@ -123,20 +135,10 @@ export function EvolutionExplorationWorkspace({
       {v2 && (
         <>
           <section className="exploration-version-state" aria-label="生效与阅读状态">
+            <p>当前采用：{adoptedVersions.length ? names(adoptedVersions) : '未登记'}</p>
             <p>
-              当前生效：
-              {!asset.catalog
-                ? '待来源核验'
-                : asset.catalog.currentVersionRefs.length
-                  ? asset.catalog.currentVersionRefs
-                      .map(
-                        (ref) =>
-                          asset.catalog?.versions.find(
-                            (version) => refIdentity(version.versionRef) === refIdentity(ref),
-                          )?.title ?? '已登记，版本名待核实',
-                      )
-                      .join('、')
-                  : '未登记'}
+              来源当前版本：
+              {asset.catalog ? names(sourceCurrentVersions) || '未登记' : '待来源核验'}
             </p>
             <p>正在读：{node.title}</p>
           </section>
@@ -173,24 +175,18 @@ export function EvolutionExplorationWorkspace({
           {reading.inspector === 'changes' ? (
             <section className="exploration-inline-inspector" aria-label="改动与依据">
               <details className="exploration-adoption">
-                <summary>当前沿用与记录来源</summary>
-                <div className="exploration-current" role="status" aria-label="当前沿用">
-                  当前沿用：
-                  {asset.catalog
-                    ? asset.catalog.currentVersionRefs
-                        .map(
-                          (ref) =>
-                            asset.catalog?.versions.find(
-                              (version) => refIdentity(version.versionRef) === refIdentity(ref),
-                            )?.title ?? ref.assetId,
-                        )
-                        .join('、') || '来源尚无沿用记录'
-                    : '尚待资产来源确认'}
+                <summary>采用与来源版本</summary>
+                <div className="exploration-current" role="status" aria-label="当前采用">
+                  当前采用：{adoptedVersions.length ? names(adoptedVersions) : '未登记'}
                 </div>
+                <p>
+                  来源当前版本：
+                  {asset.catalog ? names(sourceCurrentVersions) || '未登记' : '尚待资产来源确认'}
+                </p>
                 <p>
                   {node.kind === 'public_archive'
                     ? '公开归档；采用以正式回执为准。'
-                    : '来源发布的真实资产版本。阅读不会改变采用。'}
+                    : '来源发布的真实资产版本不等于本项目已采用；阅读也不会改变采用。'}
                 </p>
               </details>
               <h3>这一版改了什么</h3>

@@ -836,8 +836,8 @@ export class AgentRouter {
   /**
    * Canonical target resolution for public conversation work.
    *
-   * Common send resolves before atomic Message + Queue admission. Drain uses
-   * the same resolver to handle targets that have since become unavailable.
+   * Common send resolves before atomic Message + Queue admission. Drain may
+   * reuse the policy, but must keep any already-bound Queue recipient set.
    * Still-routable explicit members keep their original order. Otherwise use
    * the same conversation policy shown by the composer, including historical
    * user mentions, healthy repliers and preferences. Existing history does not

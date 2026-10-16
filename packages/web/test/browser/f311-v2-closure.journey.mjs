@@ -126,6 +126,13 @@ export async function verifyV2ClosureJourney({ fixture, browser, capture }) {
 
     await home.getByTestId(`capability-evolution-program-${PROGRAM_ID}`).click();
     let detail = home.getByTestId('capability-evolution-program-detail');
+    const adoptionAndCandidates = detail.getByRole('region', { name: '采用与候选' });
+    const adoptionText = await adoptionAndCandidates.innerText();
+    assert.ok(adoptionText.includes('本项目尚无采用记录。'));
+    assert.ok(adoptionText.includes('来源当前版本'));
+    assert.ok(adoptionText.includes('当前 request-review 规则'));
+    assert.ok(!adoptionText.includes('当前采用\n当前 request-review 规则'));
+    assert.ok(!adoptionText.includes('1970-01-01'));
     const journey = detail.getByRole('navigation', { name: '能力进化旅程' });
     await journey.getByRole('button', { name: '准备', exact: true }).click();
     const overview = detail.getByRole('region', { name: '准备四块总览' });
@@ -133,6 +140,60 @@ export async function verifyV2ClosureJourney({ fixture, browser, capture }) {
     await overview.locator('[data-preparation-overview]').first().click();
     let main = page.locator('[data-testid="evolution-program-surface"]:visible');
     await main.getByTestId('evolution-preparation-workspace').waitFor();
+    const chatHost = page.getByTestId('thread-chat-host');
+    const workspaceHost = page.getByTestId('contextual-workspace-host');
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="contextual-workspace-host"]')?.getAttribute('data-presentation') ===
+        'wide-workspace',
+    );
+    assert.equal(await workspaceHost.getAttribute('data-presentation'), 'wide-workspace');
+    assert.equal(await chatHost.getAttribute('aria-hidden'), null);
+    const draft = 'v2 Program 阅读返回仍在原 Chat';
+    const composer = chatHost.getByRole('textbox', { name: '消息输入框', exact: true });
+    await composer.fill(draft);
+    const readingTop = await main.evaluate((element) => {
+      element.scrollTop = 140;
+      element.dispatchEvent(new Event('scroll'));
+      window.__f311V2ReturnProgram = element;
+      return element.scrollTop;
+    });
+    await chatHost.evaluate((element) => {
+      window.__f311V2ReturnChat = element;
+    });
+    assert(readingTop > 0, 'the v2 return contract needs a real reading position');
+    await page.locator('summary[aria-label="更多 Workspace 操作"]').click();
+    await page.getByRole('menuitemcheckbox', { name: '整窗', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="contextual-workspace-host"]')?.getAttribute('data-presentation') ===
+        'main-area-attention',
+    );
+    const returnToChat = page.getByTestId('v2-workspace-return-to-chat');
+    await returnToChat.waitFor();
+    assert.equal(await chatHost.getAttribute('aria-hidden'), 'true');
+    await capture(page, 's6-preparation-full-window-return');
+    await returnToChat.click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="contextual-workspace-host"]')?.getAttribute('data-presentation') ===
+        'wide-workspace',
+    );
+    assert.equal(await composer.inputValue(), draft);
+    assert.equal(await main.evaluate((element) => element.scrollTop), readingTop);
+    assert.equal(
+      await main
+        .getByTestId('evolution-preparation-workspace')
+        .locator('[data-preparation-section="object_map"]')
+        .getAttribute('aria-selected'),
+      'true',
+    );
+    assert.equal(await chatHost.evaluate((node) => window.__f311V2ReturnChat === node && node.isConnected), true);
+    assert.equal(await main.evaluate((node) => window.__f311V2ReturnProgram === node && node.isConnected), true);
+    await page.evaluate(() => {
+      delete window.__f311V2ReturnChat;
+      delete window.__f311V2ReturnProgram;
+    });
     await capture(page, 's6-preparation-main');
     await main.getByRole('button', { name: '← 返回侧栏', exact: true }).click();
 

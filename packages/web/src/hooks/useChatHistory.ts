@@ -21,6 +21,7 @@ import {
   getMessageTimelineCursorTime,
   getMessageTimelineOrderTime,
 } from '@/stores/message-timeline';
+import { withQueuedInputPreviews } from '@/stores/queued-input-preview';
 import type { TaskItem } from '@/stores/taskStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { apiFetch } from '@/utils/api-client';
@@ -568,6 +569,7 @@ export function useChatHistory(threadId: string) {
   const historyConsumerId = historyConsumerIdRef.current;
   const {
     rawMessages,
+    pendingQueue,
     currentThreadId: storeCurrentThreadId,
     isLoadingHistory,
     hasMore,
@@ -582,6 +584,7 @@ export function useChatHistory(threadId: string) {
   } = useChatStore(
     useShallow((s) => ({
       rawMessages: selectThreadMessagesRaw(s, threadId),
+      pendingQueue: s.currentThreadId === threadId ? s.queue : s.threadStates[threadId]?.queue,
       currentThreadId: s.currentThreadId,
       isLoadingHistory: s.isLoadingHistory,
       hasMore: s.hasMore,
@@ -599,17 +602,11 @@ export function useChatHistory(threadId: string) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const messages = useViewportMessageTimeline(threadId, rawMessages, () => {
-    if (useChatStore.getState().currentThreadId !== threadId) return;
-    const el = scrollContainerRef.current;
-    const saved = readChatScrollState(threadId);
-    if (!el || saved?.anchor !== 'offset' || saved.messageAnchor) return;
-    saveChatScrollState(threadId, {
-      ...saved,
-      top: el.scrollTop,
-      messageAnchor: captureMessageScrollAnchor(el) ?? saved.messageAnchor,
-    });
-  });
+  const presentedMessages = useMemo(
+    () => withQueuedInputPreviews(rawMessages, pendingQueue, threadId),
+    [rawMessages, pendingQueue, threadId],
+  );
+  const messages = useViewportMessageTimeline(threadId, presentedMessages);
 
   // Scroll state for prepend handling
   const prevFirstIdRef = useRef<string | null>(null);
@@ -974,8 +971,7 @@ export function useChatHistory(threadId: string) {
     // intent or its already-started hint. User input still cancels both.
     cancelPendingFrame();
     const scheduledForThread = threadIdRef.current;
-    const saved = readChatScrollState(scheduledForThread);
-    if (!saved) return;
+    if (!readChatScrollState(scheduledForThread)) return;
 
     restoreFrameKindRef.current = 'correction';
     const generation = restoreGenerationRef.current;
@@ -989,7 +985,10 @@ export function useChatHistory(threadId: string) {
       restoreFrameKindRef.current = null;
 
       const el = scrollContainerRef.current;
-      if (!el || useChatStore.getState().currentThreadId !== scheduledForThread) return;
+      // Native scroll frames can advance reading memory after this correction
+      // was queued. Reflow must align the current position, not rewind it.
+      const saved = readChatScrollState(scheduledForThread);
+      if (!el || !saved || useChatStore.getState().currentThreadId !== scheduledForThread) return;
       const beforeCorrection = captureRestoreWritePosition(
         el,
         useChatStore.getState().getThreadState(scheduledForThread).messages,
@@ -2004,6 +2003,10 @@ export function useChatHistory(threadId: string) {
     const el = scrollContainerRef.current;
     const saved = readChatScrollState(threadId);
     if (!el || !saved || useChatStore.getState().currentThreadId !== threadId) return;
+    // Wheel/touch/key intent arrives before the browser's scroll event can
+    // replace bottom-follow with a reading anchor. Streaming must not reclaim
+    // that pending movement through this synchronous timeline writer.
+    if (saved.anchor === 'bottom' && userScrollIntentRef.current && userScrollUpRef.current) return;
 
     const anchor: TimelineScrollAnchor | undefined =
       saved.anchor === 'bottom'
@@ -2071,18 +2074,9 @@ export function useChatHistory(threadId: string) {
 
     // Append case: only auto-follow when the user intentionally stayed at bottom.
     if (messages.length > prevCount) {
-      const saved = readChatScrollState(threadId);
-      if (saved?.anchor === 'bottom') {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        if (el) {
-          saveChatScrollState(threadId, {
-            top: el.scrollTop,
-            anchor: 'bottom',
-          });
-        }
-      }
+      followBottomAnchor('smooth');
     }
-  }, [messages, scheduleRestore, storeCurrentThreadId, threadId]);
+  }, [messages, scheduleRestore, followBottomAnchor, storeCurrentThreadId, threadId]);
 
   // F052 + 砚砚 R1 P1: resolve a pending cross-post scroll across BOTH the tentative IDB-snapshot
   // phase and the authoritative fresh-API phase. Kept independent of the scroll-restore effect

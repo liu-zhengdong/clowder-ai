@@ -67,6 +67,7 @@ import { useF307ExperienceWorkbenchStore } from './workbench/experience-workbenc
 import { useArtifactWorkHostPresentation } from './workbench/useArtifactWorkHostPresentation';
 import { WorkspaceChatRevealProvider } from './workbench/WorkspaceChatReveal';
 import { WorkspaceChatWorkScopeProvider } from './workbench/WorkspaceChatWorkScope';
+import type { MainAreaAttentionPresentation } from './workbench/workspace-work-host-projection';
 import { ContextualWorkspaceChrome } from './workspace/ContextualWorkspaceChrome';
 import { FloatingTranscriptContainer } from './workspace/FloatingTranscriptContainer';
 import { ResizeHandle } from './workspace/ResizeHandle';
@@ -88,6 +89,11 @@ function hasConciergeConfirmationActions(messages: readonly ChatMessage[]): bool
         ),
     ),
   );
+}
+
+function coversChatHistory(presentation: MainAreaAttentionPresentation): boolean {
+  if (presentation.kind === 'overlay') return true;
+  return presentation.mode === 'full-window';
 }
 
 export function ChatContainer({ threadId }: ChatContainerProps) {
@@ -362,7 +368,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
     rightPanelMode === 'workspace' &&
     mainAreaAttentionSurfaceId !== null &&
     (attentionPresentation.kind !== 'chat-workspace' || attentionPresentation.threadId === threadId);
-  const mainAreaOverlayActive = mainAreaAttentionActive && attentionPresentation.kind === 'overlay';
+  const mainAreaOverlayActive = mainAreaAttentionActive && coversChatHistory(attentionPresentation);
   const revealWorkspaceChat = useCallback(() => {
     if (!isV2 || useChatStore.getState().currentThreadId !== threadId) return;
     // Full-window Artifact work leaves room for the original composer; the other overlay hosts cover it.

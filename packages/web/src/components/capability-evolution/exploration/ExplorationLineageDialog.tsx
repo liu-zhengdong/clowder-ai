@@ -40,6 +40,7 @@ export function ExplorationLineageDialog({
         }
         selected={workspace.selectedNodeKey}
         currentKeys={workspace.currentKeys}
+        adoptedKeys={workspace.adoptedKeys}
         viewport={workspace.reading.viewport}
         direction={workspace.reading.lineageLayout ?? 'map'}
         onViewport={(viewport) => workspace.change({ viewport })}

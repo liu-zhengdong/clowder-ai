@@ -14,7 +14,7 @@ export function ExplorationNavigation({
   v2?: boolean;
 }) {
   const [graph, setGraph] = useState(false);
-  const { catalog, node, selectedNodeKey, selectNode, currentKeys, reading, change } = workspace;
+  const { catalog, node, selectedNodeKey, selectNode, currentKeys, adoptedKeys, reading, change } = workspace;
   const notes = useMemo(() => {
     const result = new Map<string, string>();
     for (const entry of catalog?.nodes ?? []) {
@@ -86,6 +86,7 @@ export function ExplorationNavigation({
               nodes={nodes}
               selected={selectedNodeKey}
               currentKeys={currentKeys}
+              adoptedKeys={adoptedKeys}
               nodeNotes={notes}
               toolbarEnd={
                 <>

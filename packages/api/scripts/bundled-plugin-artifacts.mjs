@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 
 /** A deterministic USTAR containing only the producer's two regular files. No filesystem metadata enters the SRI. */
-function archive(files) {
+function tarArchive(files) {
   const blocks = [];
   for (const { name, bytes } of [...files].sort((a, b) => (a.name < b.name ? -1 : 1))) {
     assert.ok(Buffer.byteLength(name) < 100 && !name.includes('..') && name.startsWith('package/'));
@@ -26,7 +26,7 @@ function archive(files) {
     header.write(`${checksum.toString(8).padStart(6, '0')}\0 `, 148, 8, 'ascii');
     blocks.push(header, bytes, Buffer.alloc((512 - (bytes.length % 512)) % 512));
   }
-  return gzipSync(Buffer.concat([...blocks, Buffer.alloc(1024)]), { level: 9 });
+  return Buffer.concat([...blocks, Buffer.alloc(1024)]);
 }
 
 /** Shared artifact writer; producers validate schema before calling, exporters use their filtered JSON. */
@@ -53,13 +53,25 @@ export async function generateBundledPluginArtifacts(
     const stat = await lstat(iconPath);
     assert.ok(stat.isFile() && !stat.isSymbolicLink(), 'bundled source icon must be a regular file');
     const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-    const bytes = archive([
+    const tarBytes = tarArchive([
       { name: 'package/manifest.json', bytes: manifestBytes },
       { name: `package/${manifest.icon.src}`, bytes: await readFile(iconPath) },
     ]);
     const archivePath = `${catalogId}/${manifest.version}/package.tgz`;
+    const archiveUrl = new URL(`bundled-packages/${archivePath}`, pluginRoot);
     await generatedFile(new URL(`${relativeRoot}manifest.json`, pluginRoot), manifestBytes);
-    await generatedFile(new URL(`bundled-packages/${archivePath}`, pluginRoot), bytes);
+    // zlib versions/platforms can encode identical USTAR bytes differently. Check
+    // canonical content, then bind the index to the exact shipped compressed bytes.
+    const bytes = check ? await readFile(archiveUrl) : gzipSync(tarBytes, { level: 9 });
+    if (check) {
+      assert.deepEqual(
+        gunzipSync(bytes, { maxOutputLength: tarBytes.length }),
+        tarBytes,
+        `stale bundled artifact: ${fileURLToPath(archiveUrl)}`,
+      );
+    } else {
+      await writeFile(archiveUrl, bytes);
+    }
     records.push({
       catalogId,
       pluginId: manifest.pluginId,

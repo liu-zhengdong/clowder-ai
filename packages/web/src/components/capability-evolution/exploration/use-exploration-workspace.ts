@@ -1,13 +1,51 @@
 'use client';
-import { type EvolutionExplorationNodeV1, refIdentity } from '@cat-cafe/shared';
+import {
+  type EvolutionExplorationExperimentV1,
+  type EvolutionExplorationNodeV1,
+  type EvolutionResolvedExplorationReviewV1,
+  type ExactAssetVersionRefV1,
+  refIdentity,
+} from '@cat-cafe/shared';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useEvolutionAssetReview } from '../evolution-asset-resource';
 import type { EvolutionProgramProjection } from '../evolution-program-projection';
 import { DEFAULT_READING, useEvolutionReading } from '../evolution-reading-state';
+import { projectAssetVersions } from '../evolution-version-view';
 import { compareExplorationRecords, comparisonScopeKey } from './exploration-comparison';
 import { suggestedComparison, suggestedExperiment } from './exploration-decision-model';
 import { clearExplorationSelection, DEFAULT_EXPLORATION, type ExplorationReading } from './exploration-reading';
 import { useEvolutionExploration } from './exploration-resource';
+
+function versionStateKeys(versions: ReturnType<typeof projectAssetVersions>) {
+  return {
+    currentKeys: new Set(
+      versions.filter((version) => version.sourceCurrent).map((version) => refIdentity(version.ref)),
+    ),
+    adoptedKeys: new Set(versions.filter((version) => version.adopted).map((version) => refIdentity(version.ref))),
+  };
+}
+
+function resolveNode(
+  catalog: EvolutionResolvedExplorationReviewV1 | undefined,
+  selectedNodeRef: EvolutionExplorationNodeV1['nodeRef'] | undefined,
+  exactSource: ExactAssetVersionRefV1 | undefined,
+): EvolutionExplorationNodeV1 | undefined {
+  if (selectedNodeRef) return catalog?.nodes.find((node) => refIdentity(node.nodeRef) === refIdentity(selectedNodeRef));
+  if (exactSource)
+    return catalog?.nodes.find(
+      (node) => node.kind === 'owner_version' && refIdentity(node.versionRef) === refIdentity(exactSource),
+    );
+  return catalog?.nodes.filter((entry) => entry.kind === 'owner_version').at(-1) ?? catalog?.nodes.at(-1);
+}
+
+function selectExperiment(
+  catalog: EvolutionResolvedExplorationReviewV1 | undefined,
+  experiments: EvolutionExplorationExperimentV1[],
+  selectedRef: EvolutionExplorationExperimentV1['experimentRef'] | undefined,
+): EvolutionExplorationExperimentV1 | undefined {
+  if (selectedRef) return experiments.find((run) => refIdentity(run.experimentRef) === refIdentity(selectedRef));
+  return catalog ? suggestedExperiment(catalog, experiments) : undefined;
+}
 
 /** One selection controller shared by the narrow summary and main work surface. */
 export function useExplorationWorkspace(projection: EvolutionProgramProjection) {
@@ -30,23 +68,13 @@ export function useExplorationWorkspace(projection: EvolutionProgramProjection) 
   });
   const catalog = resource.catalog;
   const exactSource = saved.selectedVersionRef;
-  const node = reading.selectedNodeRef
-    ? catalog?.nodes.find((node) => refIdentity(node.nodeRef) === refIdentity(reading.selectedNodeRef!))
-    : exactSource
-      ? catalog?.nodes.find(
-          (node) => node.kind === 'owner_version' && refIdentity(node.versionRef) === refIdentity(exactSource),
-        )
-      : (catalog?.nodes.filter((entry) => entry.kind === 'owner_version').at(-1) ?? catalog?.nodes.at(-1));
+  const node = resolveNode(catalog, reading.selectedNodeRef, exactSource);
   const experiments = useMemo(
     () =>
       node ? (catalog?.experiments.filter((run) => refIdentity(run.nodeRef) === refIdentity(node.nodeRef)) ?? []) : [],
     [catalog, node],
   );
-  const experiment = reading.selectedExperimentRef
-    ? experiments.find((run) => refIdentity(run.experimentRef) === refIdentity(reading.selectedExperimentRef!))
-    : catalog
-      ? suggestedExperiment(catalog, experiments)
-      : undefined;
+  const experiment = selectExperiment(catalog, experiments, reading.selectedExperimentRef);
   const selectedNodeKey = node ? refIdentity(node.nodeRef) : undefined;
   const selectedExperimentKey = experiment ? refIdentity(experiment.experimentRef) : undefined;
   useEffect(() => {
@@ -72,16 +100,15 @@ export function useExplorationWorkspace(projection: EvolutionProgramProjection) 
         ...(experiment ? { selectedExperimentRef: experiment.experimentRef } : {}),
       },
     });
-  }, [id, reading, node, experiment, update]);
+  }, [id, node, experiment, update]);
   const detail = resource.review?.details.find((entry) => refIdentity(entry.experimentRef) === selectedExperimentKey);
   const records = detail?.status === 'resolved' ? detail.records : [];
   const record = reading.selectedCaseId
     ? records.find((record) => record.caseId === reading.selectedCaseId)
     : records[0];
-  const compareExperiment = reading.comparisonExperimentRef
-    ? catalog?.experiments.find(
-        (run) => refIdentity(run.experimentRef) === refIdentity(reading.comparisonExperimentRef!),
-      )
+  const comparisonExperimentRef = reading.comparisonExperimentRef;
+  const compareExperiment = comparisonExperimentRef
+    ? catalog?.experiments.find((run) => refIdentity(run.experimentRef) === refIdentity(comparisonExperimentRef))
     : undefined;
   const compareDetail = compareExperiment
     ? resource.review?.details.find(
@@ -122,7 +149,7 @@ export function useExplorationWorkspace(projection: EvolutionProgramProjection) 
       },
       ...(next.kind === 'owner_version' ? { selectedVersionRef: next.versionRef } : {}),
     });
-  const currentKeys = new Set((asset.catalog?.currentVersionRefs ?? []).map(refIdentity));
+  const { currentKeys, adoptedKeys } = versionStateKeys(projectAssetVersions(projection, asset.catalog));
   const resetSelection = () =>
     update(id, {
       selectedVersionRef: undefined,
@@ -153,6 +180,7 @@ export function useExplorationWorkspace(projection: EvolutionProgramProjection) 
     acceptComparisonScope,
     selectNode,
     currentKeys,
+    adoptedKeys,
     resetSelection,
   };
 }

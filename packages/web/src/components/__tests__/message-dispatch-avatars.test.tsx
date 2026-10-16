@@ -279,7 +279,10 @@ describe('MessageDispatchAvatars', () => {
     const item = container.querySelector('[data-dispatch-target="opus"]');
     expect(item?.getAttribute('title')).toBe('已投递 布偶猫 · 09/07 13:02:14');
     const button = container.querySelector('button');
-    expect(button?.getAttribute('aria-label')).toBe('已投递 布偶猫 · 09/07 13:02:14，跳转到对应回复');
+    expect(button?.getAttribute('aria-label')).toBe('看布偶猫的回复');
+    expect(item?.textContent).toContain('布偶猫');
+    expect(item?.textContent).toContain('收到，已回复');
+    expect(item?.textContent).toContain('看回复');
     act(() => button?.click());
     expect(statusRow.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
     expect(statusRow.dataset.messageJumpFocus).toBe('true');
@@ -317,7 +320,7 @@ describe('MessageDispatchAvatars', () => {
     );
   });
 
-  it('renders an unlinked delivered avatar as tooltip-only', () => {
+  it('retains known delivery but marks an unlinked reply as unverified and non-clickable', () => {
     act(() => {
       root.render(
         <MessageDispatchAvatars
@@ -329,9 +332,40 @@ describe('MessageDispatchAvatars', () => {
       );
     });
     expect(container.querySelector('button')).toBeNull();
+    expect(container.textContent).toContain('收到，回复状态待核对');
+    expect(container.textContent).not.toContain('已回复');
     expect(container.querySelector('[data-dispatch-target="opus"]')?.getAttribute('title')).toBe(
       '已投递 布偶猫 · 09/07 13:02:14',
     );
+  });
+
+  it.each([
+    ['completed', '已回复'],
+    ['failed', '回复失败'],
+    ['canceled', '已取消'],
+    ['interrupted', '回复中断'],
+  ] as const)('shows the exact %s outcome for both initial and appended inputs', (status, expected) => {
+    for (const appended of [false, true]) {
+      const input = { ...source('settled'), timestamp: appended ? 115 : 100 };
+      const linked = response(status, appended ? ['initial-input', input.id] : [input.id]);
+      act(() =>
+        root.render(
+          <MessageDispatchAvatars
+            message={input}
+            timelineMessages={[linked]}
+            activeRuns={[]}
+            getCatLabel={() => '布偶猫'}
+          />,
+        ),
+      );
+      expect(container.textContent).toContain(expected);
+      if (status !== 'completed') expect(container.textContent).not.toContain('已回复');
+      if (appended) {
+        expect(container.textContent).toContain('并进了已结束的这一轮');
+        expect(container.textContent).toContain('读没读查不到');
+        expect(container.textContent).not.toContain('已读');
+      }
+    }
   });
 
   it('uses animation only for processing and adds no terminal outcome badge', () => {
@@ -359,7 +393,8 @@ describe('MessageDispatchAvatars', () => {
       );
     });
     expect(container.querySelector('[data-testid="cat-avatar"]')?.getAttribute('data-status')).toBe('streaming');
-    expect(container.querySelector('[data-testid="cat-avatar"]')?.getAttribute('data-size')).toBe('11');
+    expect(container.querySelector('[data-testid="cat-avatar"]')?.getAttribute('data-size')).toBe('16');
+    expect(container.textContent).toContain('收到，正在回');
   });
 
   it.each([

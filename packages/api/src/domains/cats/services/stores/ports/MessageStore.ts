@@ -1090,7 +1090,7 @@ export function assignLifecycleDispatchTargetsMetadata(
 export interface LifecyclePreAdmissionFailureInput {
   sourceMessageId: string;
   expectedEntryId: string;
-  /** Scalar ledger target; empty only for a targetless conversation row. */
+  /** Pending ledger recipients; empty only for a targetless conversation row. */
   requestedTargets: readonly string[];
   reason: LifecycleDeliveryFailureReason;
   content: string;
@@ -2818,7 +2818,7 @@ export class MessageStore {
   private appendWithReservedId(
     msg: AppendMessageInput,
     reservedId?: string,
-    options?: { deferVisibility?: boolean },
+    options?: { deferVisibility?: boolean; deferAppendNotification?: boolean },
   ): StoredMessage {
     const normalizedMessage = canonicalizeAppendMessageInput(msg);
     const threadId = normalizedMessage.threadId ?? DEFAULT_THREAD_ID;
@@ -2877,6 +2877,11 @@ export class MessageStore {
       }
     }
 
+    if (!options?.deferAppendNotification) this.notifyAppendedMessage(stored);
+    return stored;
+  }
+
+  private notifyAppendedMessage(stored: StoredMessage): void {
     // F102 KD-34: fire-and-forget append listener for thread index updates
     // P2 fix: try-catch handles sync throws; Promise.resolve handles async rejections
     if (this.onAppend) {
@@ -2886,8 +2891,6 @@ export class MessageStore {
         /* best-effort */
       }
     }
-
-    return stored;
   }
 
   appendIdempotent(msg: AppendMessageInput): IdempotentAppendResult {
@@ -3793,14 +3796,23 @@ export class MessageStore {
       };
     }
 
+    if (source.recall || source._tombstone) {
+      return { kind: 'conflict', reason: 'invalid_failure', inputMessage: structuredClone(source) };
+    }
     const isQueuedInput = source.deliveryStatus === 'queued';
+    // One sibling may already have published this input. Only settle recipients
+    // with no dispatch reference; keep the original publication coordinates.
+    const isDeliveredInput =
+      source.deliveryStatus === 'delivered' &&
+      source.lifecycle?.kind === 'input' &&
+      (source.lifecycle.dispatchRefs?.length ?? 0) > 0;
     const isPublicAgentWake =
       source.deliveryStatus === undefined &&
       messageFrom(source).kind === 'agent' &&
       source.visibility !== 'whisper' &&
       source.lifecycle?.kind !== 'delivery_failure';
     const uniqueTargets = new Set(input.requestedTargets);
-    if (!isQueuedInput && !isPublicAgentWake) {
+    if (!isQueuedInput && !isDeliveredInput && !isPublicAgentWake) {
       return { kind: 'conflict', reason: 'not_queued', inputMessage: structuredClone(source) };
     }
     const inputIdentity = lifecycleInputIdentityForStoredMessage(source);
@@ -3820,8 +3832,7 @@ export class MessageStore {
       input.failedAt < source.timestamp ||
       input.requestedTargets.some((target) => typeof target !== 'string' || target.length === 0) ||
       uniqueTargets.size !== input.requestedTargets.length ||
-      input.requestedTargets.length > 1 ||
-      (isPublicAgentWake && input.requestedTargets.length === 0) ||
+      (!isQueuedInput && input.requestedTargets.length === 0) ||
       assigned.kind === 'conflict' ||
       !isLifecycleStoredMessageMetadata(failureLifecycle)
     ) {
@@ -3845,44 +3856,38 @@ export class MessageStore {
       return { kind: 'conflict', reason: 'invalid_failure', inputMessage: structuredClone(source) };
     }
 
-    const failureMessage = this.append(failureInput);
+    const failureId = generateSortableId(input.failedAt);
     const settledLifecycle =
       input.requestedTargets.length === 0
         ? assigned.lifecycle
         : settleAssignedLifecycleDispatchFailureMetadata(
             assigned.lifecycle,
             input.requestedTargets,
-            failureMessage.id,
+            failureId,
             input.failedAt,
           );
     if (!settledLifecycle) {
-      const failureIndex = this.messages.findIndex((message) => message.id === failureMessage.id);
-      if (failureIndex !== -1) this.messages.splice(failureIndex, 1);
-      this.pruneIdempotencyIndexForMessageIds([failureMessage.id]);
-      this.visibilitySeq.delete(failureMessage.id);
       return { kind: 'conflict', reason: 'invalid_failure', inputMessage: structuredClone(source) };
     }
+    // Validate the entire settlement before append can publish effects. Notify
+    // consumers only after the source and its failure are both committed.
+    const failureMessage = this.appendWithReservedId(failureInput, failureId, { deferAppendNotification: true });
     source.lifecycle = structuredClone(settledLifecycle);
-    if (isPublicAgentWake) {
-      return {
-        kind: 'applied',
-        inputMessage: structuredClone(source),
-        failureMessage: structuredClone(failureMessage),
-      };
-    }
-
-    source.timelineOrderAt = input.failedAt;
-    source.deliveredAt = input.failedAt;
-    source.deliveryStatus = 'delivered';
-    if (!this.visibilitySeq.has(source.id)) {
-      this.visibilitySeqCounter = Math.max(this.visibilitySeqCounter + 1, Date.now());
-      this.visibilitySeq.set(source.id, this.visibilitySeqCounter);
-      source.visibilitySeq = this.visibilitySeqCounter;
+    if (isQueuedInput) {
+      source.timelineOrderAt = input.failedAt;
+      source.deliveredAt = input.failedAt;
+      source.deliveryStatus = 'delivered';
+      if (!this.visibilitySeq.has(source.id)) {
+        this.visibilitySeqCounter = Math.max(this.visibilitySeqCounter + 1, Date.now());
+        this.visibilitySeq.set(source.id, this.visibilitySeqCounter);
+        source.visibilitySeq = this.visibilitySeqCounter;
+      }
     }
 
     if (failureMessage.lifecycle?.kind !== 'delivery_failure') {
       throw new Error(`pre-admission failure append lost lifecycle identity: ${failureMessage.id}`);
     }
+    this.notifyAppendedMessage(failureMessage);
     return {
       kind: 'applied',
       inputMessage: structuredClone(source),

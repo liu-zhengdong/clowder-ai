@@ -12,7 +12,7 @@ export function ExplorationVersionCards({
   workspace: ReturnType<typeof useExplorationWorkspace>;
   notes: ReadonlyMap<string, string>;
 }) {
-  const { catalog, selectedNodeKey, currentKeys, selectNode } = workspace;
+  const { catalog, selectedNodeKey, currentKeys, adoptedKeys, selectNode } = workspace;
   if (!catalog) return null;
   const titles = new Map(catalog.nodes.map((node) => [refIdentity(node.nodeRef), node.title]));
   const counts = new Map<string, number>();
@@ -51,7 +51,8 @@ export function ExplorationVersionCards({
                     >
                       <strong>{node.title}</strong>
                       <span className="exploration-version-card-state">
-                        {currentKeys.has(key) && <span>当前生效</span>}
+                        {currentKeys.has(key) && <span>来源当前版本</span>}
+                        {adoptedKeys.has(key) && <span>当前采用</span>}
                         {selectedNodeKey === key && <span>正在读</span>}
                       </span>
                       <span>{counts.has(key) ? `${counts.get(key)} 次实验` : '尚无实验'}</span>

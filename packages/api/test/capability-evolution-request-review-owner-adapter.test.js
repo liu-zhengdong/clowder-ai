@@ -288,6 +288,39 @@ describe('F100 request-review owner adapter', () => {
       assert.deepEqual(entry.parentEdges, []);
     });
 
+    it('keeps the current skill commit metadata when repository HEAD only changed elsewhere', async () => {
+      const skillCommitOid = '6'.repeat(40);
+      const adapter = createRequestReviewOwnerAdapter({
+        port: stubPort({
+          listFileHistoryAt: async () => [
+            {
+              commitOid: skillCommitOid,
+              blobOid: FAKE_BLOB_OID_SKILL,
+              committedAt: '2026-10-11T19:34:05.000Z',
+              subject: 'test: update request-review semantics',
+            },
+          ],
+        }),
+      });
+
+      const result = await adapter.versionReview({ programRef, objectRef });
+      assert.equal(result.status, 'resolved');
+      assert.equal(result.versions[0].title, 'test: update request-review semantics (2026-10-11T19:34:05.000Z)');
+      assert.doesNotMatch(result.versions[0].title, /1970|Current request-review skill/u);
+      assert.match(result.currentProofRef.ownerStateRef, new RegExp(`${FAKE_HEAD_OID}:${FAKE_BLOB_OID_SKILL}`));
+    });
+
+    it('states that commit time is unknown instead of fabricating the Unix epoch', async () => {
+      const adapter = createRequestReviewOwnerAdapter({
+        port: stubPort({ listFileHistoryAt: async () => [] }),
+      });
+
+      const result = await adapter.versionReview({ programRef, objectRef });
+      assert.equal(result.status, 'resolved');
+      assert.match(result.versions[0].title, /提交时间未知/u);
+      assert.doesNotMatch(result.versions[0].title, /1970-01-01/u);
+    });
+
     it('returns distinct historical versions with canonical parent edges', async () => {
       const adapter = createRequestReviewOwnerAdapter({
         port: stubPort({

@@ -145,7 +145,7 @@ describe('ExecutionRow (F322 original-B)', () => {
     expect($('execution-row')).toBeNull();
   });
 
-  it('exposes unverified legacy recovery from canonical state without a client delay state', async () => {
+  it('shows a neutral confirmation while loading, then exposes recovery after timeout', async () => {
     vi.useFakeTimers();
     useActiveExecutionStore.getState().beginHydration(THREAD, null);
     useChatStore.setState({
@@ -161,10 +161,10 @@ describe('ExecutionRow (F322 original-B)', () => {
     } as never);
 
     await render();
-    expect($('execution-row')?.getAttribute('data-status')).toBe('unverified');
-    expect($('execution-row')?.getAttribute('data-tone')).toBe('warning');
-    expect($('execution-row-text')?.textContent).toBe('运行状态待确认');
-    expect($('execution-row-force-reset')).not.toBeNull();
+    expect($('execution-row')?.getAttribute('data-status')).toBe('confirming');
+    expect($('execution-row')?.getAttribute('data-tone')).toBe('neutral');
+    expect($('execution-row-text')?.textContent).toBe('正在确认运行状态…');
+    expect($('execution-row-force-reset')).toBeNull();
 
     await act(async () => vi.advanceTimersByTimeAsync(30_000));
     expect($('execution-row')?.getAttribute('data-status')).toBe('unverified');

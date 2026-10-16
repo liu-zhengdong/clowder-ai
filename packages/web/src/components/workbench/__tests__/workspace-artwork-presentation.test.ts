@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { createArtifactWorkPresentationState, isWorkspaceFullWindowSurface } from '../artifact-work-presentation';
-import { createFileSurface, createWorkspaceModeSurface } from '../real-surface-adapters';
+import { createEvolutionProgramSurface, createFileSurface, createWorkspaceModeSurface } from '../real-surface-adapters';
 import { createInitialWorkbenchState } from '../workbench-initial-state';
 import { projectWorkspaceWorkHost } from '../workspace-work-host-projection';
 
@@ -158,4 +158,27 @@ it('projects the explicit Schedule wide session beside visible Chat and suppress
   expect(projectWorkspaceWorkHost(input, layout, createArtifactWorkPresentationState()).workspaceWideActive).toBe(
     false,
   );
+});
+
+it('projects an evolution Program reading beside the exact visible Chat instead of covering it', () => {
+  const program = createEvolutionProgramSurface(`evolution-program:${'a'.repeat(32)}`);
+  const layout = createInitialWorkbenchState([program]);
+  const input: Parameters<typeof projectWorkspaceWorkHost>[0] = {
+    threadId: 'thread-a',
+    viewMode: 'single',
+    isDesktop: true,
+    statusPanelOpen: true,
+    rightPanelMode: 'workspace',
+    shellPresentation: 'v2',
+  };
+  const attention = {
+    surfaceId: program.id,
+    presentation: { kind: 'chat-workspace' as const, threadId: 'thread-a', chatBasis: 34 },
+  };
+
+  expect(projectWorkspaceWorkHost(input, layout, createArtifactWorkPresentationState(), attention)).toMatchObject({
+    workspaceWideActive: true,
+    suppressCafeSidebar: true,
+    fullWindowActive: false,
+  });
 });

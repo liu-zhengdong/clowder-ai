@@ -59,6 +59,7 @@ import { createModuleLogger } from '../infrastructure/logger.js';
 import type { SocketManager } from '../infrastructure/websocket/index.js';
 import { normalizeJsonUnicode } from '../utils/json-unicode.js';
 import { getDefaultUploadDir } from '../utils/upload-paths.js';
+import { registerGenerationMessagesRoute } from './generation-messages.js';
 import { importStoredProjectMessage } from './messages-project-review.js';
 import { captureSentComposerDraftConsumption } from './sent-composer-draft-consumption.js';
 import { admitThreadParticipants } from './thread-participant-admission.js';
@@ -288,6 +289,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILES = 5;
 
 export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (app, opts) => {
+  registerGenerationMessagesRoute(app, opts.messageStore);
   const uploadDir = getDefaultUploadDir(opts.uploadDir ?? process.env.UPLOAD_DIR);
 
   // Register multipart parser for image uploads

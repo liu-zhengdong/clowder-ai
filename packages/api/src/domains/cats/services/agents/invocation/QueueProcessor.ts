@@ -68,6 +68,7 @@ import {
   type IMessageStore,
   isTimelinePublished,
   lifecycleInputIdentityForStoredMessage,
+  preAdmissionFailureIdempotencyKey,
   type StoredMessage,
   settleLifecycleResponseInputs,
 } from '../../stores/ports/MessageStore.js';
@@ -3219,7 +3220,7 @@ export class QueueProcessor {
         // Only the call actually acquired here belongs to this execution.
         await liveCall?.stop();
         this.releaseProcessingSlot(slotKey, reservation);
-        await this.terminalizeUnavailableConversationHead(entry, 'explicit', true);
+        await this.terminalizeUnavailableConversationEntry(entry, 'explicit', true);
         return true;
       }
     }
@@ -3298,7 +3299,7 @@ export class QueueProcessor {
     const passedOver = new Map<string, string>();
     let waitingEntries = 0;
     let firstWaitingTarget: string | undefined;
-    for (const [index, candidate] of candidates.entries()) {
+    for (const candidate of candidates) {
       const routingHeld = new Set(candidate.delivery.routingHeldTargetIds ?? []);
       const eligibleTargets = candidate.targets.filter((target) => !routingHeld.has(target));
       if (candidate.targets.length > 0 && eligibleTargets.length === 0) {
@@ -3321,8 +3322,8 @@ export class QueueProcessor {
             (catId) => !heldTargets.has(catId) && this.isSlotAdmissible(threadId, catId, new Map()),
           ))
       ) {
-        const settled = await this.terminalizeUnavailableConversationHead(candidate, 'explicit');
-        return QueueProcessor.terminalizedHeadAttempt(settled);
+        const settled = await this.terminalizeUnavailableConversationEntry(candidate, 'explicit');
+        return QueueProcessor.terminalizedEntryAttempt(settled);
       }
       // Every ingress signals this one owner after durable admission. Append
       // and a fresh turn share Queue progress; the sender kind chooses neither.
@@ -3361,7 +3362,7 @@ export class QueueProcessor {
         routingHeld.size > 0 && eligibleTargets.length > 0
           ? { ...candidate, targets: [eligibleTargets[0]!] }
           : candidate;
-      const admission = await this.resolveAdmissionTargets(threadId, candidateForAdmission, index === 0);
+      const admission = await this.resolveAdmissionTargets(threadId, candidateForAdmission);
       if (admission.kind === 'settled') return admission.attempt;
       if (admission.kind === 'barrier') {
         this.emitContinuationDiagnostic(
@@ -3402,24 +3403,30 @@ export class QueueProcessor {
   /** A public fallback cannot expand the persisted source's recipient visibility. */
   private async resolveQueuedConversationTargets(entry: QueueEntry): Promise<string[]> {
     const sources = await Promise.all(queueEntryMessageIds(entry).map((id) => this.deps.messageStore.getById(id)));
+    const requestedTargets = queueEntryTargetCats(entry);
     const targets = await this.deps.router.resolveConversationTargetsAtAdmission(
-      queueEntryTargetCats(entry),
+      requestedTargets,
       entry.threadId,
       entry.payload.content,
     );
-    return targets.filter((catId) =>
-      sources.every((source) => !source || canViewMessage(source, { type: 'cat', catId: catId as CatId })),
+    // Intake may choose a fallback; a persisted Queue recipient is already bound.
+    // If it disappears, settle its failure instead of asking claimPrefix to acquire
+    // a different recipient (which correctly refuses and would leave the row stuck).
+    // Only legacy targetless rows retain first-dispatch recipient selection.
+    return targets.filter(
+      (catId) =>
+        (requestedTargets.length === 0 || requestedTargets.includes(catId)) &&
+        sources.every((source) => !source || canViewMessage(source, { type: 'cat', catId: catId as CatId })),
     );
   }
 
   /**
-   * The targets a queued entry would start with now. Only the comparator head settles an entry that
-   * resolves no target (it fails in place); a later one waits, holding its requested targets.
+   * The targets a queued entry would start with now. Failure settlement uses the
+   * Queue's current per-recipient order, so unrelated waiting work is not a barrier.
    */
   private async resolveAdmissionTargets(
     threadId: string,
     entry: QueueEntry,
-    isHead: boolean,
   ): Promise<
     | {
         readonly kind: 'resolved';
@@ -3446,21 +3453,25 @@ export class QueueProcessor {
           },
         };
       }
-      if (!isHead) return { kind: 'unresolved' };
-      const terminalized = await this.terminalizeUnavailableConversationHead(entry, routingClass);
-      return { kind: 'settled', attempt: QueueProcessor.terminalizedHeadAttempt(terminalized) };
+      if (entry.delivery.routingHeldTargetIds?.length) return { kind: 'unresolved' };
+      const terminalized = await this.terminalizeUnavailableConversationEntry(entry, routingClass);
+      return terminalized
+        ? { kind: 'settled', attempt: QueueProcessor.terminalizedEntryAttempt(terminalized) }
+        : { kind: 'unresolved' };
     }
     const targets = await this.deps.router.resolveExplicitTargets(requestedTargets, threadId);
     if (targets.length > 0) return { kind: 'resolved', targets };
-    if (!isHead) return { kind: 'unresolved' };
+    if (entry.delivery.routingHeldTargetIds?.length) return { kind: 'unresolved' };
     const terminalized =
       entry.kind === 'private_input'
-        ? await this.terminalizeUnavailablePrivateHead(entry)
-        : await this.terminalizeUnavailableConversationHead(entry, 'explicit');
-    return { kind: 'settled', attempt: QueueProcessor.terminalizedHeadAttempt(terminalized) };
+        ? await this.terminalizeUnavailablePrivateEntry(entry)
+        : await this.terminalizeUnavailableConversationEntry(entry, 'explicit');
+    return terminalized
+      ? { kind: 'settled', attempt: QueueProcessor.terminalizedEntryAttempt(terminalized) }
+      : { kind: 'unresolved' };
   }
 
-  private static terminalizedHeadAttempt(terminalized: QueueEntry | null): QueueAdmissionAttempt {
+  private static terminalizedEntryAttempt(terminalized: QueueEntry | null): QueueAdmissionAttempt {
     return { started: false, progressed: terminalized !== null, ...(terminalized ? { entry: terminalized } : {}) };
   }
 
@@ -3545,8 +3556,8 @@ export class QueueProcessor {
 
     if (this.processingSlots.has(entrySk) || this.deps.invocationTracker.has(threadId, entryCat)) {
       if (entry.execution.liveSessionId) {
-        const settled = await this.terminalizeUnavailableConversationHead(entry, 'explicit', true);
-        return QueueProcessor.terminalizedHeadAttempt(settled);
+        const settled = await this.terminalizeUnavailableConversationEntry(entry, 'explicit', true);
+        return QueueProcessor.terminalizedEntryAttempt(settled);
       }
       await this.deps.queue.rollbackProcessingDurable(threadId, entry.id);
       return null;
@@ -3619,7 +3630,7 @@ export class QueueProcessor {
       }
       resolvedTargetCats = await this.resolveQueuedConversationTargets(nextEntry);
       if (resolvedTargetCats.length === 0) {
-        const terminalized = await this.terminalizeUnavailableConversationHead(nextEntry, routingClass);
+        const terminalized = await this.terminalizeUnavailableConversationEntry(nextEntry, routingClass);
         return { started: false, progressed: terminalized !== null, ...(terminalized ? { entry: terminalized } : {}) };
       }
       conversationBatchResolution = {
@@ -3632,8 +3643,8 @@ export class QueueProcessor {
       if (resolvedTargetCats.length === 0) {
         const terminalized =
           nextEntry.kind === 'private_input'
-            ? await this.terminalizeUnavailablePrivateHead(nextEntry)
-            : await this.terminalizeUnavailableConversationHead(nextEntry, 'explicit');
+            ? await this.terminalizeUnavailablePrivateEntry(nextEntry)
+            : await this.terminalizeUnavailableConversationEntry(nextEntry, 'explicit');
         return { started: false, progressed: terminalized !== null, ...(terminalized ? { entry: terminalized } : {}) };
       }
     }
@@ -3683,11 +3694,11 @@ export class QueueProcessor {
   }
 
   /**
-   * Close an exact public Queue head that cannot legally form an invocation.
-   * The process-local claim fences comparator ownership; MessageStore then
+   * Close an exact public Queue entry that cannot legally form an invocation.
+   * The process-local claim rechecks per-recipient order; MessageStore then
    * publishes the input and adjacent failure in one durable CAS transaction.
    */
-  private async terminalizeUnavailableConversationHead(
+  private async terminalizeUnavailableConversationEntry(
     expected: QueueEntry,
     routingClass: ConversationBatchResolution['routingClass'],
     alreadyClaimed = false,
@@ -3696,7 +3707,11 @@ export class QueueProcessor {
       ? expected
       : expected.execution.liveSessionId
         ? await this.deps.queue.markProcessingByIdDurable(expected.threadId, expected.id, expected.targets[0] ?? '')
-        : await this.deps.queue.claimPreAdmissionFailureAcrossUsersDurable(expected.threadId, expected.id);
+        : await this.deps.queue.claimPreAdmissionFailureAcrossUsersDurable(
+            expected.threadId,
+            expected.id,
+            expected.targets,
+          );
     if (!claimed) return null;
     try {
       if (!claimed.payload.messageId) {
@@ -3718,13 +3733,18 @@ export class QueueProcessor {
         : reason === 'no_available_target'
           ? `唤起${wakeTargetLabel}失败：当前没有可用的接收对象。`
           : `唤起${wakeTargetLabel}失败：指定的接收对象当前无效。`;
+      const committedFailure = await this.deps.messageStore.getByIdempotencyKey(
+        'system',
+        source.threadId,
+        preAdmissionFailureIdempotencyKey(claimed.id),
+      );
       const result = await this.deps.messageStore.commitLifecyclePreAdmissionFailure({
         sourceMessageId: source.id,
         expectedEntryId: claimed.id,
         requestedTargets: failedTargets,
         reason,
         content,
-        failedAt: Math.max(Date.now(), source.timestamp),
+        failedAt: committedFailure?.timestamp ?? Math.max(Date.now(), source.timestamp),
       });
       if (result.kind !== 'applied' && result.kind !== 'replayed') {
         throw new Error(
@@ -3773,12 +3793,16 @@ export class QueueProcessor {
   }
 
   /**
-   * Close an exact private Queue head without publishing its body or a History result.
+   * Close an exact private Queue entry without publishing its body or a History result.
    * The structured internal diagnostic is the only lifecycle projection owned here;
    * any typed source owner remains responsible for its own terminal disposition.
    */
-  private async terminalizeUnavailablePrivateHead(expected: QueueEntry): Promise<QueueEntry | null> {
-    const claimed = await this.deps.queue.claimPreAdmissionFailureAcrossUsersDurable(expected.threadId, expected.id);
+  private async terminalizeUnavailablePrivateEntry(expected: QueueEntry): Promise<QueueEntry | null> {
+    const claimed = await this.deps.queue.claimPreAdmissionFailureAcrossUsersDurable(
+      expected.threadId,
+      expected.id,
+      expected.targets,
+    );
     if (!claimed) return null;
     if (claimed.kind !== 'private_input') {
       await this.deps.queue.rollbackProcessingDurable(claimed.threadId, claimed.id);
@@ -3970,7 +3994,7 @@ export class QueueProcessor {
       );
       if (stillOwnsPrimaryReservation) {
         if (entry.execution.liveSessionId) {
-          await this.terminalizeUnavailableConversationHead(entry, 'explicit', true);
+          await this.terminalizeUnavailableConversationEntry(entry, 'explicit', true);
           await invocationRecordStore.update(invocationId, {
             status: 'canceled',
             error: 'live_immediate_slot_unavailable',

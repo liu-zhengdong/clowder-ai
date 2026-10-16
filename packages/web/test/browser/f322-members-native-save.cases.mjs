@@ -55,9 +55,9 @@ for (const [language, width, offset] of [
           host.style.height = 'calc(100vh - 160px)';
         }, offset);
       await page.getByRole('button', { name: /烁烁.*gemini38/ }).click();
-      const save = page.getByRole('button', { name: language === 'en' ? 'Save' : '保存', exact: true });
+      const save = page.locator('.member-save-actions .member-primary');
       await save.waitFor();
-      assert.equal(await save.isDisabled(), true, 'An unchanged member still has a visible Save action');
+      assert.equal(await save.isEnabled(), true, 'An unchanged member keeps the primary Save action');
       assert.equal((await save.evaluate(observe)).hittable, true);
       await screenshot('unchanged');
       await page.locator('select[aria-label="Transport"]').selectOption('agy-native');
@@ -70,7 +70,7 @@ for (const [language, width, offset] of [
         await page.locator('#root').evaluate((host) => {
           host.style.display = 'none';
         });
-        await page.waitForFunction(() => document.querySelector('.member-save-bar') === null);
+        await save.waitFor({ state: 'hidden' });
         await page.locator('#root').evaluate((host) => {
           host.style.display = '';
         });
@@ -117,6 +117,11 @@ for (const [language, width, offset] of [
         state.rejectSave = false;
       }
       await save.click();
+      await page
+        .locator('.member-save-bar [role="status"]')
+        .filter({ hasText: language === 'en' ? 'Saved' : '已保存' })
+        .waitFor();
+      await page.getByRole('button', { name: language === 'en' ? '‹ Members' : '‹ 成员', exact: true }).click();
       await page.getByTestId('member-list-page').waitFor();
       assert.ok((await page.locator('tr[data-cat-id="gemini38"]').innerText()).includes(expected.model));
       const writes = state.writes.filter((write) => write.path === '/api/cats/gemini38');
@@ -145,11 +150,15 @@ for (const [language, width, offset] of [
         producer.root,
       );
       assert.equal(await save.isVisible(), true, 'Save remains discoverable after readback');
-      assert.equal(await save.isDisabled(), true, 'No unchanged configuration is submitted');
-      assert.equal(
-        await page.locator('.member-save-bar [role="status"]').innerText(),
-        language === 'en' ? 'No unsaved changes' : '没有未保存的修改',
+      assert.equal(await save.isEnabled(), true, 'Unchanged Save explains its no-op when pressed');
+      assert.ok(
+        (await page.locator('.member-save-bar [role="status"]').innerText()).startsWith(
+          language === 'en' ? 'No changes' : '没有改动',
+        ),
       );
+      const writeCount = state.writes.length;
+      await save.click();
+      assert.equal(state.writes.length, writeCount);
       await screenshot('readback');
       if (screenshots)
         writeFileSync(

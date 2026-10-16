@@ -123,6 +123,8 @@ CAS、可见 attribution、owner receipt 与 undo，且用户可随时收回权�
 
 ## Current State / 现状基线
 
+以下5603前序过程快照按发生时状态保留；其中OPEN/待review/待Alpha不覆盖上述当前结论。
+
 | 证据 | 已成立 | 尚未成立 |
 |---|---|---|
 | [F307](F307-composable-workbench.md) | application-level working set、typed surface、tab/split/restore owner 已冻结 | 不解释内容选区、批注、patch 或版本重定位 |

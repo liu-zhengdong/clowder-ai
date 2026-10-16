@@ -301,6 +301,8 @@ export type MessagePublicationOrigin = Pick<
 
 export interface ChatMessage {
   id: string;
+  /** View-only Queue projection; never persisted as a second History record. */
+  queuedEntryId?: string;
   /** RFC #1356 canonical sender identity for persisted messages. */
   from?: MessageFrom;
   /** Client-only exact persisted records folded into this canonical bubble. */
@@ -839,6 +841,9 @@ export interface QueueEntry {
   /** #706: HTTP-enriched History preview for QueuePanel display + recall-edit.
    *  Mutation SSE publishes pending targets without waiting for this join. */
   messagePreview?: {
+    timestamp?: number;
+    visibility?: 'whisper';
+    whisperTo?: string[];
     contentBlocks?: ReadonlyArray<MessageContent>;
     replyTo?: string;
     /** Stored connector identity; lets the row reuse the timeline bubble's summary. */

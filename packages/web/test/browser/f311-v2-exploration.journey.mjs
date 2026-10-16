@@ -38,7 +38,8 @@ export async function verifyV2ExplorationReading({ fixture, browser, catalog, ca
     assert.equal(await work.locator('.exploration-version-nav').getAttribute('data-map-open'), 'true');
     assert.equal(await work.getByRole('button', { name: /^阅读 / }).count(), catalog.nodes.length);
     const adoption = work.getByRole('region', { name: '生效与阅读状态' });
-    assert((await adoption.innerText()).includes('当前生效：'));
+    assert((await adoption.innerText()).includes('当前采用：'));
+    assert((await adoption.innerText()).includes('来源当前版本：'));
     await capture(page, 's3-v2-settings-map');
     await work.getByRole('button', { name: '完整谱系', exact: true }).click();
     const graph = page.getByRole('dialog', { name: '完整版本谱系', exact: true });

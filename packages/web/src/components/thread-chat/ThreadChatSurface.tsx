@@ -3,7 +3,7 @@
 import type { CapabilityTipContext, LifecycleActiveRun } from '@cat-cafe/shared';
 import type { ReactNode, Ref } from 'react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useCatData } from '@/hooks/useCatData';
+import { refreshCatsNow, useCatData } from '@/hooks/useCatData';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useCoCreatorConfig } from '@/hooks/useCoCreatorConfig';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
@@ -21,13 +21,16 @@ import { useCompanionConversation } from '../concierge/useCompanionConversation'
 import { useArtworkLightboxScope } from '../content-review/ArtworkLightboxScope';
 import { HubCatEditor } from '../HubCatEditor';
 import { HubCoCreatorEditor } from '../HubCoCreatorEditor';
+import { IdeateHeader } from '../IdeateHeader';
 import { PawIcon } from '../icons/PawIcon';
 import { MessageSelectionToolbar } from '../MessageSelectionToolbar';
+import { memberSaveCopy } from '../members/member-save.shell-copy';
 import { messageMountPolicy } from '../message-mount-policy';
 import { isMessageSelectableForBundle, MAX_SELECTED_MESSAGES } from '../message-selection';
 import { ImportedSessionNotice } from '../new-conversation/ImportedSessionNotice';
 import { ReplyRecallRuntimeProvider } from '../reply-layers/ReplyRecallRuntimeProvider';
 import type { CardConfirmationEntry } from '../rich/CardBlock';
+import { useShellCopy } from '../shell/shell-copy';
 import { useShellPresentation } from '../shell/shell-presentation';
 import { ThreadComposerContext } from '../ThreadComposerContext';
 import { TransferTargetPicker } from '../TransferTargetPicker';
@@ -131,7 +134,8 @@ export function ThreadChatSurface({
   useThreadChatReadingPort(threadId, presentation, onReadingPort, history);
   const { handleSend, uploadStatus, uploadError } = useSendMessage(threadId);
   const interactiveSendContext = `thread-chat-surface:${useId()}`;
-  const { getCatById, refresh: refreshCats } = useCatData();
+  const { getCatById } = useCatData();
+  const saveText = useShellCopy(memberSaveCopy);
   const coCreator = useCoCreatorConfig();
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [coCreatorEditorOpen, setCoCreatorEditorOpen] = useState(false);
@@ -240,6 +244,15 @@ export function ThreadChatSurface({
             />
             {composerPresentation === 'v2' && !compact && <ImportedSessionNotice threadId={threadId} />}
             {timelineLead}
+            {intentMode === 'ideate' ? (
+              <IdeateHeader
+                members={liveness.targetCats.map((catId) => ({
+                  catId,
+                  label: getCatById(catId)?.displayName ?? catId,
+                  status: catStatuses[catId],
+                }))}
+              />
+            ) : null}
             {!hasMore && messages.length > 0 && (
               <div className="py-3 text-center text-xs text-cafe-muted">没有更多消息了</div>
             )}
@@ -333,9 +346,18 @@ export function ThreadChatSurface({
                   composerPresentation === 'v2' ? <ThreadComposerContext threadId={threadId} /> : undefined
                 }
                 threadId={threadId}
-                onSend={(content, images, whisper, replyToId, contextAttachments, explicitTargetCats) =>
+                onSend={(
+                  content,
+                  images,
+                  whisper,
+                  replyToId,
+                  contextAttachments,
+                  explicitTargetCats,
+                  messageDisposition,
+                ) =>
                   handleSend(content, images, undefined, whisper, replyToId, contextAttachments, explicitTargetCats, {
                     consumeComposerDraft: true,
+                    ...(messageDisposition ? { messageDisposition } : {}),
                   })
                 }
                 disabled={connectionStatus.isReadonly}
@@ -366,8 +388,10 @@ export function ThreadChatSurface({
           draft={null}
           onClose={() => setEditingCatId(null)}
           onSaved={async () => {
-            await refreshCats();
-            setEditingCatId(null);
+            const result = await refreshCatsNow();
+            if (!result.fromApi || !result.cats.some((cat) => cat.id === editingCat.id)) {
+              throw new Error(saveText.readbackFailed);
+            }
           }}
         />
       )}

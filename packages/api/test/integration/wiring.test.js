@@ -171,7 +171,10 @@ function createNativeFixtureService(spawnFn) {
       workingDirectory: workspace,
       spawnCliOverride: (launch) => {
         // Observe the credential at the real launch fence, before finally retires it.
-        const config = JSON.parse(readFileSync(join(launch.env.HOME, '.gemini/config/mcp_config.json'), 'utf8'));
+        const geminiDirArg = launch.args.find((arg) => arg.startsWith('--gemini_dir='));
+        assert.ok(geminiDirArg, 'Native launch must identify its per-run configuration');
+        const geminiDir = geminiDirArg.slice('--gemini_dir='.length);
+        const config = JSON.parse(readFileSync(join(geminiDir, 'config/mcp_config.json'), 'utf8'));
         const credentialPath = config.mcpServers?.['cat-cafe-collab']?.env?.CAT_CAFE_CREDENTIAL_FILE;
         if (credentialPath) spawnFn._nativeCredential = JSON.parse(readFileSync(credentialPath, 'utf8'));
         return spawnCli(launch, { spawnFn });
@@ -390,7 +393,9 @@ describe('AgentRouter + Services wiring', () => {
       }),
     );
 
-    await collect(router.route('user-1', '@gemini hello'));
+    const events = await collect(router.route('user-1', '@gemini hello'));
+    const error = events.find((event) => event.type === 'error');
+    assert.equal(error, undefined, error?.error);
 
     assert.equal(geminiSpawn._calls.length, 1);
     const call = geminiSpawn._calls[0];

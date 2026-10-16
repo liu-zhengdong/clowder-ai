@@ -2,6 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CapabilityEvolutionWorkspace } from '../CapabilityEvolutionWorkspace';
+import type { EvolutionProgramProjection } from '../evolution-program-projection';
 import { useEvolutionReading } from '../evolution-reading-state';
 import { assetReviewFixture } from './evolution-asset-fixtures';
 import { assetRef, ownerRef, programFixture } from './evolution-fixtures';
@@ -484,7 +485,9 @@ describe('F311 Capability Evolution Workspace', () => {
     catalog.versions = [{ versionRef: assetRef(sha), title: '官方 walking ONNX baseline', parentEdges: [] }];
     assetReviewState.body = JSON.stringify(catalog);
     assetReviewState.status = 200;
-    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ programs: [projection] }), { status: 200 }));
+    const adoptedProjection = structuredClone(projection) as EvolutionProgramProjection;
+    adoptedProjection.program.currentAssetVersionRefs = [assetRef(sha)];
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ programs: [adoptedProjection] }), { status: 200 }));
     await renderWorkspace();
 
     expect(container.textContent).toContain('当前采用：官方 walking ONNX baseline');
@@ -498,7 +501,9 @@ describe('F311 Capability Evolution Workspace', () => {
     catalog.versions = [{ versionRef: assetRef(sha), parentEdges: [] }];
     assetReviewState.body = JSON.stringify(catalog);
     assetReviewState.status = 200;
-    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ programs: [projection] }), { status: 200 }));
+    const adoptedProjection = structuredClone(projection) as EvolutionProgramProjection;
+    adoptedProjection.program.currentAssetVersionRefs = [assetRef(sha)];
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ programs: [adoptedProjection] }), { status: 200 }));
     await renderWorkspace();
 
     expect(container.textContent).toContain('当前采用 1 个已记录版本');

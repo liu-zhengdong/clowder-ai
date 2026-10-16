@@ -6,6 +6,7 @@ import { build } from 'vite';
 import { chromium } from '../../../ppt-forge/node_modules/playwright/index.mjs';
 import { registerNavigationOwnerJourneys } from './chat-navigation-owner.journey.mjs';
 import { registerReadingLandingJourneys } from './chat-reading-landing.journey.mjs';
+import { registerStreamingWheelJourney } from './chat-streaming-wheel.journey.mjs';
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const origin = 'https://chat-recovery.test';
@@ -40,6 +41,7 @@ after(async () => browser?.close());
 registerNavigationOwnerJourneys({ origin, browser: () => browser, bundle: () => bundle.code });
 
 registerReadingLandingJourneys({ origin, threadId, browser: () => browser, bundle: () => bundle.code });
+registerStreamingWheelJourney({ origin, threadId, browser: () => browser, bundle: () => bundle.code });
 
 function fixtureApiBody(pathname, state) {
   if (pathname === '/api/messages') {

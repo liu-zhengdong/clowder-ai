@@ -30,6 +30,7 @@ const source = (id: string, supported: boolean): ChatMessage => ({
 });
 function Proof() {
   const [mode, setMode] = useState('pending');
+  const additional = mode === 'many' ? [1, 2, 3].map((index) => source(`extra-${index}`, false)) : [];
   const pending = source('supported', true);
   if (mode === 'read' && pending.lifecycle?.dispatchRefs)
     pending.lifecycle = {
@@ -52,7 +53,7 @@ function Proof() {
       invocationId: 'inv',
       targetId: 'opus',
       inputEntryIds: ['q0', 'q1', 'q2'],
-      inputMessageIds: ['initial', 'supported', 'unsupported'],
+      inputMessageIds: ['initial', 'supported', 'unsupported', ...additional.map((message) => message.id)],
       status: mode === 'terminal' ? 'interrupted' : 'processing',
       startedAt: 10,
     },
@@ -62,13 +63,14 @@ function Proof() {
       <article className="max-w-xl rounded-lg border border-cafe p-3">
         <p>正在处理原任务。</p>
         <AppendedInputReceipts
+          key={mode === 'many' ? 'many' : 'read-status'}
           response={response}
-          timelineMessages={[pending, source('unsupported', false)]}
+          timelineMessages={[pending, source('unsupported', false), ...additional]}
           getCatById={() => undefined}
         />
       </article>
       <div className="mt-8 flex gap-3" role="group" aria-label="测试时序控制">
-        {['pending', 'read', 'terminal'].map((value) => (
+        {['pending', 'read', 'terminal', 'many'].map((value) => (
           <button key={value} onClick={() => setMode(value)}>
             {value}
           </button>

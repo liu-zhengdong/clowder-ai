@@ -1425,10 +1425,43 @@ export class InvocationQueue {
     return { entry: admitted.entry, newlySeen: true };
   }
 
-  async claimPreAdmissionFailureAcrossUsersDurable(threadId: string, entryId: string): Promise<QueueEntry | null> {
-    const best = this.peekOldestAcrossUsers(threadId);
-    if (!best || best.id !== entryId) return null;
-    return this.claimLedgerEntry(best);
+  async claimPreAdmissionFailureAcrossUsersDurable(
+    threadId: string,
+    entryId: string,
+    expectedTargets: readonly string[],
+  ): Promise<QueueEntry | null> {
+    const queued = this.listQueuedAcrossUsers(threadId);
+    const index = queued.findIndex((entry) => entry.id === entryId);
+    const selected = queued[index];
+    // Failure belongs to the resolved pending recipients, never a replacement
+    // added by Steer or a target whose owner has since placed it on hold.
+    const matchesResolvedRecipients = (entry: QueueEntry) =>
+      entry.targets.length === expectedTargets.length &&
+      entry.targets.every((target, position) => target === expectedTargets[position]) &&
+      !entry.delivery.routingHeldTargetIds?.some((target) => entry.targets.includes(target));
+    if (!selected || !matchesResolvedRecipients(selected)) return null;
+    // Recheck the current order after asynchronous target resolution. Disjoint
+    // work may settle, but a targetless or overlapping predecessor is a barrier.
+    if (
+      queued
+        .slice(0, index)
+        .some(
+          (entry) =>
+            entry.targets.length === 0 ||
+            selected.targets.length === 0 ||
+            entry.targets.some((target) => selected.targets.includes(target)),
+        )
+    )
+      return null;
+    const claimed = await this.claimLedgerEntry(selected);
+    if (!claimed) return null;
+    // Claim freezes the durable row. Compare that authoritative snapshot before
+    // publishing any failure; a racing edit remains queued for fresh resolution.
+    if (!matchesResolvedRecipients(claimed)) {
+      await this.rollbackProcessingDurable(threadId, entryId);
+      return null;
+    }
+    return claimed;
   }
 
   /** Durable counterpart of markProcessingAcrossUsers. */

@@ -12,6 +12,7 @@ import { EvolutionHomeActionsV2 } from './EvolutionHomeActionsV2';
 import { journeyStageLabel } from './EvolutionJourney';
 import { evolutionApprovalId } from './evolution-approval-navigation';
 import { useEvolutionAssetReview } from './evolution-asset-resource';
+import { projectAssetVersions } from './evolution-version-view';
 
 export function pendingEvolutionApprovalIds(programs: EvolutionProgramPresentationProjection[]): string[] {
   return [
@@ -104,17 +105,16 @@ function ProjectRow({
 }) {
   const { program, origin } = projection;
   const asset = useEvolutionAssetReview(projection);
-  const refs = asset.catalog?.currentVersionRefs;
-  const titles = refs?.map(
-    (ref) => asset.catalog?.versions.find((version) => refIdentity(version.versionRef) === refIdentity(ref))?.title,
+  const adoptedVersions = projectAssetVersions(projection, asset.catalog).filter((version) => version.adopted);
+  const titles = adoptedVersions.map(
+    (version) =>
+      asset.catalog?.versions.find((entry) => refIdentity(entry.versionRef) === refIdentity(version.ref))?.title,
   );
-  const adopted = !refs
-    ? '待来源核验'
-    : !refs.length
-      ? '尚无采用记录'
-      : titles?.every(Boolean)
-        ? titles.join('、')
-        : `${refs.length} 个已记录版本`;
+  const adopted = !adoptedVersions.length
+    ? '尚无采用记录'
+    : titles.every(Boolean)
+      ? titles.join('、')
+      : `${adoptedVersions.length} 个已记录版本`;
   const status = productStatus(projection);
   const phase = journeyStageLabel(projection);
   return (

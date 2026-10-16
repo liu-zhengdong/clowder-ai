@@ -189,6 +189,15 @@ function zeroTopologyContract(hydrated: boolean, zeroTopology: boolean, homeFocu
   return 'not-applicable';
 }
 
+function enterEvolutionProgramReading(surfaceId: string, isDesktop: boolean, threadId?: string): void {
+  if (!isDesktop || !threadId) return;
+  useF307ExperienceWorkbenchStore.getState().enterMainAreaAttention(surfaceId, {
+    kind: 'chat-workspace',
+    threadId,
+    chatBasis: DEFAULT_ARTIFACT_WORK_CHAT_BASIS,
+  });
+}
+
 function useExplicitWorkspaceNavigation({
   dispatch,
   hydrated,
@@ -334,7 +343,7 @@ function useExplicitWorkspaceNavigation({
       useF307ExperienceWorkbenchStore.getState().exitMainAreaAttention();
     }
     if (request.target.kind === 'evolution-program') {
-      useF307ExperienceWorkbenchStore.getState().enterMainAreaAttention(surface.id);
+      enterEvolutionProgramReading(surface.id, isDesktop, threadId);
     } else if (isDesktop && threadId && request.target.kind === 'mode' && request.target.mode === 'product-schedule') {
       useF307ExperienceWorkbenchStore.getState().enterMainAreaAttention(surface.id, {
         kind: 'chat-workspace',
@@ -484,7 +493,8 @@ export function F307ExperienceWorkbench({
   const hydrate = useF307ExperienceWorkbenchStore((state) => state.hydrate);
   const attentionPresentation = useF307ExperienceWorkbenchStore((state) => state.mainAreaAttentionPresentation);
   const mainAreaAttentionSurfaceId = useF307ExperienceWorkbenchStore((state) => state.mainAreaAttentionSurfaceId);
-  const enterMainAreaAttention = useF307ExperienceWorkbenchStore((state) => state.enterMainAreaAttention);
+  const enterMainAreaFullWindow = useF307ExperienceWorkbenchStore((state) => state.enterMainAreaFullWindow);
+  const returnFromMainAreaFullWindow = useF307ExperienceWorkbenchStore((state) => state.returnFromMainAreaFullWindow);
   const exitMainAreaAttention = useF307ExperienceWorkbenchStore((state) => state.exitMainAreaAttention);
   const focusSurfaceId = useF307ExperienceWorkbenchStore((state) => state.focusSurfaceId);
   const enterFocusMode = useF307ExperienceWorkbenchStore((state) => state.enterFocusMode);
@@ -789,7 +799,7 @@ export function F307ExperienceWorkbench({
             surface: program,
             entitlement: { kind: 'user', reason: 'return-origin' },
           });
-          if (origin.expanded && isDesktop) enterMainAreaAttention(program.id);
+          if (origin.expanded) enterEvolutionProgramReading(program.id, isDesktop, threadId);
           else exitMainAreaAttention();
           return;
         }
@@ -963,12 +973,14 @@ export function F307ExperienceWorkbench({
               : undefined
           }
           mainAreaAttentionSurfaceId={mainAreaAttentionSurfaceId}
-          onEnterMainAreaAttention={enterMainAreaAttention}
+          onEnterMainAreaAttention={enterMainAreaFullWindow}
           onExitMainAreaAttention={() => {
             captureChatReadingBeforeLayoutChange();
-            exitMainAreaAttention();
+            returnFromMainAreaFullWindow();
           }}
-          mainAreaAttentionIsWide={attentionPresentation.kind === 'chat-workspace'}
+          mainAreaAttentionIsWide={
+            attentionPresentation.kind === 'chat-workspace' && attentionPresentation.mode !== 'full-window'
+          }
         />
       )}
 

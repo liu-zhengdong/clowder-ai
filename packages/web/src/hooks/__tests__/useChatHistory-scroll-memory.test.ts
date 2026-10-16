@@ -730,8 +730,12 @@ describe('useChatHistory scroll memory (#27)', () => {
     expect(100 + viewedContentTop - scrollTop.get()).toBe(150);
   });
 
-  it('does not follow bottom when reflow arrives before an upward wheel moves the scrollport', async () => {
-    const threadId = 'thread-upward-wheel-before-pixels';
+  it.each([
+    'layout',
+    'stream',
+    'append',
+  ] as const)('does not follow bottom when %s arrives before an upward wheel moves the scrollport', async (source) => {
+    const threadId = `thread-upward-wheel-before-pixels-${source}`;
     const messages = [makeMsg('m1', 1), makeMsg('m2', 2)];
     useChatStore.setState({
       currentThreadId: threadId,
@@ -756,10 +760,14 @@ describe('useChatHistory scroll memory (#27)', () => {
     act(() => {
       scrollEl.dispatchEvent(new WheelEvent('wheel', { deltaY: -32 }));
       scrollHeight.set(1400);
-      window.dispatchEvent(new Event(CHAT_LAYOUT_CHANGED_EVENT));
+      if (source === 'layout') window.dispatchEvent(new Event(CHAT_LAYOUT_CHANGED_EVENT));
+      else if (source === 'stream') {
+        useChatStore.getState().patchMessage('m2', { content: 'Streaming output grows before scroll dispatch' });
+      } else useChatStore.setState({ messages: [...messages, makeMsg('m3', 3)] });
       flushAnimationFrames();
     });
     expect(endEl.scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTop.get()).toBe(400);
     act(() => {
       scrollTop.set(368);
       capturedHook?.handleScroll();
@@ -1201,5 +1209,42 @@ describe('useChatHistory scroll memory (#27)', () => {
       useChatStore.setState({ messages: [...messages, makeMsg('m3', 3)] });
     });
     expect(endEl.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' });
+  });
+
+  it('does not rewind or cancel native End scrolling when a queued layout correction catches up', async () => {
+    const threadId = 'thread-end-correction-frame';
+    const messages = [makeMsg('m1', 1), makeMsg('m2', 2)];
+    useChatStore.setState({
+      currentThreadId: threadId,
+      messages,
+      hasMore: false,
+      isLoadingHistory: false,
+      threadStates: { [threadId]: makeThreadState(messages) },
+    });
+    await act(async () => root.render(React.createElement(HookHost, { threadId })));
+    const el = capturedHook!.scrollContainerRef.current!;
+    const top = defineMutableNumberProp(el, 'scrollTop', 100);
+    defineMutableNumberProp(el, 'clientHeight', 600);
+    defineMutableNumberProp(el, 'scrollHeight', 1500);
+    el.getBoundingClientRect = () => ({ top: 100, bottom: 700 }) as DOMRect;
+    appendMessageBoundary(el, 'm1', () => ({ top: 200 - top.get(), bottom: 1000 - top.get() }));
+    cancelInitialRestoreWithWheel(el, -1);
+    act(() => capturedHook?.handleScroll());
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
+      top.set(250); // Native scrolling updates the viewport without calling the JS setter.
+      capturedHook?.handleScroll();
+      window.dispatchEvent(new Event(CHAT_LAYOUT_CHANGED_EVENT));
+      top.set(450); // Another native frame arrives before the queued correction.
+      capturedHook?.handleScroll();
+    });
+    const writes = vi.spyOn(el, 'scrollTop', 'set');
+    act(() => flushAnimationFrames());
+
+    expect(top.get()).toBe(450);
+    // Even assigning the current coordinate interrupts an ongoing native scroll.
+    expect(writes).not.toHaveBeenCalled();
+    expect(readChatScrollState(threadId)?.top).toBe(450);
   });
 });

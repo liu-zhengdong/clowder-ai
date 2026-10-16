@@ -189,12 +189,17 @@ test(
           );
         }
       }
-      await page.getByRole('button', { name: 'fail save', exact: true }).click();
       await page.getByRole('button', { name: '添加内容', exact: true }).click();
       await page.getByTestId('message-disposition-trigger').click();
       await page.locator('[data-disposition-option="continue_current"]').click();
-      assert.equal(await page.getByTestId('message-disposition-panel').count(), 1);
-      assert.ok((await page.getByTestId('message-disposition-panel').innerText()).includes('保存失败，请重试'));
+      assert.equal(await page.getByTestId('message-disposition-panel').count(), 0);
+      assert.match(await page.getByTestId('message-disposition-trigger').innerText(), /接着当前工作/);
+      await page.getByTestId('message-disposition-trigger').click();
+      assert.match(await page.getByTestId('message-disposition-panel').innerText(), /仅这一次/);
+      assert.equal(
+        await page.locator('[data-disposition-option="continue_current"]').getAttribute('aria-pressed'),
+        'true',
+      );
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'switch shell', exact: true }).click();
       await page.getByRole('button', { name: '添加内容', exact: true }).click();

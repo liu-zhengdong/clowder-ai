@@ -19,6 +19,7 @@ import {
 import {
   createEntrustedReturnFromRef,
   isRealSurfaceOwnerAvailable,
+  resolveEvolutionProgramId,
   resolveWorkspaceDestinationTarget,
 } from './real-surface-adapters';
 import { workspaceChromeCopy } from './workspace-chrome.shell-copy';
@@ -38,6 +39,8 @@ interface ExperienceWorkbenchStore {
   dispatchArtifactWorkPresentation: (command: ArtifactWorkPresentationCommand) => ArtifactWorkPresentationEffect;
   hydrate: (f284WorkspaceState?: F284WorkspaceSnapshot) => void;
   enterMainAreaAttention: (surfaceId: string, presentation?: MainAreaAttentionPresentation) => void;
+  enterMainAreaFullWindow: (surfaceId: string) => void;
+  returnFromMainAreaFullWindow: () => void;
   setMainAreaAttentionChatBasis: (basis: number) => void;
   exitMainAreaAttention: () => void;
   enterFocusMode: (surfaceId: string) => void;
@@ -222,11 +225,53 @@ export const useF307ExperienceWorkbenchStore = create<ExperienceWorkbenchStore>(
         current.layout.activeSurfaceId === surfaceId &&
         surface !== undefined &&
         (presentation.kind === 'overlay' ||
-          (target?.destinationRef === 'mode:product-schedule' && target.threadId === presentation.threadId));
+          (presentation.kind === 'chat-workspace' &&
+            ((target?.destinationRef === 'mode:product-schedule' && target.threadId === presentation.threadId) ||
+              resolveEvolutionProgramId(surface) !== null)));
       return {
         mainAreaAttentionSurfaceId: admitted ? surfaceId : null,
         mainAreaAttentionPresentation: admitted ? presentation : { kind: 'overlay' },
       };
+    });
+  },
+  enterMainAreaFullWindow: (surfaceId) => {
+    set((current) => {
+      if (
+        current.mainAreaAttentionSurfaceId === surfaceId &&
+        current.mainAreaAttentionPresentation.kind === 'chat-workspace'
+      ) {
+        return {
+          mainAreaAttentionPresentation: {
+            ...current.mainAreaAttentionPresentation,
+            mode: 'full-window',
+          },
+        };
+      }
+      const admitted =
+        current.layout.activeSurfaceId === surfaceId &&
+        current.layout.surfaces.some((surface) => surface.id === surfaceId);
+      return {
+        mainAreaAttentionSurfaceId: admitted ? surfaceId : null,
+        mainAreaAttentionPresentation: { kind: 'overlay' },
+      };
+    });
+  },
+  returnFromMainAreaFullWindow: () => {
+    set((current) => {
+      if (
+        current.mainAreaAttentionSurfaceId !== null &&
+        current.mainAreaAttentionPresentation.kind === 'chat-workspace' &&
+        current.mainAreaAttentionPresentation.mode === 'full-window'
+      ) {
+        return {
+          mainAreaAttentionPresentation: {
+            kind: 'chat-workspace',
+            threadId: current.mainAreaAttentionPresentation.threadId,
+            chatBasis: current.mainAreaAttentionPresentation.chatBasis,
+          },
+        };
+      }
+      return { mainAreaAttentionSurfaceId: null, mainAreaAttentionPresentation: { kind: 'overlay' } };
     });
   },
   setMainAreaAttentionChatBasis: (basis) => {

@@ -70,7 +70,10 @@ for (const [language, width] of [
       if (screenshots)
         await page.screenshot({ path: path.join(screenshots, `normal-${language}-${width}-keyboard.png`) });
       await page.keyboard.press('Enter');
-      await page.getByTestId('member-list-page').waitFor();
+      await page
+        .locator('.member-save-bar [role="status"]')
+        .filter({ hasText: language === 'en' ? 'Saved' : '已保存' })
+        .waitFor();
       assert.equal(state.writes.length, 1);
       assert.equal(state.writes[0].body.defaultModel, 'claude-normal-account');
       assert.equal(producer.persisted().defaultModel, 'claude-normal-account');
@@ -83,7 +86,7 @@ for (const [language, width] of [
       assert.equal(await page.locator('input[aria-label="Model"]').inputValue(), 'claude-normal-account');
       assert.equal(await page.locator('select[aria-label="Client"]').inputValue(), 'anthropic');
       assert.equal(await save.isVisible(), true);
-      assert.equal(await save.isDisabled(), true, 'Reopened configuration keeps a clear, inactive Save action');
+      assert.equal(await save.isEnabled(), true, 'Reopened configuration keeps the same primary Save action');
       if (screenshots)
         await page.screenshot({ path: path.join(screenshots, `normal-${language}-${width}-readback.png`) });
       if (screenshots)
@@ -112,7 +115,7 @@ test('Native explicit automatic mode persists, and returning to restricted mode 
     await permission.selectOption('auto');
     assert.equal(await page.getByRole('textbox', { name: 'Approved workspaces', exact: true }).count(), 0);
     await saveButton(page, 'en').click();
-    await page.getByTestId('member-list-page').waitFor();
+    await page.locator('.member-save-bar [role="status"]').filter({ hasText: 'Saved' }).waitFor();
     assert.equal(producer.persisted().agyProfile.autoApprove, true);
     assert.deepEqual(producer.persisted().agyProfile.trustedWorkspaces, []);
     assert.equal(producer.persisted().agyProfile.nativeCodingGrant, undefined);
