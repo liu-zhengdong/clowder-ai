@@ -176,8 +176,12 @@ function sortExecutionInputs(executions: readonly ExecutionSeed[]): void {
 }
 
 function withoutProjectionIndexes(input: IndexedInput): SingleCatConversationInput {
-  const { admissionIndex: _admissionIndex, sourceIndex: _sourceIndex, ...projected } = input;
-  return projected;
+  return {
+    message: input.message,
+    evidence: input.evidence,
+    ...(input.readAt === undefined ? {} : { readAt: input.readAt }),
+    source: input.source,
+  };
 }
 
 function executionBlock(execution: ExecutionSeed, catId: string): SingleCatConversationBlock {

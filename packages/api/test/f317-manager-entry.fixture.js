@@ -19,7 +19,7 @@ import { MemoryMeetingIntakeStore, MemorySignalRouteStore } from '../dist/domain
 import { sessionAuthPlugin, sessionRoute } from '../dist/infrastructure/session-auth.js';
 import { registerPluginManagerRoutes } from '../dist/routes/plugin-manager-routes.js';
 import { registerOfficialPluginRoutes } from '../dist/routes/plugin-official-routes.js';
-import { desktopWindowManifest, windowHtml } from './f317-window.fixture.js';
+import { desktopWindowManifest, windowHtml } from './f317-window-manifest.fixture.js';
 
 // Exact Companion rows (alpha.25/.24) from public b06ce75fc421c42579b0d930133d86e4909fac6b.
 const frozenCatalog = JSON.parse(

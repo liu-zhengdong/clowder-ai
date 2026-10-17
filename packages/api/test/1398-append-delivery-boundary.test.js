@@ -852,7 +852,12 @@ describe('existing ingress chains use common send admission and wake', () => {
         assert.deepEqual(admission.targets, ['opus'], 'IM own fallback must not override the common send target');
         assert.equal(admission.delivery.authorIntentByTarget.opus.requested, policy);
         if (policy === 'continue_current') {
-          await waitFor(() => dispatch.mock.calls.length === 1);
+          await waitFor(() => harness.queue.getEntrySnapshot('thread-1', 'user-1', admission.id) === null);
+          assert.equal(dispatch.mock.calls.length, 1);
+          assert.equal(
+            harness.messageStore.getById(admission.payload.messageId).lifecycle.dispatchRefs[0].appendAcceptance,
+            'accepted',
+          );
           assert.equal(harness.queue.getEntrySnapshot('thread-1', 'user-1', admission.id), null);
         } else {
           assert.equal(dispatch.mock.calls.length, 0);

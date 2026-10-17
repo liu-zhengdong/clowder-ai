@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { validateHostPluginManifest } from '../dist/domains/plugin/desktop-window-runtime/presentation-manifest.js';
 import { resolveCompanionArchiveContract } from '../dist/domains/plugin/desktop-window-runtime/published-companion-v2.js';
 import { managerEntryFixture } from './f317-manager-entry.fixture.js';
-import { desktopWindowManifest } from './f317-window.fixture.js';
+import { desktopWindowManifest } from './f317-window-manifest.fixture.js';
 
 // Exact public f303f66268ae7af115cd2fa8535405abe3125e3a release rows; no mutable next tag.
 const catalogData = JSON.parse(
