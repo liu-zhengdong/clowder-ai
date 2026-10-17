@@ -7,8 +7,10 @@ import { refreshCatsNow, useCatData } from '@/hooks/useCatData';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useCoCreatorConfig } from '@/hooks/useCoCreatorConfig';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import type { ConversationViewPreferenceController } from '@/hooks/useConversationViewPreference';
 import { useSendMessage } from '@/hooks/useSendMessage';
 import { useThreadLiveness } from '@/hooks/useThreadScopedSelectors';
+import type { ChatMessage, QueueEntry } from '@/stores/chat-types';
 import { useChatStore } from '@/stores/chatStore';
 import { computeCliDiagnosticsDedup } from '@/utils/cli-diagnostics-dedup';
 import { computeScrollRecomputeSignal } from '@/utils/scrollRecomputeSignal';
@@ -35,6 +37,11 @@ import { useShellPresentation } from '../shell/shell-presentation';
 import { ThreadComposerContext } from '../ThreadComposerContext';
 import { TransferTargetPicker } from '../TransferTargetPicker';
 import { VoteActiveBar } from '../VoteActiveBar';
+import { SingleCatConversationTimeline } from './SingleCatConversationTimeline';
+import {
+  projectSingleCatConversation,
+  type SingleCatConversationProjection,
+} from './single-cat-conversation-projection';
 import { ThreadChatHistoryNavigation } from './ThreadChatHistoryNavigation';
 import { useThreadChatRuntime } from './ThreadChatRuntimeProvider';
 import { ThreadComposerHost } from './ThreadComposerHost';
@@ -73,6 +80,16 @@ export type ThreadChatActivity = {
   hasActiveInvocation: boolean;
 };
 
+function flattenConversationProjection(projection: SingleCatConversationProjection): ChatMessage[] {
+  return projection.blocks.flatMap((block) => {
+    if (block.kind === 'execution') {
+      return [...block.readInputs, ...block.unconfirmedInputs].map((input) => input.message).concat(block.response);
+    }
+    if (block.kind === 'pending-inputs') return block.inputs.map((input) => input.message);
+    return [block.message];
+  });
+}
+
 export interface ThreadChatSurfaceProps {
   threadId: string;
   density: ThreadChatDensity;
@@ -90,6 +107,8 @@ export interface ThreadChatSurfaceProps {
   onComposerFocusChange?: (focused: boolean) => void;
   onActivity?: (activity: ThreadChatActivity) => void;
   onReadingPort?: RegisterChatReadingPort;
+  conversationViewController?: ConversationViewPreferenceController;
+  conversationViewQueue?: readonly QueueEntry[];
 }
 
 export function ThreadChatSurface({
@@ -109,6 +128,8 @@ export function ThreadChatSurface({
   onComposerFocusChange,
   onActivity,
   onReadingPort,
+  conversationViewController,
+  conversationViewQueue = [],
 }: ThreadChatSurfaceProps) {
   const artworkLightbox = useArtworkLightboxScope();
   const companion = useCompanionConversation(threadId);
@@ -166,7 +187,26 @@ export function ThreadChatSurface({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [timelineProjectionKey],
   );
-  const selection = useThreadChatSelection(messages);
+  const singleCatProjection = useMemo(() => {
+    const view = conversationViewController?.snapshot.effective;
+    if (composerPresentation !== 'v2' || conversationViewController?.loading || view?.mode !== 'cat') return null;
+    const projection = projectSingleCatConversation({ messages, queue: conversationViewQueue, catId: view.catId });
+    return projection.hasEvidence ? projection : null;
+  }, [
+    composerPresentation,
+    conversationViewController?.loading,
+    conversationViewController?.snapshot.effective,
+    conversationViewQueue,
+    messages,
+  ]);
+  const visibleMessages = useMemo(
+    () => (singleCatProjection ? flattenConversationProjection(singleCatProjection) : messages),
+    [messages, singleCatProjection],
+  );
+  const conversationViewKey = singleCatProjection
+    ? `cat:${conversationViewController?.snapshot.effective.mode === 'cat' ? conversationViewController.snapshot.effective.catId : ''}`
+    : 'group';
+  const selection = useThreadChatSelection(visibleMessages);
   const handleEditCat = useCallback((catId: string) => setEditingCatId(catId), []);
   const handleEditCoCreator = useCallback(() => setCoCreatorEditorOpen(true), []);
   const projectedEmptyState = emptyState ?? (
@@ -175,6 +215,42 @@ export function ThreadChatSurface({
       <p className="text-sm text-cafe-secondary">还没有消息，发一句试试吧</p>
     </div>
   );
+
+  const renderTimelineMessage = (message: ChatMessage, index: number, total: number) => {
+    const dedupInfo = cliDedupMap.get(message.id);
+    const mountPolicy = messageMountPolicy(index, total);
+    const selected = selection.selectedMessageIds.has(message.id);
+    const selectionEligible =
+      isMessageSelectableForBundle(message) &&
+      (!selection.selectionMode || selected || selection.selectedMessageIds.size < MAX_SELECTED_MESSAGES);
+    return (
+      <ChatMessageRow
+        key={message.id}
+        message={message}
+        compact={compact}
+        threadId={threadId}
+        timelineMessages={timelineProjectionMessages}
+        activeRuns={message.lifecycle?.dispatchRefs?.length ? lifecycleActiveRuns : undefined}
+        getCatById={getCatById}
+        onEditCat={handleEditCat}
+        onEditCoCreator={handleEditCoCreator}
+        hideDiagnosticsPanel={dedupInfo?.hideDiagnosticsPanel}
+        dedupCount={dedupInfo?.dedupCount}
+        selectionMode={selection.selectionMode}
+        selected={selected}
+        selectionEligible={selectionEligible}
+        onEnterSelection={selection.enterMessageSelection}
+        onToggleSelection={selection.toggleMessageSelection}
+        forwardingDisabled={connectionStatus.forwardingBlocked}
+        eager={mountPolicy.eager}
+        backgroundMountDelayMs={mountPolicy.backgroundMountDelayMs}
+        sendContext={interactiveSendContext}
+        confirmations={messageConfirmations?.get(message.id)}
+        showCapabilityTip={message.id === lifecycleTipMessageId}
+        capabilityTipContexts={capabilityTipContexts}
+      />
+    );
+  };
 
   useEffect(() => {
     onActivity?.({ threadId, messageCount: messages.length, hasActiveInvocation });
@@ -257,45 +333,13 @@ export function ThreadChatSurface({
               <div className="py-3 text-center text-xs text-cafe-muted">没有更多消息了</div>
             )}
             <ReplyRecallRuntimeProvider enabled={composerPresentation === 'v2'} threadId={threadId} messages={messages}>
-              {messages.length === 0 && !isLoadingHistory
-                ? projectedEmptyState
-                : messages.map((message, index) => {
-                    const dedupInfo = cliDedupMap.get(message.id);
-                    const mountPolicy = messageMountPolicy(index, messages.length);
-                    const selected = selection.selectedMessageIds.has(message.id);
-                    const selectionEligible =
-                      isMessageSelectableForBundle(message) &&
-                      (!selection.selectionMode ||
-                        selected ||
-                        selection.selectedMessageIds.size < MAX_SELECTED_MESSAGES);
-                    return (
-                      <ChatMessageRow
-                        key={message.id}
-                        message={message}
-                        compact={compact}
-                        threadId={threadId}
-                        timelineMessages={timelineProjectionMessages}
-                        activeRuns={message.lifecycle?.dispatchRefs?.length ? lifecycleActiveRuns : undefined}
-                        getCatById={getCatById}
-                        onEditCat={handleEditCat}
-                        onEditCoCreator={handleEditCoCreator}
-                        hideDiagnosticsPanel={dedupInfo?.hideDiagnosticsPanel}
-                        dedupCount={dedupInfo?.dedupCount}
-                        selectionMode={selection.selectionMode}
-                        selected={selected}
-                        selectionEligible={selectionEligible}
-                        onEnterSelection={selection.enterMessageSelection}
-                        onToggleSelection={selection.toggleMessageSelection}
-                        forwardingDisabled={connectionStatus.forwardingBlocked}
-                        eager={mountPolicy.eager}
-                        backgroundMountDelayMs={mountPolicy.backgroundMountDelayMs}
-                        sendContext={interactiveSendContext}
-                        confirmations={messageConfirmations?.get(message.id)}
-                        showCapabilityTip={message.id === lifecycleTipMessageId}
-                        capabilityTipContexts={capabilityTipContexts}
-                      />
-                    );
-                  })}
+              {visibleMessages.length === 0 && !isLoadingHistory ? (
+                projectedEmptyState
+              ) : singleCatProjection ? (
+                <SingleCatConversationTimeline projection={singleCatProjection} renderMessage={renderTimelineMessage} />
+              ) : (
+                messages.map((message, index) => renderTimelineMessage(message, index, messages.length))
+              )}
             </ReplyRecallRuntimeProvider>
             <div ref={messagesEndRef} />
           </div>
@@ -306,17 +350,21 @@ export function ThreadChatSurface({
             scrollContainerRef,
             messagesEndRef,
             onJumpToLatest: jumpToLatest,
-            recomputeSignal: computeScrollRecomputeSignal(threadId, messages, uiThinkingExpandedByDefault ? 1 : 0),
-            observerKey: `${threadId}:${density}`,
+            recomputeSignal: computeScrollRecomputeSignal(
+              threadId,
+              visibleMessages,
+              uiThinkingExpandedByDefault ? 1 : 0,
+            ),
+            observerKey: `${threadId}:${density}:${conversationViewKey}`,
           }}
           navigatorProps={{
-            messages,
+            messages: visibleMessages,
             scrollContainerRef,
             onJumpToMessage: jumpToMessage,
             beginUserScroll,
             compact,
             hasMore,
-            observerKey: `${threadId}:${density}`,
+            observerKey: `${threadId}:${density}:${conversationViewKey}`,
             onTrackReadyChange: setPianoReady,
           }}
         />

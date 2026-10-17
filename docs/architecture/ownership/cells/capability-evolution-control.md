@@ -10,6 +10,19 @@ description_generated_at: "2026-09-09T12:17:08Z"
 description_confirmed_by: codex-sol
 description_updated_at: "2026-09-09T12:17:08Z"
 doc_kind: architecture
+mcp_admission_status: accepted
+mcp_admission_ref: "architecture-cell:capability-evolution-control"
+mcp_admission_claims:
+  - ref: "architecture-cell:capability-evolution-control"
+    toolName: cat_cafe_get_harness_history
+    resourceFamily: harness-history
+    boundaryKind: resource-entry
+    decision: accepted
+  - ref: "architecture-cell:capability-evolution-control"
+    toolName: cat_cafe_publish_harness_history
+    resourceFamily: harness-history
+    boundaryKind: resource-entry
+    decision: accepted
 created: 2026-08-28
 canonical_features: [F311]
 code_anchors:
@@ -30,6 +43,12 @@ code_anchors:
   - packages/api/src/infrastructure/capability-evolution/change/program-lineage.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-adapter.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-harness-lineage.ts
+  - packages/api/src/infrastructure/capability-evolution/adapters/request-review/harness-history-publication-owner.ts
+  - packages/api/src/infrastructure/capability-evolution/adapters/request-review/harness-history-publication-service.ts
+  - packages/api/src/infrastructure/capability-evolution/adapters/request-review/harness-history-publication-redis.ts
+  - packages/api/src/infrastructure/capability-evolution/adapters/request-review/harness-history-git-source.ts
+  - packages/api/src/routes/harness-history-routes.ts
+  - packages/mcp-server/src/tools/harness-history-tools.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-ledger.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-ledger-contract.ts
   - packages/api/src/infrastructure/capability-evolution/adapters/request-review/request-review-owner-port.ts
@@ -116,6 +135,7 @@ Program identity and its own lifecycle are durable user-visible coordination tru
 | Human approval | F246 through the F266/F313 producer | An authenticated cat invocation may submit only the owner-backed intervention ref plus an idempotency key; retain the resulting canonical references | Browser-authored proposal creation, caller-authored owner/origin/authorization, ApprovalEnvelope state, proposal database, decision authority, or a second approval inbox |
 | Asset mutation and rollback | The named canonical asset owner | Ask the owner port to act only after the canonical approval/target snapshot is eligible; retain its opaque version and receipt references | Permission payloads, mutation/rollback execution, asset content, deployment state, or inferred owner authority |
 | F100 request-review asset | F100 Git owner plus its TTL=0 exact-ref ledger and exact Program/cycle binding input | Read semantic anchor history/parent/diff with separate Git source proof; fence every proposal-bound ledger writer through the same exact Program/cycle/intervention/target/case-action resolver; admit use reservation only from a strict author invocation with a real origin; join receipts through the existing F266/F167/F299 seams | Skill bytes, Approval/Task/lease copies, target-scanned case actions, ambient callback identity, non-strict reservations, F299 trajectory, review-message body, owner payload, or an F311-owned action/use ledger |
+| Development-history publication | F314 Git content owner and its TTL=0 publication journal | Federate the owner's exact content source and optional publication metadata through exploration; ownership lookup remains read-only | Archive body, publication attempts, publish/restore authority, or a history writer in generic F311 Program routes; the separate F314 journal never becomes F100 adoption/use or Program state |
 | Working surface | F307 | Supply a typed Program surface descriptor when a real Program has a named consumer | Workbench layout, tab topology, user-facing object state, or a new UI surface |
 | Content and feedback context | F309, F281, F300, and each content/source owner | Link canonical anchors, patches, feedback/episode evidence, and owner-backed sensing reads | Content versions, patch/writeback receipts, feedback/episode truth, memory truth, or a replacement self-sensing system |
 
@@ -195,3 +215,7 @@ Claim guard: “a durable exact submission is readable without copied truth or f
 ## Static Scan Hints
 
 Watch for `capability-evolution-control`, Evolution Program stores, copied trajectory or verdict payloads, caller-authored owner/origin/authorization, browser proposal creation, a second F278 inbox/ledger/state machine, F266/F313 lifecycle writes, F246 approval state, mutation/outcome payloads, F307 layout state, `Program demo`, fixture-only Harnesses, temporary adapters, and `inv:<id>` handling outside F299/source-owner boundaries.
+
+## F314 历史内容独立发布边界
+
+operator `[thread-id]#private-source-id` 要求谱系通过 API 独立更新；F311 owner `private-source-id` 要求对象专用写入口归 F314。`cat_cafe_get_harness_history` 与 `cat_cafe_publish_harness_history` 是这一个内容源的读取与发布/恢复入口，由 F314 校验活跃 invocation 和原 Program workspace，Git 保留正文，独立持久 journal 仅存来源与具名回执。F311 exploration 只消费通用发布元数据和 exact source selection，不持有发布动作或正文。实现与验收约定见独立发布计划。

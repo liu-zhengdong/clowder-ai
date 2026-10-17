@@ -89,6 +89,8 @@ export interface RequestReviewOwnerAdapterOptions {
   port: RequestReviewOwnerPort;
   ledger?: Pick<RequestReviewOwnerLedger, 'read'>;
   resolveActions?: () => RequestReviewOwnerActions | undefined;
+  /** F314 owns published history independently of the F100 deployed skill/version reader. */
+  historyReader?: NonNullable<ProgramAdapter['explorationReview']>;
 }
 
 export type RequestReviewOwnerActions = Pick<
@@ -353,6 +355,7 @@ export function createRequestReviewOwnerAdapter(options: RequestReviewOwnerAdapt
       };
     }
     try {
+      if (options.historyReader) return await options.historyReader(input);
       const headOid = await port.gitHeadOid();
       const projection = projectRequestReviewHarnessExploration(
         input,

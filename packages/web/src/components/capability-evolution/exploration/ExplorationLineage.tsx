@@ -3,6 +3,7 @@
 import { type EvolutionExplorationNodeV1, refIdentity } from '@cat-cafe/shared';
 import { type ReactNode, useId, useMemo, useRef } from 'react';
 import { ExplorationIcon } from './ExplorationIcon';
+import { isHistoricalStep } from './exploration-history';
 import {
   LINEAGE_NODE_SIZE,
   layoutExplorationLineage,
@@ -66,6 +67,7 @@ export function ExplorationLineage({
   direction?: 'map' | 'vertical';
   v2?: boolean;
 }) {
+  const historical = nodes.length > 0 && nodes.every(isHistoricalStep);
   const instructionsId = useId();
   const drag = useRef<{ id: number; x: number; y: number; start: Viewport; moved: boolean } | null>(null);
   const positioned = useMemo(
@@ -311,8 +313,12 @@ export function ExplorationLineage({
       </div>
       <p className="exploration-caption" id={instructionsId}>
         拖动画布或聚焦后使用方向键；Home 定位阅读版。
-        {density === 'points' ? ' 远看来源关系，放大读版本。' : ' 仅表示版本来源；成绩与条件在右侧按实验阅读。'}
-        {nodes.every((node) => node.kind === 'public_archive') && ' 公开归档不表示已采用。'}
+        {historical
+          ? ' 点选一步，阅读当时的改变与错题。连线的理由写在正文里。'
+          : density === 'points'
+            ? ' 远看来源关系，放大读版本。'
+            : ' 仅表示版本来源；成绩与条件在右侧按实验阅读。'}
+        {!historical && nodes.every((node) => node.kind === 'public_archive') && ' 公开归档不表示已采用。'}
         {positioned.hiddenCount > 0 && ` ${positioned.hiddenCount} 个节点已折叠，定位可重新展开。`}
       </p>
     </section>

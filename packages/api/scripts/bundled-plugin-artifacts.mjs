@@ -4,8 +4,8 @@ import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
-/** A deterministic USTAR containing only the producer's two regular files. No filesystem metadata enters the SRI. */
-function tarArchive(files) {
+/** A deterministic USTAR containing only the producer's regular files. No filesystem metadata enters the SRI. */
+export function tarArchive(files) {
   const blocks = [];
   for (const { name, bytes } of [...files].sort((a, b) => (a.name < b.name ? -1 : 1))) {
     assert.ok(Buffer.byteLength(name) < 100 && !name.includes('..') && name.startsWith('package/'));

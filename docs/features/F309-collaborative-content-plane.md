@@ -634,8 +634,20 @@ Service 持久化的 content-free 状态机为
 total bytes、source prepared ref、target ready ref、目标 ownerScopeRef 与最新 owner tuple。source owner 先在
 per-scope mutex 下等现有操作退出，持久化 transfer fence 并冻结所有新 effect，再产出 manifest。普通 fresh
 read 可继续到 CAS；任何会写 owner/ledger 的路径都必须被 fence 拒绝——包括当前借 `read` action 进入
-`prepareDelegatedRequest` 的 agent 路径。若存在 active execution、pending acceptance，或 accepted disposition 与
-owner receipt 尚未精确对齐，先按原 operation id 恢复/结算；仍不一致就拒绝 transfer，不导出模棱两可状态。
+`prepareDelegatedRequest` 的 agent 路径。这里的 quiescence 是 **owner-effect quiescence**：`source_prepared`
+只等待已经进入该 scope queue/mutex 的 owner/ledger 调用退出，不要求所有 Café 的 `InvocationQueue`、
+`InvocationRegistry` 或仍在推理的 Cat 全部静默。后者是分布式 compute plane，source owner 没有封闭世界可以
+完整枚举；“probe 后再禁止新启动”还需要新的全网 admission barrier，既不能加强 canonical effect 的线性化
+证明，也会让离线 Café 阻塞 handoff，因此不纳入本 AC-B6。
+
+freeze 前已经 commit 的 `proposal_ready` 连同原 proposal/receipt 正常转移；同 operation id 的迟到重放只可
+返回这份既有结果，不算新 effect。尚无 durable proposal 的 `requested/running` request 不证明远端 execution
+仍活着，也不阻塞 transfer；source transfer preparation 在 snapshot 前把它以同 `transferId`、原 custody epoch
+终态化为可追溯 `unavailable/stale`，让原请求处诚实显示需要在新 owner 下重试。远端旧 invocation 即使继续
+计算或排队启动，任何迟到的新 proposal/ledger write 都必须被 source fence 或新 custody epoch 拒绝。best-effort
+queue cancellation 只能用于节省算力/降低迟到噪音，不能成为安全前提。只有 pending acceptance、已经进入
+owner effect 但尚未退出的调用，或 accepted disposition 与 owner receipt 未精确对齐时，才按原 operation id
+恢复/结算；仍不一致就拒绝 transfer，不导出模棱两可状态。
 
 payload 通过同一 Connector 连接上的专用 custody relay 分页短命传输；单页沿现有 64 KiB owner relay 上限，
 总页数/总字节另设显式 admitted cap。超限、丢页或 digest mismatch 必须整项失败且 source 仍持 custody，不得
@@ -656,7 +668,10 @@ committed truth 收敛，保证不会双写。
 proposal 与 disposition identities 后可继续产生唯一下一 revision；source/target/Service 在每个 phase 重启或
 丢页均以同 transferId 恢复；pre-commit cancel 保留原 custodian，post-commit 旧 constraint/session 永久拒绝；
 stale tuple、pending-effect mismatch、目标碰撞与 bundle 超限全部 fail closed；Service 持久态无 content bytes，
-bundle 无 private snapshot/worktree/token。
+bundle 无 private snapshot/worktree/token；另需证明 source freeze 时远端 invocation/queued start 无论是否仍在
+运行，都不能新增 owner effect，未成 proposal 的原 request 投影为 `unavailable/stale`，而 pre-freeze 已 commit
+proposal 的 exact replay 仍返回同一既有 receipt。该证据不得用伪造 journal `execution` 字段或单次 registry
+probe 代替。
 
 **完整验收切片。** 导入一份真实 sealed Markdown 为 v1；Human A 与 B 以两个独立认证 session 读取同一
 digest/revision。A 建 exact-quote annotation 与 version-bound proposal，B 在 fresh allow 下接受；系统以

@@ -308,6 +308,10 @@ import {
 import { registerMicroduckLocalOwnerRuntime } from './infrastructure/capability-evolution/adapters/microduck-local-owner.js';
 import { createMicroduckRuntimeAdapter } from './infrastructure/capability-evolution/adapters/microduck-owner-runtime.js';
 import { ProgramAdapterRegistry } from './infrastructure/capability-evolution/adapters/program-adapter-registry.js';
+import { createHarnessHistoryGitSource } from './infrastructure/capability-evolution/adapters/request-review/harness-history-git-source.js';
+import { HarnessHistoryPublicationOwner } from './infrastructure/capability-evolution/adapters/request-review/harness-history-publication-owner.js';
+import { RedisHarnessHistoryPublicationStore } from './infrastructure/capability-evolution/adapters/request-review/harness-history-publication-redis.js';
+import { HarnessHistoryPublicationService } from './infrastructure/capability-evolution/adapters/request-review/harness-history-publication-service.js';
 import { createRequestReviewOwnerAdapter } from './infrastructure/capability-evolution/adapters/request-review/request-review-owner-adapter.js';
 import { RedisRequestReviewOwnerLedger } from './infrastructure/capability-evolution/adapters/request-review/request-review-owner-ledger.js';
 import {
@@ -441,6 +445,7 @@ import { evalRepairOutcomeRoutes } from './routes/eval-repair-outcome-routes.js'
 import { registerEventMemoryCorrectionDecisionRoutes } from './routes/event-memory-correction-decision-routes.js';
 import { readEventMemorySource } from './routes/event-memory-source.js';
 import { gameRoutes } from './routes/games.js';
+import { harnessHistoryRoutes } from './routes/harness-history-routes.js';
 import { registerHumanDispositionFeedbackRoutes } from './routes/human-disposition-feedback-routes.js';
 import {
   accountsRoutes,
@@ -3983,6 +3988,12 @@ async function main(): Promise<void> {
   );
   const requestReviewRepoRoot = findMonorepoRoot(process.cwd());
   const requestReviewOwnerPort = createRequestReviewOwnerPort({ repoRoot: requestReviewRepoRoot });
+  const harnessHistoryOwner = redis
+    ? new HarnessHistoryPublicationOwner({
+        store: new RedisHarnessHistoryPublicationStore(redis),
+        source: createHarnessHistoryGitSource({ repoRoot: requestReviewRepoRoot }),
+      })
+    : undefined;
   const catCafeSkillsSource = await resolveCatCafeSkillsSource();
   const requestReviewOwnerLedger = redis ? new RedisRequestReviewOwnerLedger(redis) : undefined;
   const requestReviewVersionReader = createRequestReviewCurrentVersionReader(requestReviewOwnerPort);
@@ -4047,6 +4058,7 @@ async function main(): Promise<void> {
   let requestReviewOwnerActions: ReturnType<typeof createRequestReviewOwnerActions> | undefined;
   const requestReviewOwnerAdapter = createRequestReviewOwnerAdapter({
     port: requestReviewOwnerPort,
+    ...(harnessHistoryOwner ? { historyReader: harnessHistoryOwner.read.bind(harnessHistoryOwner) } : {}),
     ...(requestReviewOwnerLedger ? { ledger: requestReviewOwnerLedger } : {}),
     resolveActions: () => requestReviewOwnerActions,
   });
@@ -4207,6 +4219,19 @@ async function main(): Promise<void> {
           },
         })
       : undefined;
+  await app.register(harnessHistoryRoutes, {
+    service:
+      harnessHistoryOwner && evolutionProgramService
+        ? new HarnessHistoryPublicationService({
+            owner: harnessHistoryOwner,
+            service: evolutionProgramService,
+            adapterRegistry: evolutionProgramAdapterRegistry,
+            dependencies: { threadStore, invocationReader: registry },
+          })
+        : undefined,
+    callbackRegistry: registry,
+    agentKeyRegistry,
+  });
   await app.register(capabilityEvolutionProgramRoutes, {
     service: evolutionProgramService,
     preparationService: evolutionProgramPreparationService,
@@ -5674,25 +5699,24 @@ async function main(): Promise<void> {
         },
       };
       let workLifetime = new AbortController();
-      const overview =
-        companionContract === '0.1.0-beta.25'
-          ? new CompanionWorkOverview({
-              ...workOptions,
-              open: async (destination) => {
-                if (destination.messageId)
-                  return (
-                    homeHub?.openWork(
-                      privateUserId,
-                      () => resolveCompanionWorkPublication(workOptions, destination),
-                      assertWorkCurrent,
-                      workLifetime.signal,
-                    ) ?? 'unconfirmed'
-                  );
-                await openConversation(destination.threadId);
-                return 'unconfirmed';
-              },
-            })
-          : undefined;
+      const overview = ['0.1.0-beta.25', '0.1.0-beta.28'].includes(companionContract ?? '')
+        ? new CompanionWorkOverview({
+            ...workOptions,
+            open: async (destination) => {
+              if (destination.messageId)
+                return (
+                  homeHub?.openWork(
+                    privateUserId,
+                    () => resolveCompanionWorkPublication(workOptions, destination),
+                    assertWorkCurrent,
+                    workLifetime.signal,
+                  ) ?? 'unconfirmed'
+                );
+              await openConversation(destination.threadId);
+              return 'unconfirmed';
+            },
+          })
+        : undefined;
       const work = overview
         ? {
             read: () => overview.read(),
@@ -5705,6 +5729,8 @@ async function main(): Promise<void> {
           }
         : undefined;
       return new CompanionHostBridge({
+        messages: messageStore,
+        verifyConversationThread: (threadId) => conciergeThreadServiceShared.isCurrent(privateUserId, threadId),
         observeVoice: (observation) => liveCompanionSessions.observeVoice(privateUserId, observation),
         observeTextSubmission: (observation) => liveCompanionSessions.observeTextSubmission(privateUserId, observation),
         observePresentation: (observation, verifyHost) =>
@@ -5808,9 +5834,7 @@ async function main(): Promise<void> {
     await officialPluginAuth.shutdown();
     await pluginRuntime.shutdown('api_shutdown');
   });
-  const { OFFICIAL_PLUGIN_POLICIES, OFFICIAL_BUNDLED_CATALOG_ENTRIES, OFFICIAL_BUNDLED_MANIFESTS } = await import(
-    './domains/plugin/official-catalog.js'
-  );
+  const { OFFICIAL_PLUGIN_POLICIES, OFFICIAL_BUNDLED_MANIFESTS } = await import('./domains/plugin/official-catalog.js');
   const { RefreshingOfficialPluginCatalog } = await import('./domains/plugin/manager/official-catalog-provider.js');
   const { OfficialPluginHistoryImportService } = await import('./domains/plugin/official-plugin-history-import.js');
   const { OfficialPluginMeetingIntakeService } = await import('./domains/plugin/official-plugin-meeting-intake.js');
@@ -5818,26 +5842,13 @@ async function main(): Promise<void> {
     await import('@clowder-ai/feishu-meeting-intake');
   const { registerOfficialPluginRoutes } = await import('./routes/plugin-official-routes.js');
   const officialPluginCatalog = new RefreshingOfficialPluginCatalog({ policies: OFFICIAL_PLUGIN_POLICIES });
-  const { validatePluginCatalog } = await import('@clowder-ai/plugin-contract');
-  const {
-    MachineOfficialPluginCatalog,
-    OFFICIAL_PLUGIN_CATALOG_URL,
-    loadMachinePluginCatalog,
-    resolveRepositoryReplacementPluginIds,
-  } = await import('./domains/plugin/manager/machine-catalog-provider.js');
-  const pluginManagerHostPolicies = [
-    {
-      pluginId: 'dev.clowder.video-analysis',
-      replacesRepositoryPluginId: 'video-analysis',
-      effectiveGrants: ['plugin.config.read', 'secret.read'] as const,
-    },
-  ];
-  const pluginManagerCatalog = new MachineOfficialPluginCatalog({
-    loadCatalog: () => loadMachinePluginCatalog(OFFICIAL_PLUGIN_CATALOG_URL),
-    validateCatalog: validatePluginCatalog,
-    hostPolicies: pluginManagerHostPolicies,
-    bundledEntries: OFFICIAL_BUNDLED_CATALOG_ENTRIES,
-  });
+  const { resolveRepositoryReplacementPluginIds } = await import(
+    './domains/plugin/manager/machine-catalog-provider.js'
+  );
+  const { createHostOfficialPluginCatalog, PLUGIN_MANAGER_HOST_POLICIES: pluginManagerHostPolicies } = await import(
+    './domains/plugin/manager/host-official-catalog.js'
+  );
+  const pluginManagerCatalog = createHostOfficialPluginCatalog();
   const { FilesystemBuiltinPluginPackageMaterializer } = await import(
     './domains/plugin/manager/builtin-package-materializer.js'
   );

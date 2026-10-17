@@ -57,7 +57,7 @@ for (const pluginId of ['official.collective-connector', 'official.chatgpt-dot']
     assert.deepEqual(
       discovery.candidates.map((candidate) => candidate.pluginId).sort(),
       ['official.chatgpt-dot', 'official.collective-connector'],
-      'the production Host bundle list discovers both candidates even while registry is offline',
+      'the production Host bundle list discovers all registered candidates even while registry is offline',
     );
     assert.deepEqual(discovery.candidates.find((candidate) => candidate.pluginId === pluginId).icon, manifest.icon);
     const locator = new FilesystemVerifiedPluginPackageLocator(root);
@@ -207,7 +207,7 @@ test('the shared registry downloader retains its npm HTTPS boundary', async () =
   await assert.rejects(fetchOfficialPackageArchive({ ...entry, archiveUrl: 'https://example.invalid/plugin.tgz' }));
 });
 
-test('real compiled dist reads both fixed archives from outside the source cwd', async () => {
+test('real compiled dist reads all fixed archives from outside the source cwd', async () => {
   const provider = new URL('../dist/domains/plugin/bundled-package-source.js', import.meta.url).href;
   const catalog = new URL('../dist/domains/plugin/official-catalog.js', import.meta.url).href;
   const code =
@@ -222,7 +222,7 @@ test('real compiled dist reads both fixed archives from outside the source cwd',
     cwd: tmpdir(),
   });
   const rows = JSON.parse(stdout);
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, OFFICIAL_BUNDLED_CATALOG_ENTRIES.length);
   for (const row of rows) {
     const expected = OFFICIAL_PLUGIN_CATALOG.find((entry) => entry.pluginId === row.id);
     assert.ok(expected);

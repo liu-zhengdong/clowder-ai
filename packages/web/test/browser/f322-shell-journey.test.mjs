@@ -1190,7 +1190,7 @@ test('the v2 header keeps the conversation view honest and inside a narrow viewp
     await menu.waitFor();
     assert.equal(await menu.locator('[data-conversation-cat]').count(), 2);
     assert.equal(await menu.locator('[data-conversation-cat]:disabled').count(), 2);
-    assert.match(await menu.textContent(), /布偶猫.*读取记录暂不可用.*狸花猫/);
+    assert.match(await menu.textContent(), /布偶猫.*还没有可确认的对话记录.*狸花猫/);
     const box = await menu.boundingBox();
     assert.ok(box);
     assert.ok(box.x >= 0);

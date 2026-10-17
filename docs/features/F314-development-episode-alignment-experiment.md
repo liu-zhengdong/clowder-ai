@@ -5,7 +5,7 @@ topics: [development-process, intent-alignment, review, merge-gate, process-cost
 tips_exempt: "Renewed 2026-10-15: this delta records the internal F314-to-F311 coordination and evidence handoff. It adds no shipped user entry or runtime capability and establishes no efficacy verdict; future user-facing F311 delivery retains its own discovery requirement."
 doc_kind: spec
 created: 2026-09-02
-updated: 2026-10-15
+updated: 2026-10-16
 description: "让一项托付跨阶段持续做对，尽早交付真实可用结果，以充分且相称的验证减少等待，并让猫自主续办、少占用人的协调注意力。现有 anchor 实验是其中一个有界机制。"
 description_source: human
 description_author: codex-astra
@@ -299,7 +299,7 @@ cvo_signoff:
 
 - [x] 每个需求点映射到至少一个 AC。
 - [x] 每个 AC 均有可执行的命令、source ref、owner projection 或真实运行证据。
-- [x] 本 Feature 无新 UI，前端需求→证据映射不适用。
+- [x] 原 Phase A/B 未新建独立 UI；10-16 的 F311 历史读面已有需求→作者实页证据映射，见上方“历史读面细化”。合入、Alpha 与正式加载按各自实际结果记录，不能沿用旧“不适用”判断。
 
 ## Phase B Landed Acceptance / 2026-09-03
 

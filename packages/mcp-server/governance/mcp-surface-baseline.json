@@ -6204,6 +6204,49 @@
       "protectedImplementationDigest": "sha256:47814637dbd122c183ac0a7b6759f5e07963fedd738aee8959e0e501ab99c99f"
     },
     {
+      "name": "cat_cafe_get_harness_history",
+      "serverFamily": "collab",
+      "resourceFamily": "harness-history",
+      "actions": [
+        "read"
+      ],
+      "activeState": "canonical",
+      "description": "Read the published development-history source and named publication attempts for an existing Evolution Program. Use when: checking which 错题谱系稿 is live, its current revision, a failed update, or a restore target before publishing. NOT for: editing archive text, reading arbitrary Git commits, creating a Program, adopting a candidate, or proving runtime deployment. Output: current immutable content source, publication revision and the latest 50 durable attempts; no writes. GOTCHA: content publication revision is independent of runtime HEAD and of the original case-evidence snapshot.",
+      "descriptionDigest": "sha256:d76686eceabd788af2a6cb0e11911e616be3cb13fd3a587775a9e64bfa7ffa87",
+      "descriptionCharacters": 586,
+      "descriptionTokensCl100kBase": 111,
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "programId": {
+            "description": "Existing development-process Evolution Program id; never create a new Program to publish history.",
+            "pattern": "^evolution-program:[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "programId"
+        ],
+        "type": "object"
+      },
+      "inputSchemaDigest": "sha256:644ae5f3d8b3647eb121721f10da254de98e69f8f93b6f9f59de1ad6ae1b551f",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "runtimeProfiles": [
+        "full"
+      ],
+      "schemaDelivery": {
+        "evidenceRef": "file:packages/mcp-server/src/tools/harness-history-tools.ts",
+        "policy": "host-default"
+      },
+      "implementationRef": "module:./tools/harness-history-tools.js#handleGetHarnessHistory",
+      "protectedImplementationDigest": "sha256:a8ff397dc6b56f2cae7894ea50d53d7020310dfc6777165ad899c596f5f7db3f"
+    },
+    {
       "name": "cat_cafe_get_hold_status",
       "serverFamily": "collab",
       "resourceFamily": "task-workflow",
@@ -13157,6 +13200,120 @@
       },
       "implementationRef": "module:./tools/callback-tools.js#handleProposeThread",
       "protectedImplementationDigest": "sha256:e81230e4f676a22bae446f5b91dfab775f0303e271ee1420a809fe035ae73e4c"
+    },
+    {
+      "name": "cat_cafe_publish_harness_history",
+      "serverFamily": "collab",
+      "resourceFamily": "harness-history",
+      "actions": [
+        "publish"
+      ],
+      "activeState": "canonical",
+      "description": "Publish or restore an immutable development-history draft for an existing Evolution Program without restarting its runtime. Use when: a source-backed 错题谱系 update is committed on canonical main and should become visible, or an existing successful draft should be restored. NOT for: editing files, arbitrary repositories or paths, Program stage/adoption changes, candidate approval, or browser/agent-key writes. Output: a durable named attempt; success switches the content pointer, validation failure preserves the previous draft, and restore appends a new receipt. GOTCHA: read the current revision first; retry the identical command with the same clientMessageId after interruption. The first API/renderer installation still needs deployment; subsequent content updates do not.",
+      "descriptionDigest": "sha256:13efe8db45a61bbc2d2d0c81dd9a46244cab756816cd1f054089a92e15b247a3",
+      "descriptionCharacters": 778,
+      "descriptionTokensCl100kBase": 142,
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "const": "publish",
+                    "type": "string"
+                  },
+                  "clientMessageId": {
+                    "maxLength": 240,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "sourceRevision": {
+                    "pattern": "^[a-f0-9]{40}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "clientMessageId",
+                  "reason",
+                  "action",
+                  "sourceRevision"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "const": "restore",
+                    "type": "string"
+                  },
+                  "clientMessageId": {
+                    "$ref": "#/properties/command/anyOf/0/properties/clientMessageId"
+                  },
+                  "expectedRevision": {
+                    "$ref": "#/properties/command/anyOf/0/properties/expectedRevision"
+                  },
+                  "reason": {
+                    "$ref": "#/properties/command/anyOf/0/properties/reason"
+                  },
+                  "restoreRevision": {
+                    "$ref": "#/properties/command/anyOf/0/properties/expectedRevision"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "clientMessageId",
+                  "reason",
+                  "action",
+                  "restoreRevision"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "publish: exact 40-hex sourceRevision already on canonical main; restore: prior successful restoreRevision or 0 for the bundled baseline. Both require current expectedRevision, stable clientMessageId and a readable reason."
+          },
+          "programId": {
+            "description": "Existing development-process Evolution Program id; never create a new Program to publish history.",
+            "pattern": "^evolution-program:[0-9a-f]{32}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "programId",
+          "command"
+        ],
+        "type": "object"
+      },
+      "inputSchemaDigest": "sha256:8f80b2fd52bf37c8c6220e074c95641c3813c91552d8f3a7249edcc3edf761e8",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "runtimeProfiles": [
+        "full"
+      ],
+      "schemaDelivery": {
+        "evidenceRef": "file:packages/mcp-server/src/tools/harness-history-tools.ts",
+        "policy": "host-default"
+      },
+      "implementationRef": "module:./tools/harness-history-tools.js#handlePublishHarnessHistory",
+      "protectedImplementationDigest": "sha256:a8ff397dc6b56f2cae7894ea50d53d7020310dfc6777165ad899c596f5f7db3f"
     },
     {
       "name": "cat_cafe_publish_image",

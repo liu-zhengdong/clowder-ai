@@ -9,7 +9,7 @@ description: "让具名家猫通过实时感知与交谈、持续深思和行动
 description_source: model
 description_author: codex-astra
 description_updated_at: 2026-09-15T08:29:30Z
-tips_exempt: "Renewed 2026-10-16: the 1.16 update records accepted design directions for 24–31 and an implementation plan covering reply provenance, send recovery and version-bound bounded reading. The 26–30 letter/reply journey, 24–25 lightweight call controls and 31 opt-in approach still await implementation and real desktop acceptance; these planning changes introduce no newly available general user operation or desktop entry. Existing front-desk refinements and the public-test dependency audit retain the same entry. The recorded 2026-10-13 13:36 UTC state remains host boot25 loaded, alpha.21 recovered and the existing plugin-details upgrade to alpha.24 awaiting the owner; this update does not assert a completed upgrade or human trial. Development/package checks and the 50 existing baseline checks do not prove the new interactions, natural voice, household or shared-perception acceptance."
+tips_exempt: "Renewed 2026-10-16: parent verified the production Manager list/detail and real registry alpha.25 install on isolated named Alpha after PR5654. Actual Electron covers compose, lost-receipt recovery without duplicate execution, processing/completed separation, full long-body read and retain; B published alpha.26 for the confirmed lost-older-intent race, Host admission merged as PR5657 and parent verified the real named Alpha25-to-26 upgrade retaining the instance and disabled state. The actual native rerun failed at history entry: the visible list starts at scrollTop=0 and upward wheel produces no transcript scroll/older request. Original B is investigating; the parent separately corrected its one-page-versus-all-history test oracle. Whole native acceptance remains open. Daily boot35 still has alpha.24 crashed/revision104, observed before the new release and not attributed to it. No daily restart, upgrade, model/media activation or human trial is inferred; original human acceptance and 24–25/31 remain open."
 mcp_admission_status: accepted
 mcp_admission_ref: "file:docs/features/F317-coactive-companion.md"
 mcp_admission_claims:
@@ -38,14 +38,14 @@ Owner thread：`[thread-id]`；总任务沿用 `private-source-id`（按 `relate
 本线程设计交接1016由 `private-source-id` 更正为整组，父已直接核人类原话。
 先承接26输入、27已发送、28发送未确认、29完整回复、30留住与上翻的完整往返，见S6；
 24–25轻量通话与31主动凑近也已认可方向，分别见S7/S8，不再列为“人未点评”。
-原Task33负责能力核对、A/Host与B/公共包安排及组合验收；新交互尚未实现或加载。
+原Task33负责能力核对、A/Host与B/公共包安排及组合验收；26–30代码已合入，隔离Alpha的alpha.25正式入口已走通，原生输入/递信/长回信/留住已有实物证据；历史修复包alpha.26与Host准入已合入，父在原Alpha正常25→26升级通过，完整原生复验仍未通过历史入口/上翻，已回原B核修；日常真人体验保持开放。
 31排在26–30之后，先核前台程序名采集、默认关闭的逐类许可和每日频率；方向认可不自动启用采集或媒体。
 设计 `37f8181e09` 已定气泡复用交互chat局部视图、保留12–14字幕入口、两种信分开及有界历史读取。
 把原发送绑定恢复、来源确认完成才收信、绑定正文版本的有界续读纳入原A/B首个合同单元；
-17项核心与33项公开包检查只是既有基线，新交互仍待实现与实物验证。
+17项核心与33项公开包检查只是既有基线；本轮新行为的实装验证与限制见下方交付记录，实物验收仍待完成。
 实际合入并加载后回原设计线逐组对真桌面，再交You；既有Phase/AC与原真人体验不因此关闭。
 
-**最新交付（2026-10-13 13:36 UTC）**：source1351 的前台岗位、分段计时、受限原生 subagent 及使用记录、本人 Task 操作与迟到回告已随核心 #5439 / #5454 合入；公开 #76 / #78 / #79 已合入并实际发布 contract beta.27、SDK beta.23、companion alpha.24（含状态点呼吸）。部署回调已到：日常 boot25 / `e026e368c4` 包含最终 #5454，API/Web 就绪；插件恢复 running，但实际安装仍为 alpha.21。原 Task33 进入正常插件升级与真人验收：operator 从设置的猫猫球详情更新到 alpha.24 后亲自试聊，父不自动更新或开启模型/媒体。开发交付和宿主加载均不关闭真人验收或完整 Phase。详见下方「前台 harness 优化」的交付记录。
+**上一轮宿主加载记录（2026-10-13 13:36 UTC）**：source1351 的前台岗位、分段计时、受限原生 subagent 及使用记录、本人 Task 操作与迟到回告已随核心 #5439 / #5454 合入；公开 #76 / #78 / #79 已合入并实际发布 contract beta.27、SDK beta.23、companion alpha.24（含状态点呼吸）。部署回调已到：日常 boot25 / `e026e368c4` 包含最终 #5454，API/Web 就绪；插件恢复 running，但实际安装仍为 alpha.21。这是当次观察，不作为本轮 alpha.25 已加载或升级的证明。开发交付和宿主加载均不关闭真人验收或完整 Phase。详见下方「前台 harness 优化」的交付记录。
 
 **2026-09-28 六线开工授权**：operator source `[thread-id]#private-source-id`
 A 桌面/通话由原 Sol6 现场续办，B 身体由原 Sol5.6 现场续办；新建 C 收件/长对话（Astra）、

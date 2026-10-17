@@ -8,6 +8,8 @@ import { useAgentHookHealth } from '@/hooks/useAgentHookHealth';
 import { formatCatName, useCatData } from '@/hooks/useCatData';
 import { useCoCreatorConfig } from '@/hooks/useCoCreatorConfig';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import { useConversationViewPreference } from '@/hooks/useConversationViewPreference';
+import { useConversationViewReadingCheckpoint } from '@/hooks/useConversationViewReadingCheckpoint';
 import { godAction, submitAction } from '@/hooks/useGameApi';
 import { reconnectGame } from '@/hooks/useGameReconnect';
 import { useGovernanceStatus } from '@/hooks/useGovernanceStatus';
@@ -24,6 +26,7 @@ import { useActiveExecutionStore } from '@/stores/activeExecutionStore';
 import { type ChatMessage, type Thread, useChatStore } from '@/stores/chatStore';
 import { useGameStore } from '@/stores/gameStore';
 import { useGuideStore } from '@/stores/guideStore';
+import { withQueuedInputPreviews } from '@/stores/queued-input-preview';
 import { useSidebarProjectionStore } from '@/stores/sidebarProjectionStore';
 import { useSidebarStore } from '@/stores/sidebarStore';
 import { useTaskStore } from '@/stores/taskStore';
@@ -38,6 +41,7 @@ import { hydrateEvolutionFromCurrentUrl } from './capability-evolution/evolution
 import { useConciergeConfirmations } from './concierge/useConciergeConfirmations';
 import { ArtworkLightboxHost } from './content-review/ArtworkLightboxHost';
 import { ArtworkLightboxProvider, useArtworkLightboxScope } from './content-review/ArtworkLightboxScope';
+import { scopedQueue } from './execution-row/thread-queue';
 import { FirstRunQuestWizard } from './FirstRunQuestWizard';
 import { BootcampGuideOverlay } from './first-run-quest/BootcampGuideOverlay';
 import { QuestBanner } from './first-run-quest/QuestBanner';
@@ -78,6 +82,8 @@ import { StatusPresentation } from './workspace-status/StatusPresentation';
 interface ChatContainerProps {
   threadId: string;
 }
+
+const EMPTY_CONVERSATION_QUEUE = [] as const;
 
 function hasConciergeConfirmationActions(messages: readonly ChatMessage[]): boolean {
   return messages.some((message) =>
@@ -205,6 +211,18 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
   const { clearTasks } = useTaskStore();
   const { cats, isLoading, hasFetched } = useCatData();
   const isV2 = useShellPresentation() === 'v2';
+  const conversationViewQueue = useChatStore((state) => scopedQueue(state, threadId)) ?? EMPTY_CONVERSATION_QUEUE;
+  const conversationViewMessages = useMemo(
+    () => withQueuedInputPreviews(allMessages, conversationViewQueue, threadId),
+    [allMessages, conversationViewQueue, threadId],
+  );
+  const conversationViewController = useConversationViewPreference(threadId, isV2);
+  const conversationViewReading = useConversationViewReadingCheckpoint({
+    threadId,
+    controller: conversationViewController,
+    messages: conversationViewMessages,
+    queue: conversationViewQueue,
+  });
   const coCreator = useCoCreatorConfig();
   const workspaceWorktreeId = useChatStore((s) => s.workspaceWorktreeId);
   useTeleport(); // F227: drive the Hub to a teleport target message (thread:teleport)
@@ -523,14 +541,23 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
   const registerSettingsReadingPort = useSettingsReadingPort(originTitle);
   const registerShellReadingPort = useCallback<RegisterChatReadingPort>(
     (port) => {
+      conversationViewReading.setReadingPort(port);
       const releaseSearch = messageSearchAvailable ? messageSearch.registerReadingPort(port) : () => {};
       const releaseSettings = isV2 && viewMode === 'single' ? registerSettingsReadingPort(port) : () => {};
       return () => {
+        conversationViewReading.setReadingPort(null);
         releaseSettings();
         releaseSearch();
       };
     },
-    [isV2, viewMode, registerSettingsReadingPort, messageSearchAvailable, messageSearch.registerReadingPort],
+    [
+      conversationViewReading.setReadingPort,
+      isV2,
+      viewMode,
+      registerSettingsReadingPort,
+      messageSearchAvailable,
+      messageSearch.registerReadingPort,
+    ],
   );
 
   // The virtual default conversation uses the startup repository; a real route
@@ -1065,6 +1092,9 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
                   setRightPanelOpen(true);
                 }
               }}
+              conversationViewController={conversationViewController}
+              conversationViewMessages={conversationViewMessages}
+              conversationViewQueue={conversationViewQueue}
             />
           )}
 
@@ -1094,6 +1124,8 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
                 presentation={workComposerOnlyActive ? 'composer-only' : 'conversation'}
                 onReadingPort={isV2 ? registerShellReadingPort : undefined}
                 messageConfirmations={messageConfirmations}
+                conversationViewController={conversationViewController}
+                conversationViewQueue={conversationViewQueue}
                 acceptUnscopedInteractiveSend
                 footerRef={attachBottomChromeRef}
                 timelineLead={

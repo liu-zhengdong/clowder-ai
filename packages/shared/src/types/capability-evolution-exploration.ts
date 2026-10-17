@@ -36,7 +36,15 @@ const baseNode = {
     )
     .max(32),
   parentEdges: z
-    .array(z.object({ parentNodeRef: evolutionExplorationNodeRefSchema, sourceRef: ownerTruthRefV1Schema }).strict())
+    .array(
+      z
+        .object({
+          parentNodeRef: evolutionExplorationNodeRefSchema,
+          sourceRef: ownerTruthRefV1Schema,
+          description: bounded(2000).optional(),
+        })
+        .strict(),
+    )
     .max(32),
   /** A publisher-bound cover frame; fetching bytes still uses exact Program/experiment/record guards. */
   preview: z
@@ -53,7 +61,17 @@ export const evolutionExplorationNodeSchema = z.discriminatedUnion('kind', [
       versionRef: exactAssetVersionRefV1Schema,
     })
     .strict(),
-  z.object({ ...baseNode, kind: z.literal('public_archive') }).strict(),
+  z
+    .object({
+      ...baseNode,
+      kind: z.literal('public_archive'),
+      /** Source-declared historical reading; absence keeps the experiment presentation. */
+      history: z
+        .object({ period: bounded(80), updatedThrough: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+        .strict()
+        .optional(),
+    })
+    .strict(),
 ]);
 
 export const evolutionExplorationExperimentSchema = z
@@ -88,6 +106,7 @@ export const evolutionExplorationDetailSchema = z.discriminatedUnion('status', [
 
 export const evolutionExplorationSelectionSchema = z
   .object({
+    selectedSourceRef: exact.optional(),
     selectedNodeRef: evolutionExplorationNodeRefSchema.optional(),
     selectedExperimentRef: exact.optional(),
     comparisonExperimentRef: exact.optional(),
@@ -99,6 +118,51 @@ export const evolutionExplorationRequestV1Schema = evolutionExplorationSelection
     objectRef: ownerTruthRefV1Schema,
   })
   .strict();
+
+/** Optional archive-owner receipts. F311 neither stores content nor decides when an owner publishes it. */
+export const evolutionArchiveVersionSchema = z
+  .object({
+    ref: exact,
+    sourceRevision: bounded(240),
+    revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    bundled: z.boolean(),
+    occurredAt: timestampSchema.optional(),
+    actorRef: bounded(240).optional(),
+    reason: bounded(1_000).optional(),
+  })
+  .strict();
+export const evolutionArchivePublicationSchema = z
+  .object({
+    revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    current: evolutionArchiveVersionSchema,
+    selected: evolutionArchiveVersionSchema,
+    attempts: z
+      .array(
+        z
+          .object({
+            revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+            action: bounded(80),
+            status: z.enum(['published', 'failed']),
+            actorRef: bounded(240),
+            originRef: bounded(2_000),
+            reason: bounded(1_000),
+            occurredAt: timestampSchema,
+            failureCode: bounded(240).optional(),
+          })
+          .strict(),
+      )
+      .max(50),
+    hasMore: z.boolean(),
+    selectionUpdate: z
+      .object({
+        kind: z.enum(['unchanged', 'modified', 'moved', 'removed', 'legacy']),
+        nextSelection: evolutionExplorationSelectionSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type EvolutionArchivePublicationV1 = z.infer<typeof evolutionArchivePublicationSchema>;
 export const evolutionExplorationMediaRequestV1Schema = z
   .object({
     programRef: ownerTruthRefV1Schema,
@@ -113,13 +177,21 @@ const envelope = { schemaVersion: z.literal(1), programRef: ownerTruthRefV1Schem
 // Federation keeps the owner's complete bounded list plus the read-boundary diagnostics.
 const blockers = z.array(evolutionAssetReviewBlockerV1Schema).max(64);
 const reviewSchema = z.discriminatedUnion('status', [
-  z.object({ ...envelope, status: z.enum(['unavailable', 'invalid']), blockers: blockers.min(1) }).strict(),
+  z
+    .object({
+      ...envelope,
+      status: z.enum(['unavailable', 'invalid']),
+      blockers: blockers.min(1),
+      recoverySelection: evolutionExplorationSelectionSchema.optional(),
+    })
+    .strict(),
   z
     .object({
       ...envelope,
       status: z.literal('resolved'),
       sourceRef: ownerTruthRefV1Schema,
       readAt: timestampSchema,
+      publication: evolutionArchivePublicationSchema.optional(),
       nodes: z.array(evolutionExplorationNodeSchema).max(512),
       experiments: z.array(evolutionExplorationExperimentSchema).max(512),
       details: z.array(evolutionExplorationDetailSchema).max(2),
@@ -213,6 +285,15 @@ function validateExperiments(review: Review, ctx: z.RefinementCtx) {
 
 export const evolutionExplorationReviewV1Schema = reviewSchema.superRefine((review, ctx) => {
   if (review.status !== 'resolved') return;
+  if (
+    review.publication &&
+    (refIdentity(review.publication.selected.ref) !== refIdentity(review.sourceRef) ||
+      (review.publication.selectionUpdate?.nextSelection &&
+        (!review.publication.selectionUpdate.nextSelection.selectedSourceRef ||
+          refIdentity(review.publication.selectionUpdate.nextSelection.selectedSourceRef) !==
+            refIdentity(review.publication.current.ref))))
+  )
+    ctx.addIssue({ code: 'custom', message: 'archive publication must bind its exact selected and target sources' });
   validateNodes(review, ctx);
   validateExperiments(review, ctx);
 });
@@ -231,7 +312,8 @@ export function evolutionExplorationSelectionMatches(
   review: EvolutionResolvedExplorationReviewV1,
   selection: EvolutionExplorationSelectionV1,
 ): boolean {
-  const { selectedNodeRef, selectedExperimentRef, comparisonExperimentRef } = selection;
+  const { selectedSourceRef, selectedNodeRef, selectedExperimentRef, comparisonExperimentRef } = selection;
+  if (selectedSourceRef && refIdentity(selectedSourceRef) !== refIdentity(review.sourceRef)) return false;
   if (selectedNodeRef && !review.nodes.some((node) => refIdentity(node.nodeRef) === refIdentity(selectedNodeRef)))
     return false;
   const requested = [selectedExperimentRef, comparisonExperimentRef].filter((ref) => ref !== undefined);

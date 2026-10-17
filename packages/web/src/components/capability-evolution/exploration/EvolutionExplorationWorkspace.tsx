@@ -11,6 +11,11 @@ import { ExplorationConditions } from './ExplorationConditions';
 import { ExplorationCounterexample } from './ExplorationCounterexample';
 import { ExplorationDecisionHeader } from './ExplorationDecisionHeader';
 import { ExplorationDetailStatus } from './ExplorationDetailStatus';
+import { ExplorationHistory } from './ExplorationHistory';
+import {
+  ExplorationHistoryPublicationNotice,
+  ExplorationHistoryPublicationRecords,
+} from './ExplorationHistoryPublication';
 import { ExplorationIcon } from './ExplorationIcon';
 import { ExplorationNavigation } from './ExplorationNavigation';
 import { ExplorationOutcome } from './ExplorationOutcome';
@@ -18,6 +23,7 @@ import { ExplorationPairedResults } from './ExplorationPairedResults';
 import { ExplorationPublicShowcase } from './ExplorationPublicShowcase';
 import { ExplorationSourceStatus } from './ExplorationSourceStatus';
 import { ExplorationSummary } from './ExplorationSummary';
+import { isHistoricalStep } from './exploration-history';
 import { useExplorationWorkspace } from './use-exploration-workspace';
 
 export function EvolutionExplorationWorkspace({
@@ -71,6 +77,15 @@ export function EvolutionExplorationWorkspace({
         </h2>
         <p role="status">{resource.error ?? '正在读取版本与实验…'}</p>
         <ExplorationSourceStatus blockers={resource.blockers} retry={resource.retry} />
+        {resource.recoverySelection && (
+          <button
+            type="button"
+            className="exploration-link"
+            onClick={() => void workspace.adoptPublication(resource.recoverySelection!)}
+          >
+            打开最新历史
+          </button>
+        )}
         {resource.error && (
           <>
             <button type="button" className="exploration-link" onClick={resource.retry}>
@@ -106,6 +121,7 @@ export function EvolutionExplorationWorkspace({
         </button>
       </section>
     );
+  if (isHistoricalStep(node)) return <ExplorationHistory workspace={workspace} projection={projection} mode={mode} />;
   if (mode === 'summary')
     return (
       <>
@@ -131,6 +147,7 @@ export function EvolutionExplorationWorkspace({
       data-exploration-presentation={v2 ? 'v2' : 'classic'}
     >
       <ExplorationSourceStatus blockers={catalog.blockers} retry={resource.retry} />
+      <ExplorationHistoryPublicationNotice workspace={workspace} />
 
       {v2 && (
         <>
@@ -188,6 +205,7 @@ export function EvolutionExplorationWorkspace({
                     ? '公开归档；采用以正式回执为准。'
                     : '来源发布的真实资产版本不等于本项目已采用；阅读也不会改变采用。'}
                 </p>
+                <ExplorationHistoryPublicationRecords workspace={workspace} />
               </details>
               <h3>这一版改了什么</h3>
               {node.changes.map((item, index) => (

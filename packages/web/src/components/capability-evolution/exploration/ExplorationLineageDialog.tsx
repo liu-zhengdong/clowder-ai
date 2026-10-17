@@ -6,10 +6,12 @@ export function ExplorationLineageDialog({
   workspace,
   close,
   allSources = false,
+  historical = false,
 }: {
   workspace: ReturnType<typeof useExplorationWorkspace>;
   close(): void;
   allSources?: boolean;
+  historical?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -27,9 +29,9 @@ export function ExplorationLineageDialog({
       }}
     >
       <header>
-        <h3>版本来源与分叉</h3>
+        <h3>{historical ? '错题谱系' : '版本来源与分叉'}</h3>
         <button type="button" onClick={() => ref.current?.close()}>
-          返回比较
+          {historical ? '返回阅读' : '返回比较'}
         </button>
       </header>
       <ExplorationLineage

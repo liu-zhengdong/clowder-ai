@@ -1,3 +1,12 @@
+import {
+  type CompanionDeliveryAcceptance,
+  type CompanionDraftSubmission,
+  companionDeliveryMatches,
+  companionDeliveryReceiptSchema,
+  companionSubmissionKey,
+  readCompanionDraftSubmissions,
+  type StoredCompanionDeliveryReceipt,
+} from '../companion-submission-state.js';
 /**
  * Message Store
  * 内存消息存储，供 MCP 回传工具 get_thread_context / get_pending_mentions 使用
@@ -149,6 +158,7 @@ export interface OwnerComposerDraft {
   text: string;
   contentBlocks?: readonly MessageContent[];
   replyTo?: string;
+  companionSubmissions?: readonly CompanionDraftSubmission[];
   updatedAt: number;
 }
 
@@ -164,6 +174,7 @@ export interface PutOwnerComposerDraftInput {
   text: string;
   contentBlocks?: readonly MessageContent[];
   replyTo?: string;
+  companionSubmissions?: readonly CompanionDraftSubmission[];
   updatedAt: number;
 }
 
@@ -278,6 +289,8 @@ export interface StoredMessage {
   /** Compatibility projection for existing UI/index consumers; derived from from.kind. */
   catId: CatId | null;
   content: string;
+  /** Host acceptance fact, written only by the original delivery producer. */
+  companionDeliveryReceipt?: StoredCompanionDeliveryReceipt;
   /** #1354: canonical Queue → History → Active Run lifecycle projection. */
   lifecycle?: LifecycleStoredMessageMetadata;
   /** Rich content blocks (text, images, code). When absent, use content string. */
@@ -724,6 +737,7 @@ export type AppendMessageInput = Omit<
   | 'deliveryStatus'
   | 'recall'
   | 'sourceParseFailure'
+  | 'companionDeliveryReceipt'
 > & {
   from: MessageFrom;
   threadId?: string;
@@ -1750,6 +1764,7 @@ export function isValidCustodyOfferTransition(
 
 /** Validate every caller-controlled field that affects persistent message order. */
 export function assertValidAppendMessageInput(msg: AppendMessageInput): void {
+  if ('companionDeliveryReceipt' in msg) throw new TypeError('Host delivery acceptance requires its original producer');
   assertValidAppendDeliveryMetadata(msg);
   if (msg.extra?.dotAsk) {
     const ask = msg.extra.dotAsk;
@@ -2186,6 +2201,12 @@ export interface IMessageStore {
   restore(id: string): StoredMessage | null | Promise<StoredMessage | null>;
   /** F35: Reveal whispers in a thread sent by userId (set revealedAt). Returns count revealed. */
   revealWhispers(threadId: string, userId: string): number | Promise<number>;
+  /** Host producer only: persist confirmed transport acceptance beside the original, unchanged user Message. */
+  recordCompanionDeliveryAcceptance(
+    id: string,
+    input: CompanionDeliveryAcceptance,
+  ): StoredMessage | null | Promise<StoredMessage | null>;
+
   /** F096: Update message extra data (for interactive block state persistence). Returns null if not found. */
   updateExtra(id: string, extra: HostMessageExtra): StoredMessage | null | Promise<StoredMessage | null>;
   /** F310: atomically fence source body and prior custody state before changing the source-owned carrier. */
@@ -2333,6 +2354,9 @@ function buildRecallDraft(
     threadId: input.threadId,
     revision: actualRevision + 1,
     text: `${prefix}${message.content}`,
+    ...(existingDraft?.companionSubmissions
+      ? { companionSubmissions: structuredClone(existingDraft.companionSubmissions) }
+      : {}),
     ...(contentBlocks.length > 0 ? { contentBlocks } : {}),
     ...(replyTo ? { replyTo } : {}),
     updatedAt: input.recalledAt,
@@ -2352,6 +2376,7 @@ function redactRecalledMessage(message: StoredMessage, recall: MessageRecallMark
   delete message.extra;
   delete message.thinking;
   delete message.replyTo;
+  delete message.companionDeliveryReceipt;
   message.deliveryStatus = 'canceled';
   message._tombstone = true;
   message.recall = recall;
@@ -2937,6 +2962,13 @@ export class MessageStore {
       threadId,
       revision: actualRevision + 1,
       text: input.text,
+      ...((input.companionSubmissions ?? existing?.companionSubmissions)
+        ? {
+            companionSubmissions: readCompanionDraftSubmissions(
+              input.companionSubmissions ?? existing?.companionSubmissions,
+            ),
+          }
+        : {}),
       ...(input.contentBlocks ? { contentBlocks: structuredClone(input.contentBlocks) } : {}),
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       updatedAt: input.updatedAt,
@@ -2953,7 +2985,8 @@ export class MessageStore {
   ): ClearOwnerComposerDraftResult {
     assertValidStoredMessageTimestamp(clearedAt);
     const key = this.ownerComposerDraftKey(ownerUserId, threadId);
-    const actualRevision = this.ownerComposerDrafts.get(key)?.revision ?? 0;
+    const existing = this.ownerComposerDrafts.get(key);
+    const actualRevision = existing?.revision ?? 0;
     if (actualRevision !== expectedRevision) return { kind: 'revision_mismatch', actualRevision };
     const revision = actualRevision + 1;
     this.ownerComposerDrafts.set(key, {
@@ -2962,6 +2995,9 @@ export class MessageStore {
       threadId,
       revision,
       text: '',
+      ...(existing?.companionSubmissions
+        ? { companionSubmissions: structuredClone(existing.companionSubmissions) }
+        : {}),
       updatedAt: clearedAt,
     });
     return { kind: 'cleared', revision };
@@ -3585,6 +3621,33 @@ export class MessageStore {
    * Keep memory and Redis semantics identical: callers submit a partial top-level
    * projection, so unrelated durable provenance must survive the update.
    */
+  recordCompanionDeliveryAcceptance(id: string, input: CompanionDeliveryAcceptance): StoredMessage | null {
+    const message = this.getById(id);
+    if (!message || message.userId !== input.ownerUserId || message.threadId !== input.threadId) return null;
+    const parsed = companionDeliveryReceiptSchema.safeParse({
+      clientMessageId: input.clientMessageId,
+      callId: input.callId,
+      contentDigest: input.contentDigest,
+      acceptedAt: input.acceptedAt,
+    });
+    if (
+      !parsed.success ||
+      !companionDeliveryMatches(message, parsed.data) ||
+      this.getByIdempotencyKey(input.ownerUserId, input.threadId, companionSubmissionKey(input))?.id !== id
+    )
+      return null;
+    const existing = message.companionDeliveryReceipt;
+    if (
+      existing &&
+      (existing.clientMessageId !== input.clientMessageId ||
+        existing.callId !== input.callId ||
+        existing.contentDigest !== input.contentDigest)
+    )
+      return null;
+    message.companionDeliveryReceipt = existing ?? parsed.data;
+    return structuredClone(message);
+  }
+
   updateExtra(id: string, extra: HostMessageExtra): StoredMessage | null {
     const msg = this.messages.find((m) => m.id === id);
     if (!msg || msg.recall || msg._tombstone) return null;

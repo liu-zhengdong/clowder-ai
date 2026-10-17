@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import {
+  type CompanionDeliveryAcceptance,
+  companionDeliveryMatches,
+  readCompanionDraftSubmissions,
+  readStoredCompanionDelivery,
+} from '../companion-submission-state.js';
 import type { UserMentionHandlingRef } from '../ports/MessageStore.js';
 import { messageIdempotencyScope } from '../ports/MessageStore.js';
 import {
@@ -8,6 +14,7 @@ import {
 } from '../user-mention-index.js';
 import { withOwnerUncertaintyIndex } from './owner-uncertainty-lua.js';
 import { readOwnerUncertainty } from './owner-uncertainty-read.js';
+import { recordRedisCompanionAcceptance } from './redis-companion-acceptance.js';
 import {
   HANDLE_USER_MENTIONS_LUA,
   MIGRATE_HANDLED_USER_MENTIONS_LUA,
@@ -876,6 +883,8 @@ redis.call('HSET', KEYS[1],
 redis.call('HDEL', KEYS[1], 'contentBlocks', 'replyTo')
 if ARGV[5] ~= '' then redis.call('HSET', KEYS[1], 'contentBlocks', ARGV[5]) end
 if ARGV[6] ~= '' then redis.call('HSET', KEYS[1], 'replyTo', ARGV[6]) end
+if ARGV[8] ~= '' then redis.call('HSET', KEYS[1], 'companionSubmissions', ARGV[8]) end
+redis.call('PERSIST', KEYS[1])
 return {1, nextRevision}
 `;
 
@@ -967,7 +976,7 @@ local messageId = redis.call('HGET', KEYS[1], 'id')
 for keyIndex = 4, #KEYS do
   redis.call('ZREM', KEYS[keyIndex], messageId)
 end
-redis.call('HDEL', KEYS[1], 'contentBlocks', 'toolEvents', 'metadata', 'extra', 'pluginMessage', 'lifecycle', 'thinking', 'replyTo')
+redis.call('HDEL', KEYS[1], 'contentBlocks', 'toolEvents', 'metadata', 'extra', 'pluginMessage', 'lifecycle', 'thinking', 'replyTo', 'companionDeliveryReceipt')
 redis.call('ZREM', KEYS[3], redis.call('HGET', KEYS[1], 'id'))
 
 return {1, 0, sourceText, existingText, nextDraftRevision}
@@ -2082,6 +2091,9 @@ export class RedisMessageStore {
       text: data.text ?? '',
       ...(contentBlocks ? { contentBlocks } : {}),
       ...(data.replyTo ? { replyTo: data.replyTo } : {}),
+      ...(data.companionSubmissions
+        ? { companionSubmissions: readCompanionDraftSubmissions(JSON.parse(data.companionSubmissions)) }
+        : {}),
       updatedAt,
     };
   }
@@ -2111,6 +2123,9 @@ export class RedisMessageStore {
       input.contentBlocks ? JSON.stringify(input.contentBlocks) : '',
       input.replyTo ?? '',
       String(input.updatedAt),
+      input.companionSubmissions === undefined
+        ? ''
+        : JSON.stringify(readCompanionDraftSubmissions(input.companionSubmissions)),
     )) as [number, number];
     if (Number(result[0]) === 0) return { kind: 'revision_mismatch', actualRevision: Number(result[1]) };
     const draft = await this.getOwnerComposerDraft(ownerUserId, threadId);
@@ -2235,6 +2250,7 @@ export class RedisMessageStore {
           : {}),
       });
     const deletedAt = data.deletedAt ? parseInt(data.deletedAt, 10) : undefined;
+    const companionDeliveryReceipt = readStoredCompanionDelivery(data.companionDeliveryReceipt);
     return {
       id: data.id,
       threadId: data.threadId || DEFAULT_THREAD_ID,
@@ -2242,6 +2258,7 @@ export class RedisMessageStore {
       ...(from ? { from } : {}),
       catId: (data.catId || null) as CatId | null,
       content: data.content ?? '',
+      ...(companionDeliveryReceipt ? { companionDeliveryReceipt } : {}),
       ...(lifecycle ? { lifecycle } : {}),
       ...(contentBlocks ? { contentBlocks } : {}),
       ...(toolEvents ? { toolEvents } : {}),
@@ -3547,6 +3564,27 @@ export class RedisMessageStore {
   }
 
   /** F096: Update message extra data (merge semantics — preserves existing fields). */
+  async recordCompanionDeliveryAcceptance(
+    id: string,
+    input: CompanionDeliveryAcceptance,
+  ): Promise<StoredMessage | null> {
+    const message = await this.getById(id);
+    if (
+      !message ||
+      message.userId !== input.ownerUserId ||
+      message.threadId !== input.threadId ||
+      !companionDeliveryMatches(message, input)
+    )
+      return null;
+    if (!(await recordRedisCompanionAcceptance(this.redis, id, input, message.content))) return null;
+    const current = await this.getById(id);
+    return current &&
+      current.companionDeliveryReceipt &&
+      companionDeliveryMatches(current, current.companionDeliveryReceipt)
+      ? current
+      : null;
+  }
+
   async updateExtra(id: string, extra: HostMessageExtra): Promise<StoredMessage | null> {
     const msg = await this.getById(id);
     if (!msg) return null;
