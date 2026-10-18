@@ -12,6 +12,9 @@ import {
   collectiveWorkProjectionSchema,
 } from '@cat-cafe/shared';
 import { z } from 'zod';
+import { CollectiveArtifactCustodyClient } from './artifact-custody-client.js';
+import { CollectiveArtifactMediaClient } from './artifact-media-client.js';
+import { CollectiveArtifactOwnerClient } from './artifact-owner-client.js';
 import { CollectiveWorkAuthorityClient } from './work-authority-client.js';
 
 const connectionResponseSchema = z
@@ -65,11 +68,16 @@ export class ConnectorTransportError extends Error {
 }
 
 export class CollectiveServiceClient {
+  readonly custody = new CollectiveArtifactCustodyClient((url, path, options) => this.request(url, path, options));
+  readonly artifacts = new CollectiveArtifactOwnerClient((url, path, options) => this.request(url, path, options));
+  readonly media: CollectiveArtifactMediaClient;
   readonly workAuthority = new CollectiveWorkAuthorityClient((url, path, options) => this.request(url, path, options));
   constructor(
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly timeoutMs = 10_000,
-  ) {}
+  ) {
+    this.media = new CollectiveArtifactMediaClient((url, path, options) => this.request(url, path, options), fetchImpl);
+  }
 
   async readMetadata(serviceUrl: string): Promise<{ serviceInstanceId: string; clientBuildId: string }> {
     const parsed = metadataResponseSchema.safeParse(await this.request(serviceUrl, '/api/meta'));

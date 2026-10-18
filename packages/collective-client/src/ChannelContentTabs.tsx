@@ -1,4 +1,5 @@
-export type ChannelContent = 'conversation' | 'roadmap';
+import { useSharedArtifacts } from './use-collective-artifacts.js';
+export type ChannelContent = 'conversation' | 'roadmap' | 'artifacts';
 
 export function ChannelContentTabs({
   content,
@@ -9,6 +10,7 @@ export function ChannelContentTabs({
   readonly hasRoadmap: boolean;
   readonly onSelect: (content: ChannelContent) => void;
 }) {
+  const shared = useSharedArtifacts();
   return (
     <nav className="scene-tabs" aria-label="频道内容">
       <button
@@ -27,6 +29,16 @@ export function ChannelContentTabs({
           onClick={() => onSelect('roadmap')}
         >
           Roadmap
+        </button>
+      )}
+      {shared?.api && (
+        <button
+          type="button"
+          className={content === 'artifacts' ? 'scene-tab-active' : undefined}
+          aria-current={content === 'artifacts' ? 'page' : undefined}
+          onClick={() => onSelect('artifacts')}
+        >
+          作品
         </button>
       )}
     </nav>

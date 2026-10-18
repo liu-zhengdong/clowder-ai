@@ -28,7 +28,7 @@ test('public login projection preserves canonical credential refresh without cop
 });
 
 test(
-  'installed headless Codex mounts the seven bounded tools, uses current-context, blocks a forced native command and excludes private bytes',
+  'installed headless Codex mounts the eight bounded tools, uses current-context, blocks a forced native command and excludes private bytes',
   { skip: spawnSync('codex', ['--version']).status !== 0, timeout: 55000 },
   async () => {
     const probe = await probeCollectiveCodex();
@@ -38,6 +38,7 @@ test(
     const collab = tools.find((tool) => tool.name === 'mcp__cat_cafe_collab');
     assert.deepEqual(collab.tools.map((tool) => tool.name).sort(), [
       'cat_cafe_collective_accept_work',
+      'cat_cafe_collective_artifact_command',
       'cat_cafe_collective_continue_work',
       'cat_cafe_collective_current_context',
       'cat_cafe_collective_propose_work',
@@ -93,6 +94,7 @@ test(
       'list_mcp_resource_templates',
       'list_mcp_resources',
       'mcp__cat_cafe_collab__cat_cafe_collective_accept_work',
+      'mcp__cat_cafe_collab__cat_cafe_collective_artifact_command',
       'mcp__cat_cafe_collab__cat_cafe_collective_continue_work',
       'mcp__cat_cafe_collab__cat_cafe_collective_current_context',
       'mcp__cat_cafe_collab__cat_cafe_collective_propose_work',

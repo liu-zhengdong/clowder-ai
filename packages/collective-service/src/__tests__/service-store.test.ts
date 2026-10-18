@@ -110,6 +110,8 @@ describe('CollectiveServiceStore', () => {
       legacyEvents?: unknown;
       participations?: unknown;
       works?: unknown;
+      artifacts?: unknown;
+      artifactPublications?: unknown;
       roadmaps?: unknown;
       votes?: unknown;
       bindingVotes?: unknown;
@@ -125,6 +127,8 @@ describe('CollectiveServiceStore', () => {
     delete persisted.legacyEvents;
     delete persisted.participations;
     delete persisted.works;
+    delete persisted.artifacts;
+    delete persisted.artifactPublications;
     delete persisted.roadmaps;
     delete persisted.votes;
     delete persisted.bindingVotes;
@@ -193,6 +197,8 @@ describe('CollectiveServiceStore', () => {
     delete persisted.legacyEvents;
     delete persisted.participations;
     delete persisted.works;
+    delete persisted.artifacts;
+    delete persisted.artifactPublications;
     delete persisted.roadmaps;
     delete persisted.votes;
     delete persisted.bindingVotes;

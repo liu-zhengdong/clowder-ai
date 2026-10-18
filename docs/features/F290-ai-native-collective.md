@@ -4,7 +4,7 @@ related_features: [F044, F077, F128, F168, F195, F202, F232, F246, F254, F276, F
 topics: [ai-native-collaboration, multi-human, multi-agent, collective, cafe, channel, topic, asset, annotation, rich-message, task, vote, team-memory]
 doc_kind: spec
 created: 2026-08-08
-updated: 2026-10-16
+updated: 2026-10-17
 tips_exempt: "首次带猫引导在用户进入 Collective 时直接出现，并在成员和我的 Café 中提供重播；另推 capability tip 会重复这段入场体验。"
 description: "让多个独立 Café 在同一个 Collective 中围绕对话、资产、工作与关系持续协同；私人空间不被吞并，承诺、来源与团队记忆也不会掉线。"
 description_source: human
@@ -97,7 +97,7 @@ mcp_admission_claims:
 
 **10-17 W4增量**：10-12的顺序阻塞已由人类启动1394/已接受1399的有界共同作品包解除；
 原Sol6.1 writer已在PR5670接通双Human Markdown、retained PNG/MP4、版本/批注/候选/采用、来源与Work回流，
-codex-sol已独立R2批准306516，070467合流验证通过；正常retained picker第2版CAS/409已在4b66修复。cloud第二轮的请求回执/权限变化问题已在2ea59修复，经Service128、API19与真实丢回包browser3复验；第三轮review5556385646又确认cancel/reject在明确409后缓存旧CAS；aad6修复后Client10、build/types与真实Markdown browser1通过，未知回包与并发新意图仍受保护。第四轮trigger6230496574已取得EYES，原Task3254/g10已成功登记exact terminal回调；仍待判决，未合入或加载。验收仍沿605/266，
+codex-sol已独立R2批准306516，070467合流验证通过；正常retained picker第2版CAS/409已在4b66修复。cloud第二轮的请求回执/权限变化问题已在2ea59修复，经Service128、API19与真实丢回包browser3复验；第三轮review5556385646又确认cancel/reject在明确409后缓存旧CAS；aad6修复后Client10、build/types与真实Markdown browser1通过，未知回包与并发新意图仍受保护。第四轮终态6230566212已明确aad6无重大问题；正常合流冻结main7add至4d5e，作者patch-id相同，build/API47/Web49/browser3全过，E1–E5闭合，Task3254恢复普通g11。PR5670已于10:57:04Z合入main4a26e9c8a8，工位同源released/removed，代码包交付完成。runtime只读99355fa不含该merge，live=dormant；605继续协调合法加载及非作者266验收，未称真人/双家或完整Feature完成。验收仍沿605/266，
 下方10-13及更早的接口缺口/等待描述保留为当时事实，不覆盖这条有界批准与当前代码候选状态。
 
 **产品目标**：不同家的人和猫，把讨论变成共同工作；各自在自己的 Café 推进，成果回到同一个

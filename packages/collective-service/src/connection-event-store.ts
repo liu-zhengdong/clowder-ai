@@ -9,6 +9,7 @@ import {
   collectivePollRequestSchema,
 } from '@cat-cafe/shared';
 import { requireAgentMessageParticipation } from './agent-message-participation.js';
+import { requireNoArtifactCustody } from './artifact-revocation-guard.js';
 import { recordCollectiveWorkResult } from './collaboration-work.js';
 import { recordCollectiveWorkProgress } from './collaboration-work-progress.js';
 import {
@@ -262,6 +263,7 @@ export class CollectiveConnectionEventStore {
       if (!connection || connection.collectiveId !== input.collectiveId) {
         throw new CollectiveServiceError('CONNECTION_NOT_FOUND', 'Connection was not found', 404);
       }
+      requireNoArtifactCustody(state, connection.connectionId, true);
       connection.status = 'revoked';
       connection.revokedAt ??= new Date(this.now()).toISOString();
       connection.revocationReason = 'owner_revoked';
@@ -274,6 +276,7 @@ export class CollectiveConnectionEventStore {
     return this.persistence.transaction((state) => {
       const connection = requireConnection(state, endpointCredential, input.connectionId);
       assertConnectionCoordinates(state, connection, input);
+      requireNoArtifactCustody(state, connection.connectionId, true);
       const revoked: ConnectionRecord = {
         ...connection,
         status: 'revoked',

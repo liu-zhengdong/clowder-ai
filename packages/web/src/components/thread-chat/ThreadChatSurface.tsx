@@ -12,6 +12,7 @@ import { useSendMessage } from '@/hooks/useSendMessage';
 import { useThreadLiveness } from '@/hooks/useThreadScopedSelectors';
 import type { ChatMessage, QueueEntry } from '@/stores/chat-types';
 import { useChatStore } from '@/stores/chatStore';
+import { readChatScrollState, resolveChatReadingAnchor } from '@/utils/chat-scroll-memory';
 import { computeCliDiagnosticsDedup } from '@/utils/cli-diagnostics-dedup';
 import { computeScrollRecomputeSignal } from '@/utils/scrollRecomputeSignal';
 import { ChatInput } from '../ChatInput';
@@ -203,6 +204,16 @@ export function ThreadChatSurface({
     () => (singleCatProjection ? flattenConversationProjection(singleCatProjection) : messages),
     [messages, singleCatProjection],
   );
+  // Read the history owner's existing anchor. Its row must exist on the first
+  // paint of a returning thread, before an observer can mount deferred content.
+  const savedReading = readChatScrollState(threadId);
+  const readingAnchor =
+    savedReading?.anchor === 'offset' && savedReading.messageAnchor
+      ? resolveChatReadingAnchor(savedReading.messageAnchor, visibleMessages)
+      : undefined;
+  const readingAnchorIndex = readingAnchor
+    ? visibleMessages.findIndex((message) => message.id === readingAnchor.messageId)
+    : -1;
   const conversationViewKey = singleCatProjection
     ? `cat:${conversationViewController?.snapshot.effective.mode === 'cat' ? conversationViewController.snapshot.effective.catId : ''}`
     : 'group';
@@ -218,7 +229,7 @@ export function ThreadChatSurface({
 
   const renderTimelineMessage = (message: ChatMessage, index: number, total: number) => {
     const dedupInfo = cliDedupMap.get(message.id);
-    const mountPolicy = messageMountPolicy(index, total);
+    const mountPolicy = messageMountPolicy(index, total, readingAnchorIndex);
     const selected = selection.selectedMessageIds.has(message.id);
     const selectionEligible =
       isMessageSelectableForBundle(message) &&

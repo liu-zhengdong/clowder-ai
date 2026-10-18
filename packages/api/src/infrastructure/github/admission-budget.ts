@@ -6,8 +6,8 @@ export function gitHubAdmissionCanContinue(ctx: GateCtx | undefined): boolean {
   return ctx?.deadlineMs === undefined || Date.now() + 1000 < ctx.deadlineMs;
 }
 
-export function gitHubObjectSignal(ctx: GateCtx | undefined): AbortSignal | undefined {
+export function gitHubObjectSignal(ctx: GateCtx | undefined, maxDurationMs = 10_000): AbortSignal | undefined {
   if (!ctx?.signal) return undefined;
-  const remaining = ctx.deadlineMs === undefined ? 10_000 : Math.max(1, ctx.deadlineMs - Date.now() - 500);
-  return AbortSignal.any([ctx.signal, AbortSignal.timeout(Math.min(10_000, remaining))]);
+  const remaining = ctx.deadlineMs === undefined ? maxDurationMs : Math.max(1, ctx.deadlineMs - Date.now() - 500);
+  return AbortSignal.any([ctx.signal, AbortSignal.timeout(Math.min(maxDurationMs, remaining))]);
 }

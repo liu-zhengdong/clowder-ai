@@ -17,17 +17,24 @@ async function cleanupStaleTaskIndexes(redis: RedisClient, cleanupKey: string, s
 export async function fetchRedisTasksByIds(
   redis: RedisClient,
   ids: string[],
-  options?: { cleanupKey?: string },
+  options?: { cleanupKey?: string; strict?: boolean },
 ): Promise<TaskItem[]> {
   const pipeline = redis.multi();
   for (const id of ids) pipeline.hgetall(TaskKeys.detail(id));
   const results = await pipeline.exec();
-  if (!results) return [];
+  if (!results) {
+    if (options?.strict) throw new Error('Task page hydration unavailable');
+    return [];
+  }
+  if (options?.strict && results.length !== ids.length) throw new Error('Task page hydration incomplete');
 
   const tasks: TaskItem[] = [];
   const staleIds: string[] = [];
   for (const [index, [err, data]] of results.entries()) {
-    if (err || !data || typeof data !== 'object') continue;
+    if (err || !data || typeof data !== 'object') {
+      if (options?.strict) throw new Error('Task page hydration failed');
+      continue;
+    }
     const detail = data as Record<string, string>;
     if (!detail.id) {
       staleIds.push(ids[index] ?? '');

@@ -48,12 +48,16 @@ export async function startCollectiveServer(options: StartCollectiveServerOption
     throw new Error('Collective Service did not bind a TCP address');
   }
   const url = `http://${host}:${address.port}`;
+  options.store.startArtifactOwnerRelay();
   return {
     host,
     port: address.port,
     url,
     server,
-    close: () => closeServer(server),
+    close: () => {
+      options.store.stopArtifactOwnerRelay();
+      return closeServer(server);
+    },
   };
 }
 

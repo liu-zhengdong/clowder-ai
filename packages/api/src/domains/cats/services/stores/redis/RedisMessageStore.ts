@@ -16,6 +16,7 @@ import {
 import { withOwnerUncertaintyIndex } from './owner-uncertainty-lua.js';
 import { readOwnerUncertainty } from './owner-uncertainty-read.js';
 import { recordRedisCompanionAcceptance } from './redis-companion-acceptance.js';
+import { artifactMessageHash, MESSAGE_ARTIFACT_FIELDS } from './redis-message-artifact-fields.js';
 import { evidenceMessageHash, MESSAGE_EVIDENCE_FIELDS } from './redis-message-evidence-fields.js';
 import {
   HANDLE_USER_MENTIONS_LUA,
@@ -3324,7 +3325,10 @@ export class RedisMessageStore {
       }
 
       if (validIds.length > 0) {
-        const messages = await this.hydrateMessages(validIds);
+        const messages = await this.hydrateMessages(
+          validIds,
+          options?.artifactProjection ? { artifactOnly: true, strict: true } : undefined,
+        );
         storageRoundTrips += 1;
         for (const message of messages) {
           if (!isVisible(message)) continue;
@@ -4160,12 +4164,19 @@ export class RedisMessageStore {
   /** Hydrate message IDs into full StoredMessage objects */
   private async hydrateMessages(
     ids: string[],
-    options?: { includeDeleted?: boolean; strict?: boolean; humanOnly?: true; evidenceOnly?: true },
+    options?: {
+      includeDeleted?: boolean;
+      strict?: boolean;
+      humanOnly?: true;
+      evidenceOnly?: true;
+      artifactOnly?: true;
+    },
   ): Promise<StoredMessage[]> {
     const pipeline = this.redis.multi();
     for (const id of ids) {
       if (options?.humanOnly) pipeline.eval(HUMAN_SOURCE_HASH_LUA, 1, MessageKeys.detail(id));
       else if (options?.evidenceOnly) pipeline.hmget(MessageKeys.detail(id), ...MESSAGE_EVIDENCE_FIELDS);
+      else if (options?.artifactOnly) pipeline.hmget(MessageKeys.detail(id), ...MESSAGE_ARTIFACT_FIELDS);
       else pipeline.hgetall(MessageKeys.detail(id));
     }
     let span: MessageReadSpan | undefined;
@@ -4192,16 +4203,26 @@ export class RedisMessageStore {
       if (options?.strict && results.length !== ids.length) throw new Error('Owner uncertainty hydration incomplete');
       const messages: StoredMessage[] = [];
       for (const [err, data] of results) {
-        if (err || !data || typeof data !== 'object' || (options?.strict && Array.isArray(data))) {
+        if (
+          err ||
+          !data ||
+          typeof data !== 'object' ||
+          (options?.strict && !options.artifactOnly && Array.isArray(data))
+        ) {
           if (options?.strict) throw new Error('Owner uncertainty hydration failed');
           continue;
         }
-        const d = options?.humanOnly
-          ? humanSourceHash(data)
-          : options?.evidenceOnly
-            ? evidenceMessageHash(data)
-            : (data as Record<string, string>);
-        if (!d) continue;
+        const d = options?.artifactOnly
+          ? artifactMessageHash(data)
+          : options?.humanOnly
+            ? humanSourceHash(data)
+            : options?.evidenceOnly
+              ? evidenceMessageHash(data)
+              : (data as Record<string, string>);
+        if (!d) {
+          if (options?.artifactOnly) throw new Error('Artifact source hydration failed');
+          continue;
+        }
         if (!d.id) continue;
 
         const message = this.hydrateHash(d, span);

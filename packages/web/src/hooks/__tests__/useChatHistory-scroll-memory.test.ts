@@ -196,6 +196,38 @@ describe('useChatHistory scroll memory (#27)', () => {
     expect(top.get()).toBe(200);
   });
 
+  it('places an incoming cached timeline before its first animation frame', async () => {
+    const threadA = 'thread-first-paint-a';
+    const threadB = 'thread-first-paint-b';
+    const aMessages = [makeMsg('first-paint-a', 1)];
+    const bMessages = [makeMsg('first-paint-b', 2)];
+    useChatStore.setState({
+      currentThreadId: threadA,
+      messages: aMessages,
+      hasMore: false,
+      isLoadingHistory: false,
+      threadStates: {
+        [threadA]: makeThreadState(aMessages),
+        [threadB]: makeThreadState(bMessages),
+      },
+    });
+    await act(async () => root.render(React.createElement(HookHost, { threadId: threadA })));
+    const el = capturedHook!.scrollContainerRef.current!;
+    const top = defineMutableNumberProp(el, 'scrollTop', 300);
+    defineMutableNumberProp(el, 'clientHeight', 600);
+    defineMutableNumberProp(el, 'scrollHeight', 1800);
+    cancelInitialRestoreWithWheel(el, -1);
+
+    await act(async () => {
+      useChatStore.getState().setCurrentThread(threadB);
+      root.render(React.createElement(HookHost, { threadId: threadB }));
+    });
+
+    // The outgoing offset points into the new timeline's deferred placeholders.
+    // Waiting for RAF would expose them for the first paint of the new thread.
+    expect(top.get()).toBe(1200);
+  });
+
   it('retries saved offset restore until the remounted thread becomes scrollable again', async () => {
     const threadA = 'thread-scroll-a';
     const threadB = 'thread-scroll-b';

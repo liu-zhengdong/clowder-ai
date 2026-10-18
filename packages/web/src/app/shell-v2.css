@@ -3,6 +3,8 @@
  *
  * Scope: [data-shell="v2"] is set on <html> only while the new presentation is on,
  * so classic UI is untouched when the switch is off (DESIGN.md / roadmap "同一开关").
+ * The shared member dialog opts into this same role map inside its form, including
+ * when opened from the classic shell; it does not change the shell preference.
  *
  * These are ROLE aliases onto the existing theme tokens. The active theme
  * (themeStore → ThemeApplier → buildCSS, built-in light/dark + custom themes)
@@ -12,7 +14,8 @@
  * Dark follows the DESIGN.md "Dark mode" rule: map by light/dark relationship, not by token name
  * (外框最暗 → 工作面 → 纸面 → 选中最亮).
  */
-[data-shell="v2"] {
+[data-shell="v2"],
+.member-editor-embedded {
   --shell-paper: var(--cafe-surface-canvas);
   --shell-work: var(--cafe-surface-elevated);
   --shell-frame: var(--cafe-surface);
@@ -48,7 +51,8 @@ html[data-shell="v2"] {
   --cocreator-chroma: 0.04;
 }
 
-[data-theme="dark"][data-shell="v2"] {
+[data-theme="dark"][data-shell="v2"],
+[data-theme="dark"] .member-editor-embedded {
   --shell-frame: var(--cafe-surface-elevated);
   --shell-work: var(--cafe-surface-canvas);
   --shell-paper: var(--cafe-surface);

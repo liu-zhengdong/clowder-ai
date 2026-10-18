@@ -3,8 +3,9 @@ import { ChannelComposer } from './ChannelComposer.js';
 import { ChannelContentTabs } from './ChannelContentTabs.js';
 import { ChannelConversationFlow } from './ChannelConversationFlow.js';
 import { ChannelHeader } from './ChannelHeader.js';
+import { ChannelTopicContext } from './ChannelTopicContext.js';
 import type { MentionSelection } from './Composer.js';
-import { collaborationForChannel, roadmapActionsFor } from './channel-collaboration.js';
+import { collaborationForChannel } from './channel-collaboration.js';
 import { actorDisplayName, groupChannelThreads } from './channel-model.js';
 import { eventChannelId } from './channel-navigation.js';
 import type { ChannelSceneProps } from './channel-scene-props.js';
@@ -12,61 +13,69 @@ import type { CollectiveEventEnvelope } from './client-types.js';
 import { DemoPlayback } from './first-entry/DemoPlayback.js';
 import { mentionSelectionForEvent } from './participant-identity.js';
 import { RoadmapWorkspace } from './RoadmapWorkspace.js';
-import { TopicPanel } from './TopicPanel.js';
+import { SharedArtifactLibrary } from './SharedArtifactLibrary.js';
+import { SharedArtifactSurface } from './SharedArtifactSurface.js';
+import { useSharedArtifacts } from './use-collective-artifacts.js';
 
-export function ChannelScene({
-  collective,
-  humanId,
-  humanName,
-  channelId,
-  content,
-  onSelectContent,
-  focusEventId,
-  onCloseContext,
-  namespace,
-  query,
-  events,
-  collaboration,
-  participants = [],
-  connection,
-  delivery,
-  error,
-  onSend,
-  onProposeWork,
-  onCommitWork,
-  onDeclineWork,
-  onAcceptWorkResult,
-  onRequestWorkRevision,
-  onCompleteWork,
-  onCreateRoadmap,
-  onSetRoadmapWorks,
-  onSetRoadmapStatus,
-  roadmapView,
-  onRoadmapViewChange,
-  onOpenRoadmapSource,
-  onOpenRoadmapResult,
-  roadmapReturnLabel,
-  onReturnToRoadmap,
-  onCreateVote,
-  onCastVote,
-  onCloseVote,
-  onCreateBindingVote,
-  onCastBindingVote,
-  onWithdrawBindingVote,
-  onSettleBindingVote,
-  onSetWorkDependencies,
-  onSetReaction,
-  onOpenNavigation,
-  onOpenMember,
-  onOpenTopic,
-  onOpenChannel,
-  context,
-  onCafe,
-  onChannelCafe,
-  members,
-  firstEntry,
-}: ChannelSceneProps) {
+export function ChannelScene(props: ChannelSceneProps) {
+  const {
+    collective,
+    humanId,
+    humanName,
+    channelId,
+    content,
+    onSelectContent,
+    focusEventId,
+    onCloseContext,
+    namespace,
+    query,
+    events,
+    collaboration,
+    participants = [],
+    connection,
+    delivery,
+    error,
+    onSend,
+    onProposeWork,
+    onCommitWork,
+    onDeclineWork,
+    onAcceptWorkResult,
+    onRequestWorkRevision,
+    onCompleteWork,
+    onCreateRoadmap,
+    onSetRoadmapWorks,
+    onSetRoadmapStatus,
+    roadmapView,
+    onRoadmapViewChange,
+    onOpenRoadmapSource,
+    onOpenRoadmapResult,
+    roadmapReturnLabel,
+    onReturnToRoadmap,
+    onCreateVote,
+    onCastVote,
+    onCloseVote,
+    onCreateBindingVote,
+    onCastBindingVote,
+    onWithdrawBindingVote,
+    onSettleBindingVote,
+    onSetWorkDependencies,
+    onSetReaction,
+    onOpenNavigation,
+    onOpenMember,
+    onOpenTopic,
+    onOpenChannel,
+    context,
+    onCafe,
+    onChannelCafe,
+    members,
+    firstEntry,
+  } = props;
+  const shared = useSharedArtifacts();
+  const selectedArtifact = shared?.catalogue.find((item) => item.artifactId === shared.selected?.artifactId);
+  const sharedOpenSource = useRef(onOpenTopic);
+  sharedOpenSource.current = onOpenTopic;
   const [topicRootId, setTopicRootId] = useState<string>();
+  const [sharedDiscussionOpen, setSharedDiscussionOpen] = useState(false);
   const [replyRequest, setReplyRequest] = useState<{ eventId: string }>();
   const [mention, setMention] = useState<MentionSelection>();
   const [selectionError, setSelectionError] = useState<string>();
@@ -88,6 +97,13 @@ export function ChannelScene({
       : eventChannelId(thread.root) === channelId,
   );
   const topic = allThreads.find((thread) => thread.root.eventId === topicRootId);
+  const artifactTopicId = selectedArtifact?.sourceLocation.rootEventId ?? selectedArtifact?.sourceEventId;
+  useEffect(() => {
+    if (!artifactTopicId) return;
+    setTopicRootId(artifactTopicId);
+    setReplyRequest(undefined);
+    sharedOpenSource.current();
+  }, [artifactTopicId]);
   const humans = members?.humans ?? [];
   const humanNames = Object.fromEntries(humans.map((human) => [human.humanId, human.displayName]));
   const { allWorks, channelWorks, channelVotes, roadmaps, bindingVotes, decisions } = collaborationForChannel(
@@ -105,6 +121,7 @@ export function ChannelScene({
   };
   const returnToRoot = useCallback(
     (event: CollectiveEventEnvelope) => {
+      shared?.close();
       setTopicRootId(undefined);
       setReplyRequest(undefined);
       setHighlightedId(event.eventId);
@@ -116,7 +133,7 @@ export function ChannelScene({
         source?.focus({ preventScroll: true });
       });
     },
-    [channelId, onOpenChannel],
+    [channelId, onOpenChannel, shared?.close],
   );
   useEffect(() => {
     const key = `collective-scroll:${namespace}:${channelId}`;
@@ -147,6 +164,8 @@ export function ChannelScene({
     restoredScroll.current = true;
   }, [namespace, channelId, events.length, query]);
   useEffect(() => {
+    // While the work is open, its exact original Topic owns this pane; a channel focus cannot close it.
+    if (shared?.selected) return;
     if (!focusEventId) {
       focusedHostEvent.current = undefined;
       return;
@@ -169,7 +188,7 @@ export function ChannelScene({
       focusedHostEvent.current = focusEventId;
     });
     return () => cancelAnimationFrame(frame);
-  }, [events, focusEventId]);
+  }, [events, focusEventId, shared?.selected]);
   useEffect(() => {
     if (content !== 'roadmap') return;
     setTopicRootId(undefined);
@@ -197,9 +216,15 @@ export function ChannelScene({
     <div
       className="scene-layout"
       data-context-open={Boolean(context || topic)}
+      data-shared-artifact-open={Boolean(shared?.selected)}
+      data-shared-discussion-open={Boolean(shared?.selected && sharedDiscussionOpen)}
       data-entry-browsing={firstEntry?.phase === 'browsing'}
     >
-      <section className="channel-scene" aria-label={search ? '搜索结果' : `# ${channelId}`}>
+      <section
+        className="channel-scene"
+        hidden={Boolean(shared?.selected)}
+        aria-label={search ? '搜索结果' : `# ${channelId}`}
+      >
         <ChannelHeader
           collectiveName={collective.name}
           channelId={channelId}
@@ -232,7 +257,9 @@ export function ChannelScene({
             ← 返回 {roadmapReturnLabel}
           </button>
         )}
-        {content === 'roadmap' && roadmaps.length ? (
+        {content === 'artifacts' ? (
+          <SharedArtifactLibrary key={namespace} channelId={channelId} filterable />
+        ) : content === 'roadmap' && roadmaps.length ? (
           <RoadmapWorkspace
             roadmaps={roadmaps}
             works={allWorks}
@@ -314,39 +341,27 @@ export function ChannelScene({
       </section>
       {context ||
         (topic && (
-          <TopicPanel
+          <ChannelTopicContext
             key={topic.root.eventId}
-            namespace={namespace}
-            thread={topic}
+            scene={props}
+            topic={topic}
             replyRequest={replyRequest}
-            humans={humans}
-            participants={participants}
-            delivery={delivery}
             works={channelWorks}
             votes={channelVotes}
-            allWorks={channelWorks}
-            currentHumanId={humanId}
             humanNames={humanNames}
-            canSteward={collective.role === 'steward'}
-            onOpenMember={onOpenMember}
-            onClose={() => returnToRoot(topic.root)}
-            onReturnToSource={() => returnToRoot(topic.root)}
-            onSend={onSend}
-            onProposeWork={(sourceEventId) => void onProposeWork(sourceEventId).catch(() => undefined)}
-            onCommitWork={(work, participant) => void onCommitWork(work, participant).catch(() => undefined)}
-            onDeclineWork={(work) => void onDeclineWork(work).catch(() => undefined)}
-            onAcceptWorkResult={(work) => void onAcceptWorkResult(work).catch(() => undefined)}
-            onRequestWorkRevision={onRequestWorkRevision}
-            onCompleteWork={(work) => void onCompleteWork(work).catch(() => undefined)}
-            onCreateVote={onCreateVote}
-            onCastVote={(vote, optionId) => void onCastVote(vote, optionId).catch(() => undefined)}
-            onCloseVote={(vote) => void onCloseVote(vote).catch(() => undefined)}
-            roadmapActions={(work) => roadmapActionsFor(work, roadmaps, humanId, onCreateRoadmap, onSetRoadmapWorks)}
+            roadmaps={roadmaps}
             reactions={channelReactions}
-            onSetReaction={onSetReaction}
             highlightedId={highlightedId}
+            onClose={() => (shared?.selected ? setSharedDiscussionOpen(false) : returnToRoot(topic.root))}
+            onReturnToSource={() => returnToRoot(topic.root)}
           />
         ))}
+      {shared?.selected && (
+        <SharedArtifactSurface
+          onOpenDiscussion={() => setSharedDiscussionOpen(true)}
+          onReturnToSource={(sourceChannelId, eventId) => onOpenChannel?.(sourceChannelId, eventId)}
+        />
+      )}
     </div>
   );
 }

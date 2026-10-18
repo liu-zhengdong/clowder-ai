@@ -90,6 +90,55 @@ it('incomplete source reads show neither a precise count nor a false empty state
   expect(host.textContent).not.toContain('No works match');
 });
 
+it('offers only populated work types in one selector and filters the original catalogue', async () => {
+  await act(async () => root.render(<ThreadWorksPanelV2 threadId="work-source" onSelectArtifact={open} />));
+  const types = host.querySelector<HTMLSelectElement>('select[aria-label="Work type"]');
+  expect(types).not.toBeNull();
+  expect([...types!.options].map((option) => option.text)).toEqual(['All types', 'Documents · 1', 'Code and PRs · 1']);
+  await act(async () => {
+    types!.value = 'codepr';
+    types!.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(host.querySelectorAll('[data-testid="workspace-home-artifact-card"]')).toHaveLength(1);
+  expect(host.textContent).toContain('Exact PR');
+  expect(host.textContent).not.toContain('Delivered.md');
+});
+
+it('reveals the next original works when the scroll sentinel enters the viewport', async () => {
+  let intersect: IntersectionObserverCallback = () => {};
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersect = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const many = Array.from({ length: 60 }, (_, index) => ({
+    ...items[0],
+    name: `Delivered-${index}.md`,
+    sourceMessageId: `publication-${index}`,
+    createdAt: 1000 - index,
+  }));
+  data.fetch.mockImplementation(async () =>
+    Response.json({
+      artifacts: many,
+      workLineage: 'resolved',
+      view: 'works',
+      complete: true,
+      total: many.length,
+    }),
+  );
+  await act(async () => root.render(<ThreadWorksPanelV2 threadId="work-source" onSelectArtifact={open} />));
+  expect(host.querySelectorAll('[data-work-anchor]')).toHaveLength(24);
+  await act(async () => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+  expect(host.querySelectorAll('[data-work-anchor]')).toHaveLength(48);
+  await act(async () => intersect([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+  expect(host.querySelectorAll('[data-work-anchor]')).toHaveLength(60);
+});
+
 it.each([
   'image',
   'file',
@@ -328,4 +377,25 @@ it('standalone global Works opens another conversation artifact through the curr
     kind: 'artifact',
     artifact: { threadId: 'another-thread' },
   });
+});
+
+it('retires an unavailable type filter when the original catalogue refreshes', async () => {
+  await act(async () => root.render(<ThreadWorksPanelV2 threadId="work-source" />));
+  const types = host.querySelector<HTMLSelectElement>('select[aria-label="Work type"]')!;
+  await act(async () => {
+    types.value = 'file';
+    types.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  data.fetch.mockImplementation(async () =>
+    Response.json({
+      artifacts: [items[1]],
+      workLineage: 'resolved',
+      view: 'works',
+      complete: true,
+    }),
+  );
+  await act(async () => window.dispatchEvent(new Event('cat-cafe:entrusted-work-projection-invalidated')));
+  expect(types.value).toBe('all');
+  expect(host.textContent).toContain('Exact PR');
+  expect(host.textContent).not.toContain('No works match');
 });

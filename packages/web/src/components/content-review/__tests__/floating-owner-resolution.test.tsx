@@ -8,7 +8,7 @@ import { ArtworkLightboxProvider, useArtworkLightboxScope } from '../ArtworkLigh
 let scope: NonNullable<ReturnType<typeof useArtworkLightboxScope>>;
 function Consumer() {
   scope = useArtworkLightboxScope()!;
-  return null;
+  return <input aria-label="preserved composer host" defaultValue="local draft" />;
 }
 let root: Root;
 let host: HTMLDivElement;
@@ -60,4 +60,37 @@ it('a late resolution from a previous floating work cannot replace the newly ope
   await act(async () => scope.open(next));
   await act(async () => late(createFilePreviewSurface({ worktreeId: 'canonical-root', path: 'first.png' })));
   expect(scope.work).toBe(next);
+});
+
+it('resets only the floating presentation across threads and ignores callbacks from the previous visit', async () => {
+  const switchThread = (threadId: string) =>
+    act(async () =>
+      root.render(
+        <ArtworkLightboxProvider threadId={threadId}>
+          <Consumer />
+        </ArtworkLightboxProvider>,
+      ),
+    );
+  const composer = host.querySelector('input');
+  await act(async () => scope.open(work('original.png')));
+  const oldOpen = scope.open;
+  const oldClose = scope.close;
+  const oldResolve = scope.resolve;
+  await switchThread('thread-b');
+  expect(scope.work).toBeNull();
+  expect(host.querySelector('input')).toBe(composer);
+  await act(async () => oldOpen(work('late-a.png')));
+  expect(scope.work).toBeNull();
+
+  // Returning to the same id is a new visit; old A callbacks still have no authority.
+  await switchThread('thread-a');
+  const current = work('original.png');
+  await act(async () => scope.open(current));
+  await act(async () => {
+    oldResolve(createFilePreviewSurface({ worktreeId: 'stale-root', path: 'original.png' }));
+    oldClose();
+    oldOpen(work('late-a.png'));
+  });
+  expect(scope.work).toBe(current);
+  expect(host.querySelector('input')).toBe(composer);
 });

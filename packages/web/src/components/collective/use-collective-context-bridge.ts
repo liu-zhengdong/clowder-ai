@@ -3,6 +3,7 @@ import {
   type CollectiveAcceptedWorkResult,
   type CollectiveClientCafeSection,
   type CollectiveClientContext,
+  type CollectiveMediaSurfaceRefV1,
   collectiveClientCafeSectionSchema,
   collectiveClientContextSchema,
   collectiveClientWorkResultAcceptedSchema,
@@ -10,6 +11,7 @@ import {
 } from '@cat-cafe/shared';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import type { CollectiveConnectionProjection } from './collective-client';
+import { mediaSurfaceRefMatches, readMediaSurfaceRef } from './collective-media-surface-ref';
 import type { CollectiveWorkActionTarget } from './collective-work-action';
 
 interface BridgeGeneration {
@@ -39,7 +41,9 @@ export function useCollectiveContextBridge(
   const collectiveId = connection?.collectiveId;
   const connectionId = connection?.connectionId;
   const authorizedHumanId = connection?.authorizedHumanId;
+  const authorityStatus = connection?.authorityStatus;
   const [context, setContext] = useState<CollectiveClientContext>();
+  const [mediaRef, setMediaRef] = useState<CollectiveMediaSurfaceRefV1>();
   const generation = useRef<BridgeGeneration>();
   const current = useRef<CollectiveClientContext>();
   const pendingWorkResults = useRef(new Map<string, Promise<void>>());
@@ -47,6 +51,7 @@ export function useCollectiveContextBridge(
   const clear = useCallback(() => {
     current.current = undefined;
     setContext(undefined);
+    setMediaRef(undefined);
   }, []);
   const reset = useCallback(() => {
     generation.current = undefined;
@@ -87,6 +92,7 @@ export function useCollectiveContextBridge(
       serviceInstanceId,
       serviceOrigin,
     });
+    const mediaConnection = bridgeConnection && authorityStatus ? { ...bridgeConnection, authorityStatus } : undefined;
     const handleReady = (data: unknown) => {
       if (!collectiveContextReadySchema.safeParse(data).success) return false;
       reset();
@@ -145,13 +151,13 @@ export function useCollectiveContextBridge(
       return true;
     };
     const onMessage = (event: MessageEvent<unknown>) => {
-      if (
-        !bridgeConnection ||
-        event.source !== iframeRef.current?.contentWindow ||
-        event.origin !== bridgeConnection.serviceOrigin
-      )
-        return;
+      if (!isCurrentCollectiveFrame(event, iframeRef.current, bridgeConnection)) return;
       if (handleReady(event.data)) return;
+      const media = readMediaSurfaceRef(event.data, current.current, mediaConnection);
+      if (media) {
+        setMediaRef(media);
+        return;
+      }
       const active = generation.current;
       if (
         queueAcceptedWorkResult({
@@ -178,6 +184,7 @@ export function useCollectiveContextBridge(
     authorizedHumanId,
     collectiveId,
     connectionId,
+    authorityStatus,
     focusWork,
     iframeRef,
     onWorkResultAccepted,
@@ -221,7 +228,30 @@ export function useCollectiveContextBridge(
     context.humanId === authorizedHumanId
       ? context
       : undefined;
-  return { context: valid, reset, close, open };
+  const closeMedia = useCallback(() => {
+    if (mediaRef && serviceOrigin && mediaSurfaceRefMatches(mediaRef, current.current, connection))
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: 'collective:host-media-return', ref: mediaRef },
+        serviceOrigin,
+      );
+    setMediaRef(undefined);
+  }, [connection, iframeRef, mediaRef, serviceOrigin]);
+  return {
+    context: valid,
+    reset,
+    close,
+    open,
+    mediaRef: mediaRef && mediaSurfaceRefMatches(mediaRef, valid, connection) ? mediaRef : undefined,
+    closeMedia,
+  };
+}
+
+function isCurrentCollectiveFrame(
+  event: MessageEvent<unknown>,
+  frame: HTMLIFrameElement | null,
+  connection: BridgeConnection | undefined,
+): connection is BridgeConnection {
+  return Boolean(connection && event.source === frame?.contentWindow && event.origin === connection.serviceOrigin);
 }
 
 function bridgeConnectionFrom(input: {

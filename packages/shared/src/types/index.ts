@@ -1719,6 +1719,7 @@ export type {
   GlobalArtifactDTO,
   GlobalArtifactsResponse,
   GlobalArtifactWork,
+  GlobalWorksPageResponse,
   ThreadArtifactDTO,
   ThreadArtifactsResponse,
   ThreadArtifactType,

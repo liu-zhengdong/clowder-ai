@@ -89,11 +89,15 @@ export function WorkspaceContentReviewProjection({
   const comparing = comparingAt !== null && comparingAt === openRevision;
   const threadId = useChatStore((state) => state.currentThreadId);
   const pendingFocus = usePendingModificationFocus();
+  const privateOwner = view.review.ownerUserId;
   const openingComparison =
     !!pendingFocus?.candidateRef &&
     view.review.source.kind !== 'video-project' &&
+    view.review.source.kind !== 'collective-artifact' &&
+    view.review.source.kind !== 'collective-media' &&
+    typeof privateOwner === 'string' &&
     modificationFocusStanding(pendingFocus, { threadId: threadId ?? null, revision: openRevision }) === 'ours' &&
-    modificationStorageKey(view.review.ownerUserId, workspaceReviewRequestSource(view)) ===
+    modificationStorageKey(privateOwner, workspaceReviewRequestSource(view)) ===
       modificationStorageKey(pendingFocus.record.ownerUserId, pendingFocus.record.payload.source);
   // A text selection is live, like the card built on it: it targets "请猫修改" but is never stored as a draft,
   // so it cannot overwrite the quote of an old unsubmitted text draft.
@@ -122,6 +126,8 @@ export function WorkspaceContentReviewProjection({
   const imageChatPrimary =
     source.kind !== 'text' &&
     source.kind !== 'video-project' &&
+    source.kind !== 'collective-artifact' &&
+    source.kind !== 'collective-media' &&
     !!mediaChatMime(source.mime) &&
     (source.media.kind === 'image' || isV2);
   const mediaRoot = useRef<HTMLDivElement>(null);
@@ -136,6 +142,8 @@ export function WorkspaceContentReviewProjection({
     referenceOnOpen: imageChatPrimary && !comparing && !openingComparison,
     isWorkVisible: () => isChatWorkElementVisible(mediaRoot.current),
   });
+  if (source.kind === 'collective-artifact')
+    return <p className="p-3 text-sm text-cafe-muted">共同作品请从它所在的共同体打开。</p>;
   if (source.kind === 'video-project')
     return <p className="p-3 text-sm text-cafe-muted">当前文件视图尚不支持视频项目审阅。</p>;
   const saveAnnotation = (
@@ -190,10 +198,10 @@ export function WorkspaceContentReviewProjection({
       onActive: openDiscussion,
       onReturnToCanvas: returnToCanvas,
     })
-  ) : (
+  ) : privateOwner ? (
     <WorkspaceContentReviewComments
       reviewId={view.review.reviewId}
-      ownerUserId={view.review.ownerUserId}
+      ownerUserId={privateOwner}
       annotations={view.review.annotations}
       resolutions={view.annotationResolutions}
       activeAnnotationId={activeAnnotationId}
@@ -205,14 +213,14 @@ export function WorkspaceContentReviewProjection({
       onReply={(annotationId, body) => act({ kind: 'reply', annotationId, replyId: crypto.randomUUID(), body })}
       onSetState={(annotationId, state) => act({ kind: 'set_annotation_state', annotationId, state })}
     />
-  );
+  ) : null;
   const sourceState = <WorkspaceContentReviewSourceState view={view} busy={busy} refreshSource={refreshSource} />;
   const modification =
-    workflow && 'modification' in workflow ? (
+    source.kind === 'collective-media' || !privateOwner ? null : workflow && 'modification' in workflow ? (
       workflow.modification
     ) : (
       <WorkspaceModificationEntry
-        view={view}
+        view={{ ...view, review: { ...view.review, ownerUserId: privateOwner } }}
         path={path}
         target={
           source.kind === 'text'
@@ -351,7 +359,7 @@ export function WorkspaceContentReviewProjection({
             回到作品画面
           </button>
         </div>
-      ) : !imageChatPrimary ? (
+      ) : !imageChatPrimary && source.kind !== 'collective-media' ? (
         <p className="shrink-0 border-t border-cafe-subtle px-3 pt-2 text-xs text-cafe-muted">
           修改想法 · {target?.kind === 'media_anchor' ? '当前选区' : '整图'}
         </p>

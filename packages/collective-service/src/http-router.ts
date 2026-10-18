@@ -1,11 +1,13 @@
 import { readFile, rm } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-
 import {
   COLLECTIVE_CLIENT_BUILD_ID,
   collectiveClientHtml,
   resolveCollectiveClientAsset,
 } from '@cat-cafe/collective-client';
+import { maxCollectiveArtifactProposalEnvelopeBytes } from '@cat-cafe/shared';
+import { routeArtifactPost } from './artifact-http-routes.js';
+import { routeArtifactMediaHttp } from './artifact-media-http.js';
 import { routeCollaborationPost } from './collaboration-http-routes.js';
 import { CollectiveServiceError } from './errors.js';
 import type { GitHubAppManifestSetup } from './github-app-manifest-setup.js';
@@ -75,6 +77,7 @@ async function routeRequest(
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://collective.local');
   const method = request.method ?? 'GET';
+  if (await routeArtifactMediaHttp(store, url, request, response)) return;
   const clientAsset = method === 'GET' ? resolveCollectiveClientAsset(url.pathname) : undefined;
   if (clientAsset) {
     response.setHeader('content-type', clientAsset.contentType);
@@ -170,7 +173,11 @@ async function routePost(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(
+    request,
+    url.pathname === '/api/artifacts/agent/request' ? maxCollectiveArtifactProposalEnvelopeBytes : undefined,
+  );
+  if (await routeArtifactPost(store, url.pathname, request, response, body)) return;
   if (await routeGitHubAppSetupPost(store, githubAppSetup, url.pathname, request, response, body)) return;
   if (await routeIdentityPost(store, bootstrapLinkPath, url.pathname, request, response, body)) return;
   if (await routeConnectionPost(store, allowedOrigins, url.pathname, request, response, body)) return;

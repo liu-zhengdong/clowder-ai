@@ -47,6 +47,33 @@ const source: CollectiveEventEnvelope = {
   acceptedAt: '2026-10-03T09:00:00.000Z',
 };
 
+it('exposes the shared work library in the normal channel without adding a private Host destination', async () => {
+  window.history.replaceState({}, '', '/?channelId=产品方向');
+  const existing = client(readySnapshot());
+  const shared = {
+    api: { list: vi.fn(async () => []) },
+    catalogue: [],
+    sourceMessage: () => undefined,
+    status: 'ready',
+    open: vi.fn(),
+    close: vi.fn(),
+    refresh: vi.fn(),
+    beginPublication: vi.fn(),
+  };
+  await act(async () =>
+    root.render(
+      <CollectiveWorkspace
+        embedded={false}
+        client={{ ...existing, artifacts: shared } as unknown as ReturnType<typeof useCollectiveClient>}
+      />,
+    ),
+  );
+  const library = [...container.querySelectorAll('button')].find((button) => button.textContent === '作品');
+  expect(library).toBeDefined();
+  await act(async () => library?.click());
+  expect(container.textContent).toContain('还没有共同作品');
+});
+
 const result: CollectiveEventEnvelope = {
   ...source,
   eventId: 'evt_home_result',

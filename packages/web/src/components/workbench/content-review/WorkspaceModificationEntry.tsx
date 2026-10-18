@@ -14,7 +14,7 @@ import { useShellCopy } from '@/components/shell/shell-copy';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 import { useWorkspaceChatReveal } from '../WorkspaceChatReveal';
-import type { ContentReviewView } from './content-review-contract';
+import type { PrivateContentReviewView } from './content-review-contract';
 import { requestTextModificationInChat, type TextChatRequest } from './request-text-modification-in-chat';
 import type { WorkspaceAnnotationTarget } from './useWorkspaceContentReview';
 import { workspaceReviewRequestSource } from './workspace-modification-source';
@@ -43,7 +43,7 @@ export function WorkspaceModificationEntry({
   compact = false,
   chatRequest,
 }: {
-  view: ContentReviewView;
+  view: PrivateContentReviewView;
   path: string;
   target: WorkspaceAnnotationTarget | null;
   disabled: boolean;

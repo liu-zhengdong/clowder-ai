@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { ModificationCancellationStore } from './control/cancellation-store.js';
 import { ModificationRuntimeControlStore } from './control/runtime-control-store.js';
+import { CollectiveModificationJournal } from './journal/collective-journal.js';
 import {
   type ContentModificationProgress,
   contentModificationJournalIdSchema,
@@ -42,6 +43,7 @@ interface Row {
 
 /** Permanent confirmed intent and owner coordinates. Leases expire; user requests never do. */
 export class ContentModificationJournal {
+  readonly collective: CollectiveModificationJournal;
   readonly cancellations: ModificationCancellationStore;
   readonly runtimeControls: ModificationRuntimeControlStore;
   constructor(private readonly db: Database.Database) {
@@ -52,6 +54,7 @@ export class ContentModificationJournal {
     CREATE INDEX IF NOT EXISTS content_modification_requests_binding ON content_modification_requests(
       owner_user_id, json_extract(body,'$.progress.task.taskId'), json_extract(body,'$.progress.prepared.contentRef'));`);
     initializeContentModificationProjectionCursor(db);
+    this.collective = new CollectiveModificationJournal(db);
     this.cancellations = new ModificationCancellationStore(db);
     this.runtimeControls = new ModificationRuntimeControlStore(db);
   }
@@ -146,14 +149,16 @@ export class ContentModificationJournal {
   noteHumanDecision(requestId: string, ownerUserId: string) {
     const result = this.db
       .prepare(`UPDATE content_modification_requests SET revision=revision+1,
-      body=json_set(body,'$.revision',revision+1,'$.updatedAt',?) WHERE request_id=? AND owner_user_id=?`)
+      body=json_set(body,'$.revision',revision+1,'$.updatedAt',?) WHERE request_id=? AND owner_user_id=?
+      AND COALESCE(json_extract(body,'$.kind'),'private')<>'collective-artifact'`)
       .run(Date.now(), requestId, ownerUserId);
     if (result.changes !== 1) throw new ContentModificationJournalError('not_found');
   }
 
   get(requestId: string, ownerUserId: string): ContentModificationRecord | null {
     const row = this.db
-      .prepare('SELECT body FROM content_modification_requests WHERE request_id=? AND owner_user_id=?')
+      .prepare(`SELECT body FROM content_modification_requests WHERE request_id=? AND owner_user_id=?
+        AND COALESCE(json_extract(body,'$.kind'),'private')<>'collective-artifact'`)
       .get(requestId, ownerUserId) as Row | undefined;
     return row ? this.parse(row.body) : null;
   }
@@ -178,7 +183,8 @@ export class ContentModificationJournal {
     z.number().int().min(1).max(1000).parse(limit);
     const rows = this.db
       .prepare(`SELECT body FROM content_modification_requests
-      WHERE json_extract(body,'$.control') IS NULL AND json_extract(body,'$.progress.review') IS NULL AND
+      WHERE COALESCE(json_extract(body,'$.kind'),'private')<>'collective-artifact' AND
+      json_extract(body,'$.control') IS NULL AND json_extract(body,'$.progress.review') IS NULL AND
       COALESCE(json_extract(body,'$.issue.retryable'),1)=1 AND
       (lease_token IS NULL OR lease_until<=?) ORDER BY request_id LIMIT ?`)
       .all(now, limit) as Row[];
@@ -203,7 +209,8 @@ export class ContentModificationJournal {
       .transaction(() => {
         const changed = this.db
           .prepare(`UPDATE content_modification_requests SET lease_token=?,lease_until=?
-        WHERE request_id=? AND owner_user_id=? AND json_extract(body,'$.control') IS NULL AND (lease_token IS NULL OR lease_until<=?)`)
+        WHERE request_id=? AND owner_user_id=? AND COALESCE(json_extract(body,'$.kind'),'private')<>'collective-artifact'
+        AND json_extract(body,'$.control') IS NULL AND (lease_token IS NULL OR lease_until<=?)`)
           .run(token, now + durationMs, requestId, ownerUserId, now);
         if (changed.changes !== 1) return null;
         const record = this.get(requestId, ownerUserId);

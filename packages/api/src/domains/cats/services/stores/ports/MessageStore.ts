@@ -114,6 +114,8 @@ export interface MessageIdScanPage {
 export const COORDINATION_TERMINAL_SCAN_PAGE_SIZE = 100;
 
 export interface ThreadMessageReadOptions {
+  /** Artifact reads need publication/visibility/receipt fields, never conversation text or tool traces. */
+  artifactProjection?: boolean;
   /** Include queued cat-authored speech that is already published to the timeline. */
   includeQueuedCatMessages?: boolean;
   /** Include durable queued owner work (user or Host connector ingress) in the browser timeline only. */
@@ -3504,8 +3506,7 @@ export class MessageStore {
     options?: ThreadMessageReadOptions,
   ): BoundedThreadMessagePage {
     const rawLimit = Math.max(0, Math.floor(scanLimit));
-    const rawCandidates = rawLimit === 0 ? [] : this.messages.slice(-rawLimit);
-    const candidates = rawCandidates
+    const eligible = this.messages
       .filter((message) => message.threadId === threadId)
       .sort((a, b) => {
         const aTimestamp = getTimelineOrderTime(a);
@@ -3517,6 +3518,7 @@ export class MessageStore {
         if (effectiveTimestamp < timestamp) return true;
         return effectiveTimestamp === timestamp && beforeId !== undefined && message.id < beforeId;
       });
+    const candidates = eligible.slice(0, rawLimit);
 
     const isVisible = resolveThreadMessageVisibility(options, userId);
     const messages = candidates.filter((message) => {
@@ -3530,9 +3532,9 @@ export class MessageStore {
 
     return {
       messages: messages.reverse(),
-      scannedCount: rawCandidates.length,
+      scannedCount: candidates.length,
       storageRoundTrips: 0,
-      exhausted: rawCandidates.length >= this.messages.length,
+      exhausted: candidates.length >= eligible.length,
       ...(nextCursor ? { nextCursor } : {}),
     };
   }

@@ -234,6 +234,32 @@ export class PublishedMediaService {
     });
   }
 
+  /** Local Human picker; discovery never substitutes for the original read and source visibility checks. */
+  async listRetained(principal: MediaReviewPrincipal, after?: string) {
+    if (principal.actor.kind !== 'human' || principal.actor.actorId !== principal.userId)
+      throw new MediaOwnerError('access_denied');
+    const page = await this.deps.owner.listRetainedMedia(principal.userId, after);
+    const items: { contentRef: string; ownerRevision: number; label: string; mediaType: 'image/png' | 'video/mp4' }[] =
+      [];
+    for (const candidate of page.items) {
+      try {
+        const asset = await this.read(candidate.contentRef, candidate.ownerRevision, principal);
+        if (asset.mediaType !== 'image/png' && asset.mediaType !== 'video/mp4') continue;
+        const label =
+          asset.sourcePublication.artifactRef.split('/').at(-1) || (asset.mediaType === 'image/png' ? '图片' : '视频');
+        items.push({ ...candidate, label, mediaType: asset.mediaType });
+      } catch (error) {
+        if (
+          error instanceof MediaOwnerError &&
+          ['access_denied', 'not_found', 'publication_changed'].includes(error.code)
+        )
+          continue;
+        throw error;
+      }
+    }
+    return { items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+  }
+
   async describe(contentRef: string, ownerRevision: number | undefined, principal: MediaReviewPrincipal) {
     const currentOwnerRevision = await this.currentRevision(contentRef, principal);
     const asset = await this.read(contentRef, ownerRevision ?? currentOwnerRevision, principal);

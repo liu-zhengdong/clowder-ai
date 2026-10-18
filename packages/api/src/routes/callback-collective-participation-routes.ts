@@ -1,3 +1,4 @@
+import { collectiveArtifactCallbackCommandSchema, maxCollectiveArtifactProposalEnvelopeBytes } from '@cat-cafe/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { CollectiveCurrentContext } from '../domains/plugin/builtin-runtime/collective-current-context.js';
@@ -71,6 +72,13 @@ export async function registerCollectiveParticipationCallbacks(
   await app.register(async (scope) => {
     registerCallbackAuthHook(scope, options.registry);
     registerCollectiveCallback(scope, 'current-context', currentSchema, (auth) => options.context.current(auth));
+    registerCollectiveCallback(
+      scope,
+      'artifact-command',
+      collectiveArtifactCallbackCommandSchema,
+      (auth, input) => options.context.artifactCommand(auth, input.contextRef, input.command),
+      maxCollectiveArtifactProposalEnvelopeBytes,
+    );
     registerCollectiveCallback(scope, 'read-context', readSchema, (auth, input) =>
       options.context.read(auth, input.contextRef, input.afterSequence, input.limit),
     );
@@ -101,13 +109,14 @@ export async function registerCollectiveParticipationCallbacks(
 
 type CallbackAuth = NonNullable<ReturnType<typeof requireCallbackAuth>>;
 
-function registerCollectiveCallback<Input>(
+function registerCollectiveCallback<Schema extends z.ZodTypeAny>(
   scope: FastifyInstance,
   name: string,
-  schema: z.ZodType<Input>,
-  handler: (auth: CallbackAuth, input: Input) => Promise<unknown>,
+  schema: Schema,
+  handler: (auth: CallbackAuth, input: z.output<Schema>) => Promise<unknown>,
+  bodyLimit?: number,
 ) {
-  scope.post(`/api/callbacks/collective-${name}`, async (request, reply) => {
+  scope.post(`/api/callbacks/collective-${name}`, { ...(bodyLimit ? { bodyLimit } : {}) }, async (request, reply) => {
     const auth = requireCallbackAuth(request, reply);
     if (!auth) return;
     try {
@@ -123,7 +132,8 @@ function sendCollectiveError(reply: FastifyReply, error: unknown) {
     return reply.status(400).send({ code: 'INVALID_COLLECTIVE_REQUEST', error: error.message });
   const code =
     error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'RETURN_UNAVAILABLE';
-  const forbidden = code === 'RETURN_REF_INVALID' || code.endsWith('_AUTHORITY_REQUIRED');
+  const forbidden =
+    code === 'RETURN_REF_INVALID' || code === 'ARTIFACT_ACCESS_DENIED' || code.endsWith('_AUTHORITY_REQUIRED');
   const domainReason =
     /^(COLLECTIVE_|WORK_|RETURN_REF_|CONTEXT_|OWNER_ADMISSION_|PARTICIPATION_|AGENT_|CONNECTION_|CHANNEL_|SOURCE_|MEMBERSHIP_|HUMAN_)/.test(
       code,

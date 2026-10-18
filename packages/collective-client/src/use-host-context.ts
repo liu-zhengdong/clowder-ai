@@ -12,6 +12,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientRequest } from './client-request.js';
 import type { ClientSnapshot } from './client-types.js';
+import type { collectiveArtifactClient } from './collective-artifact-client.js';
+import { useHostMediaShare } from './use-host-media-share.js';
+import { type MediaSelection, useHostMediaSurface } from './use-host-media-surface.js';
 import { useHostWorkPolicy } from './use-host-work-policy.js';
 
 export function useHostContext(
@@ -20,6 +23,12 @@ export function useHostContext(
   channelId: string,
   channelIds: readonly string[],
   humanSession?: { request: ClientRequest; refresh: () => Promise<void> },
+  media?: {
+    selection?: MediaSelection;
+    api?: ReturnType<typeof collectiveArtifactClient>;
+    onShared?: Parameters<typeof useHostMediaShare>[0]['onShared'];
+    humanName?: (humanId: string) => string;
+  },
 ) {
   const [bridge, setBridge] = useState<CollectiveHostContextInit>();
   const liveBridge = useRef<CollectiveHostContextInit>();
@@ -188,6 +197,21 @@ export function useHostContext(
       ),
     [bridge?.connectionId, snapshot.collaboration?.works],
   );
+  const shareMedia = useHostMediaShare({
+    context: publicContext,
+    bridge,
+    hostOrigin,
+    channelId,
+    onShared: media?.onShared,
+  });
+  useHostMediaSurface({
+    context: publicContext,
+    bridge,
+    hostOrigin,
+    channelId,
+    generation: JSON.stringify([bridge, channelKey, open, cafeSection, projectionReady]),
+    ...media,
+  });
   useEffect(() => {
     if (!bridge || !hostOrigin || completedWorks.length === 0) return;
     const postPending = () => {
@@ -226,6 +250,7 @@ export function useHostContext(
   }, []);
   const hide = useCallback(() => setOpen(false), []);
   return {
+    shareMedia: bridge && bridge.authorityStatus !== 'revoked' ? shareMedia : undefined,
     requestWorkPermission: humanSession ? requestWorkPermission : undefined,
     available: Boolean(bridge),
     paired: Boolean(bridge && bridge.authorityStatus !== 'revoked'),

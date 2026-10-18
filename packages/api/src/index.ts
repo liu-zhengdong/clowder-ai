@@ -6008,6 +6008,14 @@ async function main(): Promise<void> {
   if (!pluginRuntime.collectiveConnectorRuntime) {
     throw new Error('Collective Connector builtin runtime was not composed');
   }
+  const { createCollectiveArtifactOwner } = await import(
+    './domains/collaborative-content/collective-artifact/owner-router.js'
+  );
+  let collectivePublishedMediaOwner: ReturnType<typeof createCollectiveArtifactOwner>['publishedMedia'] | undefined;
+  app.addHook('onClose', async () => {
+    pluginRuntime.collectiveConnectorRuntime?.setArtifactOwner(undefined);
+    await pluginRuntime.collectiveConnectorRuntime?.connector()?.stopMediaReads();
+  });
   const { LocalCollectiveServiceManager } = await import(
     './domains/plugin/builtin-runtime/local-collective-service-manager.js'
   );
@@ -6210,6 +6218,7 @@ async function main(): Promise<void> {
     );
   registerCollectiveConnectorRoutes(app, {
     runtime: pluginRuntime.collectiveConnectorRuntime,
+    retainedMedia: () => collectivePublishedMediaOwner,
     localService: localCollectiveService,
     callbackRegistry: registry,
     resolveAgentIdentity: resolveCollectiveAgentIdentity,
@@ -6386,6 +6395,21 @@ async function main(): Promise<void> {
     emit: (userId, event, data) => socketManager?.emitToUser(userId, event, data),
     onError: (error) => app.log.warn({ err: error }, '[artifact-review] recovery remains pending'),
   });
+  const collectiveArtifactOwner = createCollectiveArtifactOwner({
+    owner: collaborativeContent.owner,
+    media: artifactReview.media,
+    reviews: workspaceContentReviews.store,
+    modifications: artifactReview.store,
+    ownerUserId: privateUserId,
+    custodyDataDir: process.env.CAT_CAFE_DATA_DIR ?? join(resolveActiveProjectRoot(), '.cat-cafe'),
+    onError: (error) =>
+      app.log.debug(
+        { errorName: error instanceof Error ? error.name : 'unknown' },
+        'Collective owner operation refused',
+      ),
+  });
+  collectivePublishedMediaOwner = collectiveArtifactOwner.publishedMedia;
+  pluginRuntime.collectiveConnectorRuntime.setArtifactOwner(collectiveArtifactOwner.port);
   artifactWorkLineageHolder.current = artifactReview.globalArtifactWorkLineage;
   if (artifactReview.projectMessages) {
     const { createProjectMessageProducer } = await import(

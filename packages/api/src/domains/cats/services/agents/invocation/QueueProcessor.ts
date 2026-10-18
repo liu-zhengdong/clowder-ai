@@ -2270,9 +2270,11 @@ export class QueueProcessor {
     return this.deps.queue.hasPendingForCat(threadId, catId, { userId });
   }
 
-  /** Process-local proof that an execute coroutine still owns this cat slot. */
-  hasProcessingSlotReservation(threadId: string, catId: string): boolean {
-    return this.processingSlots.has(QueueProcessor.slotKey(threadId, catId));
+  /** Process-local producer ownership, optionally fenced to one parent invocation. */
+  hasProcessingSlotReservation(threadId: string, catId: string, invocationId?: string): boolean {
+    return invocationId === undefined
+      ? this.processingSlots.has(QueueProcessor.slotKey(threadId, catId))
+      : this.classifyProcessingSlotByExecutionId(threadId, catId, invocationId) === 'matching';
   }
 
   /** #555: Cat-specific busy check — covers processingSlots + queue entries for this cat. */

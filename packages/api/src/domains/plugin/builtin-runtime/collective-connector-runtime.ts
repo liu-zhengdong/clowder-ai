@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 
 import {
+  type CollectiveArtifactOwnerPort,
   CollectiveConnector,
   type CollectiveConnectorOptions,
   type VerifiedAgent,
@@ -26,6 +27,7 @@ export class CollectiveConnectorBuiltinRuntime implements BuiltinPluginRuntime {
   #instanceId: string | undefined;
   #timer: NodeJS.Timeout | undefined;
   #ingressDispatcher: { dispatchConnection(connectionId: string): Promise<unknown> } | undefined;
+  #artifactOwner: CollectiveArtifactOwnerPort | undefined;
 
   constructor(private readonly options: CollectiveConnectorBuiltinRuntimeOptions) {
     this.#dataDirectory = resolve(options.dataDirectory);
@@ -41,6 +43,7 @@ export class CollectiveConnectorBuiltinRuntime implements BuiltinPluginRuntime {
       verifyAgent: this.options.verifyAgent,
       ...(this.options.now === undefined ? {} : { now: this.options.now }),
     });
+    if (this.#artifactOwner) this.#connector.setArtifactOwner(this.#artifactOwner);
     this.#ingressDispatcher = this.options.createIngressDispatcher?.(this.#connector);
     this.#instanceId = pluginInstanceId;
     this.#timer = setInterval(() => {
@@ -53,14 +56,22 @@ export class CollectiveConnectorBuiltinRuntime implements BuiltinPluginRuntime {
   async stop(pluginInstanceId: string, _reason: string): Promise<void> {
     if (this.#instanceId !== pluginInstanceId) return;
     if (this.#timer) clearInterval(this.#timer);
+    const connector = this.#connector;
+    connector?.setArtifactOwner(undefined);
     this.#timer = undefined;
     this.#connector = undefined;
     this.#ingressDispatcher = undefined;
     this.#instanceId = undefined;
+    await connector?.stopMediaReads();
   }
 
   connector(): CollectiveConnector | undefined {
     return this.#connector;
+  }
+
+  setArtifactOwner(owner: CollectiveArtifactOwnerPort | undefined) {
+    this.#artifactOwner = owner;
+    this.#connector?.setArtifactOwner(owner);
   }
 
   private async syncAll(): Promise<void> {

@@ -51,7 +51,10 @@ export function useWorkspaceMediaChat({
   const composerDraft = useComposerContextAttachments(threadId ?? '');
   const [notice, setNotice] = useState<{ kind: 'selection' | 'whole'; message: string } | null>(null);
   const source = view.currentSource ?? view.review.source;
-  const mime = source.kind === 'text' || source.kind === 'video-project' ? null : source.mime;
+  const mime =
+    source.kind === 'text' || source.kind === 'video-project' || source.kind === 'collective-artifact'
+      ? null
+      : source.mime;
   const chatMedia =
     workflow && 'chatMedia' in workflow
       ? (workflow.chatMedia ?? null)

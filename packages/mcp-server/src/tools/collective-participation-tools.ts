@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { bindMcpImplementation, defineMcpTool } from '../tool-governance.js';
 import type { McpImplementationBinding, McpRisk } from '../tool-governance-types.js';
 import { callbackPost } from './callback-tools.js';
+import { collectiveArtifactCommandInputSchema, handleCollectiveArtifactCommand } from './collective-artifact-tools.js';
+
+export { handleCollectiveArtifactCommand } from './collective-artifact-tools.js';
 
 export const collectiveCurrentContextInputSchema = {};
 export const collectiveReadContextInputSchema = {
@@ -209,6 +212,16 @@ function tool(
 }
 
 export const collectiveParticipationTools = [
+  tool(
+    'cat_cafe_collective_artifact_command',
+    'Read or return a named Markdown patch for the shared work referenced by this invocation. Use when: current-context artifactRequests identifies a Human request to 修改共同作品 and its exact base version. NOT for: choosing another source, private files or Tasks, Office/video editing, Human adoption, or marking Work complete. Output: read returns canonical owner text, selected annotations and the durable request/proposal revision; respond persists one version-bound F309 patch receipt for a Human to compare and adopt. Every call rechecks the requesting Human, Cat owner, current participation and Artifact rights. GOTCHA: owner reads may be snapshot-fenced JSON pages; concatenate every chunk and parse before computing sorted UTF-16 edits. A patch receipt never means the shared work was written back.',
+    'artifact-command',
+    collectiveArtifactCommandInputSchema,
+    'handleCollectiveArtifactCommand',
+    handleCollectiveArtifactCommand,
+    { level: 'write', openWorld: true },
+    'both',
+  ),
   tool(
     'cat_cafe_collective_current_context',
     'Resolve the current Collective request and its reply receipt from the authenticated invocation. Use when: a Channel requests your participation or an admitted Work needs to return its result. NOT for: choosing a Channel, connection, private Thread, or granting owner authority. Output: authorized location/actor, opaque context and reply refs, and a durable reply operation allocated or recovered by Host. GOTCHA: this may resume an already requested reply with its original payload; after restart call this again and never copy refs from an earlier invocation.',

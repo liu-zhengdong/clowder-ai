@@ -1,6 +1,12 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { COLLECTIVE_CLIENT_BUILD_ID } from '@cat-cafe/collective-client';
+import { readArtifactRequestReceipt } from './artifact-history.js';
+import { readArtifactManagement } from './artifact-management.js';
+import { recoverMediaCustody } from './artifact-media-continuity.js';
+import { prepareArtifactPublication } from './artifact-publication-authority.js';
+import { readArtifactAgentContext } from './artifact-request-sources.js';
+import { CollectiveArtifactStore } from './artifact-store.js';
 import { CollectiveBindingVoteStore } from './collaboration-binding-vote-store.js';
 import { CollectiveReactionStore } from './collaboration-reaction-store.js';
 import { CollectiveCollaborationStore } from './collaboration-store.js';
@@ -42,6 +48,7 @@ export class CollectiveServiceStore {
   readonly #bindingVotes: CollectiveBindingVoteStore;
   readonly #reactions: CollectiveReactionStore;
   readonly #workPolicy: CollectiveWorkPolicyStore;
+  readonly #artifacts: CollectiveArtifactStore;
 
   private constructor(
     private readonly persistence: PersistentServiceState,
@@ -56,6 +63,7 @@ export class CollectiveServiceStore {
     this.#bindingVotes = new CollectiveBindingVoteStore(persistence, now);
     this.#reactions = new CollectiveReactionStore(persistence, now);
     this.#workPolicy = new CollectiveWorkPolicyStore(persistence, now);
+    this.#artifacts = new CollectiveArtifactStore(persistence, now);
   }
 
   static async open(options: OpenCollectiveServiceStoreOptions): Promise<OpenedCollectiveServiceStore> {
@@ -99,6 +107,8 @@ export class CollectiveServiceStore {
         events: {},
         participations: {},
         works: {},
+        artifacts: {},
+        artifactPublications: {},
         roadmaps: {},
         votes: {},
         bindingVotes: {},
@@ -116,8 +126,137 @@ export class CollectiveServiceStore {
     }
   }
 
+  updateArtifactAccess(sessionToken: string, input: unknown) {
+    return this.#artifacts.access.update(sessionToken, input);
+  }
+  readArtifactManagement(sessionToken: string, input: unknown) {
+    return readArtifactManagement(this.persistence.snapshot(), sessionToken, input);
+  }
+  readArtifactHistory(session: string, input: unknown) {
+    return this.#artifacts.history(session, input);
+  }
+  readArtifactRequestReceipt(session: string, input: unknown) {
+    return readArtifactRequestReceipt(this.persistence.snapshot(), session, input);
+  }
+  prepareArtifactPublication(session: string, input: unknown) {
+    return prepareArtifactPublication(this.persistence, this.now, session, input);
+  }
+  sendArtifactPublication(session: string, input: unknown) {
+    return this.#artifacts.publications.send(session, input);
+  }
+  pollArtifactPublications(credential: string, input: unknown) {
+    return this.#artifacts.publications.poll(credential, input);
+  }
+  validateArtifactPublication(credential: string, input: unknown) {
+    return this.#artifacts.publications.validate(credential, input);
+  }
+  respondArtifactPublication(credential: string, input: unknown) {
+    return this.#artifacts.publications.respond(credential, input);
+  }
+  recoverMediaCustody(credential: string, input: unknown) {
+    return recoverMediaCustody(this.persistence, this.now, credential, input);
+  }
+  recoverArtifactPublication(credential: string, input: unknown) {
+    return this.#artifacts.publications.recover(credential, input);
+  }
+  offerArtifactCustody(sessionToken: string, input: unknown) {
+    return this.#artifacts.custody.offer(sessionToken, input);
+  }
+  acceptArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.accept(credential, input);
+  }
+  prepareArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.prepare(credential, input);
+  }
+  readyArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.ready(credential, input);
+  }
+  readArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.read(credential, input);
+  }
+  pollArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.poll(credential, input);
+  }
+  cancelArtifactCustody(session: string, input: unknown) {
+    return this.#artifacts.custody.transfers.cancel(session, input);
+  }
+  finalizeArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.finalize(credential, input);
+  }
+  authorizeArtifactCustody(credential: string, input: unknown) {
+    return this.#artifacts.custody.transfers.authorize(credential, input);
+  }
+  requestArtifactCustodyPage(credential: string, input: unknown) {
+    return this.#artifacts.custodyPages.request(credential, input);
+  }
+  pollArtifactCustodyPages(credential: string, input: unknown) {
+    return this.#artifacts.custodyPages.poll(credential, input);
+  }
+  respondArtifactCustodyPage(credential: string, input: unknown) {
+    return this.#artifacts.custodyPages.respond(credential, input);
+  }
+
+  requestArtifactOperation(sessionToken: string, input: unknown) {
+    return this.#artifacts.relay.request(sessionToken, input);
+  }
+  requestAgentArtifactOperation(credential: string, input: unknown) {
+    return this.#artifacts.relay.requestAgent(credential, input);
+  }
+  readAgentArtifactContext(credential: string, input: unknown) {
+    return readArtifactAgentContext(this.persistence, credential, input);
+  }
+  publishArtifactRequest(session: string, input: unknown) {
+    return this.#artifacts.publishRequest(session, input);
+  }
+  startArtifactOwnerRelay() {
+    this.#artifacts.media.start();
+    this.#artifacts.relay.start();
+    this.#artifacts.publications.start();
+    this.#artifacts.custodyPages.start();
+  }
+  stopArtifactOwnerRelay() {
+    this.#artifacts.media.stop();
+    this.#artifacts.relay.stop();
+    this.#artifacts.publications.stop();
+    this.#artifacts.custodyPages.stop();
+  }
+  pollArtifactOperations(credential: string, input: unknown) {
+    return this.#artifacts.relay.poll(credential, input);
+  }
+  respondArtifactOperation(credential: string, input: unknown) {
+    return this.#artifacts.relay.respond(credential, input);
+  }
+  requestArtifactMedia(...input: Parameters<CollectiveArtifactStore['media']['request']>) {
+    return this.#artifacts.media.request(...input);
+  }
+  pollArtifactMedia(...input: Parameters<CollectiveArtifactStore['media']['poll']>) {
+    return this.#artifacts.media.poll(...input);
+  }
+  respondArtifactMedia(...input: Parameters<CollectiveArtifactStore['media']['respond']>) {
+    return this.#artifacts.media.respond(...input);
+  }
+
   get serviceInstanceId(): string {
     return this.persistence.snapshot().serviceInstanceId;
+  }
+
+  registerArtifact(credential: string, input: unknown) {
+    return this.#artifacts.register(credential, input);
+  }
+  readArtifactRegistrationContext(credential: string, input: unknown) {
+    return this.#artifacts.registrationContext(credential, input);
+  }
+  listArtifacts(sessionToken: string, input: unknown) {
+    return this.#artifacts.list(sessionToken, input);
+  }
+  issueArtifactConstraint(sessionToken: string, input: unknown) {
+    return this.#artifacts.constraints.issue(sessionToken, input);
+  }
+  validateArtifactConstraint(credential: string, input: unknown) {
+    return this.#artifacts.constraints.validate(credential, input);
+  }
+  revokeArtifactAccess(sessionToken: string, input: unknown) {
+    return this.#artifacts.access.revoke(sessionToken, input);
   }
 
   getMetadata() {

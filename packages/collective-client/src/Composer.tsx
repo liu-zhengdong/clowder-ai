@@ -1,5 +1,6 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { CollectiveIcon } from './CollectiveIcon.js';
+import { ComposerMentionMenu } from './ComposerMentionMenu.js';
 import { ComposerTray } from './ComposerTray.js';
 import { actorDisplayName } from './channel-model.js';
 import type {
@@ -8,9 +9,16 @@ import type {
   CollectiveRecipient,
   DeliveryState,
 } from './client-types.js';
-import { emptyDraft, type ReplySelection, readDraft, replyDraftError, selectReply } from './composer-draft.js';
-import { MemberAvatar } from './MemberAvatar.js';
+import {
+  clearConfirmedComposerDraft,
+  type ReplySelection,
+  readDraft,
+  replyDraftError,
+  selectReply,
+} from './composer-draft.js';
 import { participantKey, participantRecipient } from './participant-identity.js';
+import { SharedArtifactQuoteTags } from './SharedArtifactQuoteTags.js';
+import { useSharedArtifactComposer } from './use-shared-artifact-composer.js';
 
 export interface HumanMention {
   readonly humanId: string;
@@ -79,6 +87,7 @@ export function Composer({
 }) {
   const draftKey = `collective-draft:${namespace}:${channelId}:${rootEventId ?? 'channel'}`;
   const [draft, setDraft] = useState(() => readDraft(draftKey));
+  const attachment = useSharedArtifactComposer(draft, setDraft, rootEventId);
   const [mentionQuery, setMentionQuery] = useState<string>();
   const [activeOption, setActiveOption] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -89,6 +98,12 @@ export function Composer({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sending = useRef(false);
   const listId = useId();
+  const reworkFocus =
+    draft.artifactReply?.annotationId ??
+    (draft.artifactRework && `${draft.artifactRework.rework.requestId}:${draft.artifactRework.ownerRevision}`);
+  useEffect(() => {
+    if (reworkFocus) inputRef.current?.focus();
+  }, [reworkFocus]);
   const available = selectionAvailable(draft.recipient, participants, humans, channelId);
   const replyEvent = replyEvents?.find((event) => event.eventId === draft.replyToEventId);
   const replyError = replyDraftError(draft, replyEvents, participants, channelId);
@@ -117,7 +132,13 @@ export function Composer({
   ].filter((item) => `${item.label} ${item.detail}`.toLocaleLowerCase().includes(query));
   const activeIndex = Math.min(activeOption, Math.max(0, options.length - 1));
   const disabled =
-    pending || delivery.kind === 'requesting' || !draft.body.trim() || !available || unresolved || !!replyError;
+    pending ||
+    delivery.kind === 'requesting' ||
+    !draft.body.trim() ||
+    !available ||
+    unresolved ||
+    !!replyError ||
+    attachment.stale;
 
   useEffect(() => {
     try {
@@ -169,15 +190,14 @@ export function Composer({
     sending.current = true;
     setPending(true);
     try {
-      if (draft.replyToEventId) {
+      if (attachment.selections.length || attachment.rework || attachment.reply) {
+        await attachment.send(draft.body.trim(), draft.recipient);
+      } else if (draft.replyToEventId) {
         await onSend(draft.body.trim(), draft.recipient, entrust, responseRequested, draft.replyToEventId);
       } else {
         await onSend(draft.body.trim(), draft.recipient, entrust, responseRequested);
       }
-      setDraft((current) => {
-        if (current.body !== draft.body) return current;
-        return current.replyToEventId ? { ...current, body: '' } : emptyDraft;
-      });
+      setDraft((current) => clearConfirmedComposerDraft(current, draft));
       setEntrust(false);
       setResponseRequested(false);
       setExpanded(false);
@@ -219,28 +239,9 @@ export function Composer({
       onSubmit={(event) => void submit(event).catch(() => undefined)}
     >
       {mentionQuery !== undefined && (
-        <div className="mention-list" id={listId} role="listbox" aria-label="选择要提到的成员">
-          {options.map((option, index) => (
-            <button
-              key={option.key}
-              id={`${listId}-${index}`}
-              type="button"
-              role="option"
-              aria-selected={index === activeIndex}
-              className="mention-option"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => select(index)}
-            >
-              <MemberAvatar name={option.label} kind={option.kind} avatarUrl={option.avatarUrl} compact />
-              <span>
-                <strong>{option.label}</strong>
-                <small>{option.detail}</small>
-              </span>
-            </button>
-          ))}
-          {!options.length && <p>没有找到在本频道参与的成员。</p>}
-        </div>
+        <ComposerMentionMenu options={options} id={listId} active={activeIndex} onSelect={select} />
       )}
+      <SharedArtifactQuoteTags attachment={attachment} />
       {replyEvent && (
         <div className="composer-recipient" role="group" aria-label="回复来源">
           <span>

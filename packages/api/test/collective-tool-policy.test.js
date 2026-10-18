@@ -27,6 +27,7 @@ test('public participation exposes only current-source context, reply, interest,
   assert.deepEqual(normalizeToolExecutionPolicy(policy), policy);
   assert.deepEqual(parseToolExecutionPolicy(JSON.stringify(policy)), policy);
   for (const tool of [
+    'collective_artifact_command',
     'collective_current_context',
     'collective_read_context',
     'collective_reply',

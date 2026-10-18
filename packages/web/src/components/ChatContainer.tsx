@@ -105,7 +105,7 @@ function coversChatHistory(presentation: MainAreaAttentionPresentation): boolean
 
 export function ChatContainer({ threadId }: ChatContainerProps) {
   return (
-    <ArtworkLightboxProvider key={threadId} threadId={threadId}>
+    <ArtworkLightboxProvider threadId={threadId}>
       <ChatContainerContent threadId={threadId} />
     </ArtworkLightboxProvider>
   );
@@ -773,7 +773,7 @@ function InteractiveChatContainer({ threadId }: ChatContainerProps) {
   }, [currentBootcampPhase, threadId, activeGuideFlowId, hasActiveInvocation, chatIsLoading]);
 
   const prevThreadRef = useRef(threadId);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevThreadRef.current !== threadId) {
       // Thread switch: store saves/restores per-thread state automatically
       setCurrentThread(threadId);

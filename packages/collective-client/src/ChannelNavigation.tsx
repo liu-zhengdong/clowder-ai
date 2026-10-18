@@ -8,6 +8,8 @@ export function ChannelNavigation({
   onQuery,
   onSelect,
   onMembers,
+  onLibrary,
+  libraryActive,
   guideCatCount,
 }: {
   readonly channels: ReturnType<typeof channelDestinations>;
@@ -16,6 +18,8 @@ export function ChannelNavigation({
   readonly onQuery: (value: string) => void;
   readonly onSelect: (id: string) => void;
   readonly onMembers: () => void;
+  readonly onLibrary?: () => void;
+  readonly libraryActive?: boolean;
   readonly guideCatCount?: number;
 }) {
   const visible = channels.filter((channel) =>
@@ -61,6 +65,25 @@ export function ChannelNavigation({
           ))}
           {query && !visible.length && <p className="navigation-empty">没有同名频道；主区显示匹配的消息。</p>}
         </nav>
+        {onLibrary && (
+          <nav className="destination-list" aria-label="作品资料库">
+            <button
+              type="button"
+              aria-label="全部作品"
+              className={`destination-item ${libraryActive ? 'destination-item-active' : ''}`}
+              aria-current={libraryActive ? 'page' : undefined}
+              onClick={onLibrary}
+            >
+              <span className="destination-symbol" aria-hidden="true">
+                ≡
+              </span>
+              <span>
+                <strong>全部作品</strong>
+                <small>找回版本与原讨论</small>
+              </span>
+            </button>
+          </nav>
+        )}
         <nav className="destination-list member-destination" aria-label="共同家园成员">
           <button type="button" className="destination-item" onClick={onMembers}>
             <span className="destination-symbol">

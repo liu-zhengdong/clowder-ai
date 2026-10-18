@@ -22,6 +22,10 @@ import './styles/members.css';
 import './styles/onboarding.css';
 import './styles/first-entry.css';
 import './styles/collective-home.css';
+import './styles/shared-artifacts.css';
+import './styles/shared-artifact-feedback.css';
+import './styles/shared-artifact-management.css';
+import './styles/shared-artifact-library.css';
 
 const root = document.getElementById('collective-root');
 if (!root) throw new Error('Collective client root is missing');

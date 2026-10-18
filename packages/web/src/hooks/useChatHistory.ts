@@ -832,7 +832,7 @@ export function useChatHistory(threadId: string) {
   }, [cancelPendingRestore]);
 
   const scheduleRestore = useCallback(
-    (initialSaved: SavedScrollState) => {
+    (initialSaved: SavedScrollState, options?: { beforePaint: boolean }) => {
       let saved = initialSaved;
       cancelPendingRestore(false, true, false, true);
       restoreFrameKindRef.current = 'restore';
@@ -959,7 +959,8 @@ export function useChatHistory(threadId: string) {
         restoreFrameRef.current = requestAnimationFrame(apply);
       };
 
-      restoreFrameRef.current = requestAnimationFrame(apply);
+      if (options?.beforePaint) apply();
+      else restoreFrameRef.current = requestAnimationFrame(apply);
     },
     [cancelPendingRestore, finishReadingRestore],
   );
@@ -1723,9 +1724,10 @@ export function useChatHistory(threadId: string) {
     setTasks(taskCacheByThread.get(threadId) ?? []);
   }, [threadId, setTasks]);
 
-  // Load history + tasks when threadId changes (handles initial mount and navigation)
-  useEffect(() => {
-    // The surface already projects the incoming thread before this passive effect.
+  // Admit the incoming history before its initial layout restore. The asynchronous
+  // fetch stays nonblocking; outgoing restore cleanup must precede incoming paint.
+  useLayoutEffect(() => {
+    // The surface already projects the incoming thread before this layout effect.
     // Its geometry cannot update the departing thread; handleScroll owns that save.
     // Reset retained refs so the incoming messages take the initial restore path.
     prevCountRef.current = 0;
@@ -2094,16 +2096,17 @@ export function useChatHistory(threadId: string) {
     saveChatScrollState(threadId, { ...saved, top: el.scrollTop });
   }, [threadId, timelineMessageIds]);
 
-  // Scroll adjustment after messages change
+  // Position the incoming timeline before paint, while its retained viewport
+  // still carries the departing thread's offset into deferred placeholders.
   // biome-ignore lint/correctness/useExhaustiveDependencies: store sync must retry initial restore even when the scoped message reference is unchanged.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollContainerRef.current;
 
     if (messages.length === 0) return;
 
     // clowder-ai#27: wait for store to sync before acting on scroll.
     // On remount, threadId (prop) updates immediately but store.currentThreadId
-    // is still the OLD thread until ChatContainer's useEffect calls setCurrentThread().
+    // is still the OLD thread until ChatContainer syncs setCurrentThread().
     // If we act now, we'd restore scroll on the wrong DOM content, then the store
     // swap re-render would trigger append-case scrollIntoView → position lost.
     // By returning early (without updating tracking refs), we ensure the NEXT
@@ -2127,7 +2130,7 @@ export function useChatHistory(threadId: string) {
       // jump survives the IDB-snapshot → fresh-API two-phase load (砚砚 R1 P1).
       const saved = readChatScrollState(threadId) ?? { top: 0, anchor: 'bottom' };
       readingRestoreRef.current = { threadId, saved };
-      scheduleRestore(saved);
+      scheduleRestore(saved, { beforePaint: true });
       return;
     }
 

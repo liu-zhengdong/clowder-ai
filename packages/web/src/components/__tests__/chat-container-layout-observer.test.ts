@@ -295,6 +295,26 @@ describe('ChatContainer bottom chrome observer', () => {
     globalThis.ResizeObserver = originalResizeObserver;
   });
 
+  it('retains the reading viewport and composer home across route thread switches', async () => {
+    await act(async () => root.render(renderChatContainer('thread-a')));
+    const history = container.querySelector('[data-chat-container]');
+    const composerHome = container.querySelector('[data-thread-composer-home]');
+    expect(history).not.toBeNull();
+    expect(composerHome).not.toBeNull();
+
+    await act(async () => root.render(renderChatContainer('thread-b')));
+    expect(container.querySelector('[data-thread-chat-surface]')?.getAttribute('data-thread-id')).toBe('thread-b');
+    expect(container.querySelector('[data-chat-container]')).toBe(history);
+    expect(container.querySelector('[data-thread-composer-home]')).toBe(composerHome);
+    expect(container.querySelector('[data-thread-composer-host]')?.getAttribute('data-thread-composer-host')).toBe(
+      'thread-b',
+    );
+
+    await act(async () => root.render(renderChatContainer('thread-a')));
+    expect(container.querySelector('[data-chat-container]')).toBe(history);
+    expect(container.querySelector('[data-thread-composer-home]')).toBe(composerHome);
+  });
+
   it('re-observes the new bottom chrome after split view toggles back to single', async () => {
     await act(async () => {
       root.render(renderChatContainer('thread-1'));

@@ -1,7 +1,9 @@
 import type { CollectiveConnector, CollectiveWorkAcceptanceInput } from '@cat-cafe/collective-connector';
+import type { CollectiveArtifactCommand } from '@cat-cafe/shared';
 import type { InvocationRecord } from '../../cats/services/agents/invocation/InvocationRegistry.js';
 import type { IMessageStore } from '../../cats/services/stores/ports/MessageStore.js';
 import type { PreparedArtifactReader } from '../../growing/EntrustedWorkOwnerReadService.js';
+import { executeCollectiveArtifactCommand } from './collective-artifact-command.js';
 import { collectiveContextError, opaqueRef, verifyRef } from './collective-context-refs.js';
 import { requireCollectiveInvocationSource } from './collective-invocation-binding.js';
 import type { CollectiveInvocationSource } from './collective-participation-source.js';
@@ -104,6 +106,7 @@ export class CollectiveCurrentContext {
       location: binding.source.location,
       participant: binding.displayName,
       request: binding.context.source,
+      artifactRequests: await connector.readArtifactContext(binding.source),
       contextRef: opaqueRef(auth, 'context', binding.refScope),
       returnRef: opaqueRef(auth, 'return', binding.refScope),
       replyOperationRef: opaqueRef(auth, `reply:${operation.outboxId}`, binding.refScope),
@@ -129,6 +132,16 @@ export class CollectiveCurrentContext {
     if (fresh.refScope !== binding.refScope)
       throw collectiveContextError('WORK_EXECUTION_NOT_CURRENT', 'Current Work changed during context read');
     return { ...context, ...(previousResultArtifact ? { previousResultArtifact } : {}) };
+  }
+
+  artifactCommand(auth: InvocationRecord, contextRef: string, command: CollectiveArtifactCommand) {
+    return executeCollectiveArtifactCommand({
+      auth,
+      contextRef,
+      command,
+      connector: this.requireConnector(),
+      resolveSource: () => this.requireInvocationSource(auth),
+    });
   }
 
   async setInterest(auth: InvocationRecord, contextRef: string, state: 'listen' | 'withdraw') {

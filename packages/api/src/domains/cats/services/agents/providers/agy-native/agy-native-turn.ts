@@ -1,5 +1,5 @@
 import type { CatId, CliDiagnostics } from '@cat-cafe/shared';
-import { isCliError, isCliTimeout } from '../../../../../../utils/cli-spawn.js';
+import { isCliError, isCliTimeout, isLivenessWarning } from '../../../../../../utils/cli-spawn.js';
 import { sanitizeCliStderr } from '../../../../../../utils/sanitize-cli-stderr.js';
 import type { AgentMessage, MessageMetadata } from '../../../types.js';
 import {
@@ -8,10 +8,16 @@ import {
   parseAgyStreamJsonLine,
   summarizeAgyStreamJsonTurn,
 } from '../agy-stream-json-parser.js';
-import { AgyNativeResumeMismatchError, missingAgyNativeInitError } from './agy-native-errors.js';
-import type { AgyNativePermissionMode } from './agy-native-policy.js';
+import { missingAgyNativeInitError } from './agy-native-errors.js';
+import {
+  asRecord,
+  type ExpectedNativeInit,
+  readAgyNativeEnvelope,
+  verifiedInitSessionId,
+  verifyAgyNativeResult,
+} from './agy-native-stream-validation.js';
 import { agyNativeToolIdentity, agyNativeToolResultContent } from './agy-native-tool-result.js';
-import { AGY_NATIVE_MCP_TOOLS, AGY_NATIVE_PROTOCOL_TOOLS, AGY_NATIVE_TOOLS } from './agy-native-tools.js';
+import { AGY_NATIVE_MCP_TOOLS, AGY_NATIVE_TOOLS } from './agy-native-tools.js';
 
 export interface AgyNativeObservedTurn {
   readonly sessionId: string;
@@ -27,52 +33,10 @@ export type AgyNativeStreamObservation =
   | { readonly kind: 'step'; readonly event: Extract<AgyStreamJsonEvent, { kind: 'step' }> }
   | { readonly kind: 'complete'; readonly observed: AgyNativeObservedTurn };
 
-interface ExpectedNativeInit {
-  readonly sessionId?: string;
-  readonly agentName: string;
-  readonly spawnCwd: string;
-  readonly model: string;
-  readonly permissionMode?: AgyNativePermissionMode;
-  readonly command?: string;
-  readonly invocationId?: string;
-}
-
 const MAX_AGY_NATIVE_STREAM_CHARS = 8 * 1024 * 1024;
 const MISSING_FILE_ERROR_PREFIX =
   'declaring permissions: cortex tool view_file: convert tool call for permissions: model output error: ' +
   'invalid tool call error (invalid_args) failed to read file: stat ';
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function verifiedInitSessionId(record: Record<string, unknown>, expected: ExpectedNativeInit, seen: boolean): string {
-  const init = asRecord(record.init);
-  if (
-    seen ||
-    init?.agent !== expected.agentName ||
-    init.cwd !== expected.spawnCwd ||
-    init.permission_mode !== (expected.permissionMode ?? 'request-review') ||
-    init.model !== expected.model
-  ) {
-    throw new Error('AGY native init disagrees with the host-owned agent, spawn cwd, model, or permission mode');
-  }
-  const sessionId = typeof record.conversation_id === 'string' ? record.conversation_id : '';
-  if (!sessionId) throw new Error('AGY native init omitted the conversation ID');
-  if (expected.sessionId && expected.sessionId !== sessionId) {
-    throw new AgyNativeResumeMismatchError(
-      'AGY native init replaced the requested conversation; refusing silent history loss',
-    );
-  }
-  if (
-    init.tools !== undefined &&
-    (!Array.isArray(init.tools) ||
-      init.tools.some((tool) => typeof tool !== 'string' || !AGY_NATIVE_PROTOCOL_TOOLS.has(tool)))
-  ) {
-    throw new Error('AGY native init advertised an unqualified tool vocabulary');
-  }
-  return sessionId;
-}
 
 function verifiedNativeTerminal(lines: readonly string[], sessionId: string, resultCount: number): AgyStreamJsonTurn {
   if (resultCount > 1) throw new Error('AGY native one-turn process emitted multiple terminal results');
@@ -104,13 +68,14 @@ export async function* observeAgyNativeTurn(
       transportError = raw.message;
       continue;
     }
-    const record = asRecord(raw);
-    if (!record) continue;
+    if (isLivenessWarning(raw)) continue;
+    const record = readAgyNativeEnvelope(raw);
     if (record.event === 'init') {
       sessionId = verifiedInitSessionId(record, expected, sessionId !== null);
       yield { kind: 'init', sessionId };
     }
     if (record.event === 'result') {
+      verifyAgyNativeResult(record, sessionId);
       resultCount++;
       if (!signal?.aborted) resultSeenBeforeCancellation = true;
     }
@@ -121,7 +86,7 @@ export async function* observeAgyNativeTurn(
     lines.push(line);
     const event = parseAgyStreamJsonLine(line);
     if (event?.kind === 'step') {
-      if (!sessionId || (event.conversationId && event.conversationId !== sessionId)) {
+      if (!sessionId || event.conversationId !== sessionId || resultCount > 0) {
         throw new Error('AGY native step has no matching verified init');
       }
       yield { kind: 'step', event };
@@ -270,6 +235,11 @@ export function projectAgyNativeTurn(
               : {}),
           }
         : {}),
+      // A terminal result confirms only observed tool completion, never effect deduplication.
+      toolResultsConfirmed:
+        turn.stepsComplete && turn.toolCalls.every((call) => call.state === 'DONE' && call.errorMessage === null),
+      upstreamUnauthenticated:
+        /\b401\b/.test(turn.upstreamError ?? '') && /\bUNAUTHENTICATED\b/.test(turn.upstreamError ?? ''),
       deniedActions: turn.deniedActions,
       sessionUsage: turn.usage,
       unknownEvents: turn.unknownEvents,

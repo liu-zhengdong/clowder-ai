@@ -8,21 +8,26 @@ import {
   readChannelEntry,
   saveChannelPosition,
   writeChannelTarget,
+  writeLibraryTarget,
 } from './channel-navigation.js';
 import type { CollectiveEventEnvelope, CollectiveWorkProjection } from './client-types.js';
 import { type RoadmapReturn, visibleCollectiveCats } from './collective-workspace-model.js';
-import { DemoSpotlight } from './first-entry/DemoSpotlight.js';
-import { EntrySpotlight } from './first-entry/EntrySpotlight.js';
+import { FirstEntryOverlays } from './first-entry/FirstEntryOverlays.js';
 import { useFirstEntryGuide } from './first-entry/use-first-entry-guide.js';
 import { collectiveClientNamespace } from './human-send-custody.js';
 import type { MemberSelection } from './MemberPanel.js';
 import { ProductShell } from './ProductShell.js';
 import type { RoadmapViewState } from './roadmap-view-model.js';
+import { SharedArtifactLibrary } from './SharedArtifactLibrary.js';
+import { SharedArtifactPublication } from './SharedArtifactPublication.js';
+import { SharedArtifactReading } from './SharedArtifactReading.js';
+import { CollectiveArtifactContext } from './use-collective-artifacts.js';
 import type { useCollectiveClient } from './use-collective-client.js';
 import { useHostContext } from './use-host-context.js';
 import { HostWorkPermissionContext } from './use-host-work-policy.js';
+import { useSharedArtifactNavigation } from './use-shared-artifact-navigation.js';
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This canonical coordinator owns the inherited Host, guide, roadmap, and destination transitions; the rendered Channel scene is split out so this batch reduces complexity below the main baseline without duplicating navigation state.
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This coordinator is the sole owner of destination, Host, guide, and roadmap transitions, including exact artifact returns. Scenes, guide overlays, and artifact return-point handling are separate; splitting these coupled transitions would duplicate navigation state.
 export function CollectiveWorkspace({
   embedded,
   client,
@@ -35,7 +40,7 @@ export function CollectiveWorkspace({
   const previousNamespace = useRef(namespace);
   const initialEntry = readChannelEntry(namespace);
   const [channelId, setChannelId] = useState(initialEntry.channelId);
-  const [destination, setDestination] = useState<'home' | 'channel'>(initialEntry.destination);
+  const [destination, setDestination] = useState<'home' | 'channel' | 'library'>(initialEntry.destination);
   const [focusEventId, setFocusEventId] = useState<string>();
   const [content, setContent] = useState<ChannelContent>('conversation');
   const [roadmapViews, setRoadmapViews] = useState<Readonly<Record<string, RoadmapViewState>>>({});
@@ -45,12 +50,32 @@ export function CollectiveWorkspace({
   const [selectedMember, setSelectedMember] = useState<MemberSelection | 'members'>();
   const participants = snapshot.participants ?? [];
   const channels = channelDestinations(snapshot.events, participants);
+  const mediaArtifact = client.artifacts?.catalogue.find(
+    (item) => item.artifactId === client.artifacts?.selected?.artifactId,
+  );
   const host = useHostContext(
     embedded,
     snapshot,
     channelId,
     channels.map((channel) => channel.id),
     client.hostHumanSession,
+    {
+      api: client.artifacts?.api,
+      humanName: client.artifacts?.humanName,
+      onShared: async (artifact) => {
+        await client.artifacts?.refresh();
+        client.artifacts?.closePublication();
+        client.artifacts?.open(artifact);
+      },
+      selection: mediaArtifact && {
+        artifact: mediaArtifact,
+        ownerRevision: client.artifacts?.selected?.ownerRevision,
+        onReturn: () => {
+          client.artifacts?.close();
+          selectChannel(mediaArtifact.sourceLocation.channelId, mediaArtifact.sourceEventId);
+        },
+      },
+    },
   );
   const firstEntry = useFirstEntryGuide({
     embedded,
@@ -65,6 +90,25 @@ export function CollectiveWorkspace({
     events: snapshot.events,
   });
   const previousFirstEntryPhase = useRef<typeof firstEntry.phase>();
+  const artifactNavigation = useSharedArtifactNavigation({
+    namespace,
+    artifacts: client.artifacts,
+    place: { destination, channelId, content, query, focusEventId, roadmapReturn },
+    onOpenSource: (id, eventId) => selectChannel(id, eventId),
+    onRestore: (place) => {
+      setDestination(place.destination);
+      setChannelId(place.channelId);
+      setContent(place.content);
+      setQuery(place.query);
+      setFocusEventId(place.focusEventId);
+      setRoadmapReturn(place.roadmapReturn);
+      setSelectedMember(undefined);
+      setNavigationOpen(false);
+      host.hide();
+      if (place.destination === 'library') writeLibraryTarget();
+      else writeChannelTarget(place.destination === 'channel' ? place.channelId : undefined);
+    },
+  });
   const enterFirstEntryChannel = useCallback(() => {
     setDestination('channel');
     setChannelId('general');
@@ -92,6 +136,7 @@ export function CollectiveWorkspace({
     setNavigationOpen(false);
   }, [host.focusWork]);
   const showCafe = () => {
+    artifactNavigation.discard();
     setSelectedMember(undefined);
     setNavigationOpen(false);
     host.show('cats');
@@ -106,6 +151,7 @@ export function CollectiveWorkspace({
     void client.pairHost();
   };
   const selectChannel = (id: string, eventId?: string) => {
+    artifactNavigation.discard();
     setDestination('channel');
     setFocusEventId(eventId);
     setContent('conversation');
@@ -118,6 +164,7 @@ export function CollectiveWorkspace({
     setNavigationOpen(false);
   };
   const showHome = () => {
+    artifactNavigation.discard();
     setDestination('home');
     setFocusEventId(undefined);
     setContent('conversation');
@@ -151,6 +198,7 @@ export function CollectiveWorkspace({
   }, [namespace]);
   if (!snapshot.collective || !snapshot.me) return null;
   const openMember = (event: CollectiveEventEnvelope) => {
+    artifactNavigation.discard();
     host.hide();
     setSelectedMember(
       event.actor.kind === 'human'
@@ -164,6 +212,7 @@ export function CollectiveWorkspace({
   const updateRoadmapView = (view: RoadmapViewState) =>
     setRoadmapViews((current) => ({ ...current, [channelId]: view }));
   const openRoadmapMessage = (work: CollectiveWorkProjection, view: RoadmapViewState, eventId: string) => {
+    artifactNavigation.discard();
     const roadmap = snapshot.collaboration?.roadmaps.find((candidate) => candidate.roadmapId === view.roadmapId);
     setRoadmapViews((current) => ({ ...current, [channelId]: view }));
     setRoadmapReturn({ channelId, label: roadmap?.title ?? 'Roadmap', view });
@@ -193,116 +242,144 @@ export function CollectiveWorkspace({
   };
 
   return (
-    <HostWorkPermissionContext.Provider
-      value={{ connectionId: host.connectionId, request: host.requestWorkPermission }}
+    <CollectiveArtifactContext.Provider
+      value={
+        client.artifacts && {
+          ...client.artifacts,
+          open: artifactNavigation.open,
+          close: artifactNavigation.close,
+          returnLabel: artifactNavigation.returnLabel,
+          returnToSource: selectChannel,
+        }
+      }
     >
-      <ProductShell
-        embedded={embedded}
-        collective={snapshot.collective}
-        collectives={snapshot.me.collectives}
-        onSelectCollective={client.selectCollective}
-        onHome={showHome}
-        connection={snapshot.connection}
-        canSteward={snapshot.collective.role === 'steward'}
-        canPair={Boolean(snapshot.me.auth) && !host.paired}
-        pairNudge={firstEntry.phase === 'browsing'}
-        canLeave={snapshot.collective.role === 'member'}
-        headerMeta={
-          members
-            ? `${members.cafes.length} 个 Café · ${members.humans.length + visibleCats.length} 位成员`
-            : '正在读取成员…'
-        }
-        notice={snapshot.notice}
-        onInvite={() => void client.createInvite()}
-        onPair={beginPair}
-        onLeave={() => void client.leaveCollective()}
-        onCafe={host.available ? showCafe : undefined}
-        onReplayGuide={firstEntry.narrator ? replayGuide : undefined}
-        navigationOpen={navigationOpen || firstEntry.phase === 'entry'}
-        onCloseNavigation={() => setNavigationOpen(false)}
-        destinations={
-          <ChannelNavigation
-            channels={channels}
-            channelId={destination === 'channel' ? channelId : undefined}
-            query={query}
-            onQuery={(value) => {
-              setQuery(value);
-              if (!value.trim()) return;
-              setDestination('channel');
-              writeChannelTarget(channelId);
-            }}
-            onSelect={selectChannel}
-            guideCatCount={
-              firstEntry.phase === 'playing' && firstEntry.beat === 0
-                ? firstEntry.arrivalComplete
-                  ? firstEntry.ownCats.length
-                  : 0
-                : undefined
-            }
-            onMembers={() => {
-              host.hide();
-              setDestination('channel');
-              writeChannelTarget(channelId);
-              setSelectedMember('members');
-              setNavigationOpen(false);
-            }}
-          />
-        }
-      >
-        {destination === 'home' ? (
-          <CollectiveHome
+      <SharedArtifactReading>
+        <HostWorkPermissionContext.Provider
+          value={{ connectionId: host.connectionId, request: host.requestWorkPermission }}
+        >
+          <ProductShell
+            embedded={embedded}
             collective={snapshot.collective}
-            events={snapshot.events}
-            collaboration={snapshot.collaboration}
+            collectives={snapshot.me.collectives}
+            onSelectCollective={client.selectCollective}
+            onHome={showHome}
             connection={snapshot.connection}
-            error={snapshot.error}
-            onOpenNavigation={() => setNavigationOpen((value) => !value)}
-            onOpenEvent={selectChannel}
-          />
-        ) : (
-          <CollectiveChannelWorkspace
-            channelId={channelId}
-            client={client}
-            content={content}
+            canSteward={snapshot.collective.role === 'steward'}
+            canPair={Boolean(snapshot.me.auth) && !host.paired}
+            pairNudge={firstEntry.phase === 'browsing'}
+            canLeave={snapshot.collective.role === 'member'}
+            headerMeta={
+              members
+                ? `${members.cafes.length} 个 Café · ${members.humans.length + visibleCats.length} 位成员`
+                : '正在读取成员…'
+            }
+            notice={snapshot.notice}
+            onInvite={() => void client.createInvite()}
+            onPair={beginPair}
+            onLeave={() => void client.leaveCollective()}
+            onCafe={host.available ? showCafe : undefined}
+            onReplayGuide={firstEntry.narrator ? replayGuide : undefined}
+            navigationOpen={navigationOpen || firstEntry.phase === 'entry'}
+            onCloseNavigation={() => setNavigationOpen(false)}
+            destinations={
+              <ChannelNavigation
+                channels={channels}
+                channelId={destination === 'channel' ? channelId : undefined}
+                query={query}
+                onQuery={(value) => {
+                  setQuery(value);
+                  if (!value.trim()) return;
+                  setDestination('channel');
+                  writeChannelTarget(channelId);
+                }}
+                onSelect={selectChannel}
+                libraryActive={destination === 'library'}
+                onLibrary={
+                  client.artifacts?.api
+                    ? () => {
+                        artifactNavigation.discard();
+                        setDestination('library');
+                        setNavigationOpen(false);
+                        setSelectedMember(undefined);
+                        host.hide();
+                        writeLibraryTarget();
+                      }
+                    : undefined
+                }
+                guideCatCount={
+                  firstEntry.phase === 'playing' && firstEntry.beat === 0
+                    ? firstEntry.arrivalComplete
+                      ? firstEntry.ownCats.length
+                      : 0
+                    : undefined
+                }
+                onMembers={() => {
+                  artifactNavigation.discard();
+                  host.hide();
+                  setDestination('channel');
+                  writeChannelTarget(channelId);
+                  setSelectedMember('members');
+                  setNavigationOpen(false);
+                }}
+              />
+            }
+          >
+            <SharedArtifactLibrary
+              key={namespace}
+              title="全部作品"
+              active={destination === 'library'}
+              filterable
+              onOpenNavigation={() => setNavigationOpen((value) => !value)}
+            />
+            {destination === 'home' ? (
+              <CollectiveHome
+                collective={snapshot.collective}
+                events={snapshot.events}
+                collaboration={snapshot.collaboration}
+                connection={snapshot.connection}
+                error={snapshot.error}
+                onOpenNavigation={() => setNavigationOpen((value) => !value)}
+                onOpenEvent={selectChannel}
+              />
+            ) : destination === 'channel' ? (
+              <CollectiveChannelWorkspace
+                channelId={channelId}
+                client={client}
+                content={content}
+                firstEntry={firstEntry}
+                focusEventId={focusEventId}
+                host={host}
+                namespace={namespace}
+                onContent={(next) => {
+                  setContent(next);
+                  if (next === 'roadmap') setRoadmapReturn(undefined);
+                }}
+                onMember={openMember}
+                onNavigation={() => setNavigationOpen((value) => !value)}
+                onOpenRoadmapMessage={openRoadmapMessage}
+                onReplayGuide={replayGuide}
+                onReturnToRoadmap={roadmapReturn ? returnToRoadmap : undefined}
+                onRoadmapView={updateRoadmapView}
+                onSelectChannel={selectChannel}
+                query={query}
+                roadmapReturnLabel={roadmapReturn?.label}
+                roadmapView={roadmapView}
+                selectedMember={selectedMember}
+                setSelectedMember={setSelectedMember}
+              />
+            ) : null}
+          </ProductShell>
+          <FirstEntryOverlays
             firstEntry={firstEntry}
-            focusEventId={focusEventId}
-            host={host}
-            namespace={namespace}
-            onContent={(next) => {
-              setContent(next);
-              if (next === 'roadmap') setRoadmapReturn(undefined);
-            }}
-            onMember={openMember}
-            onNavigation={() => setNavigationOpen((value) => !value)}
-            onOpenRoadmapMessage={openRoadmapMessage}
-            onReplayGuide={replayGuide}
-            onReturnToRoadmap={roadmapReturn ? returnToRoadmap : undefined}
-            onRoadmapView={updateRoadmapView}
-            onSelectChannel={selectChannel}
-            query={query}
-            roadmapReturnLabel={roadmapReturn?.label}
-            roadmapView={roadmapView}
-            selectedMember={selectedMember}
-            setSelectedMember={setSelectedMember}
+            destination={destination}
+            channelId={channelId}
+            onPair={beginPair}
           />
+        </HostWorkPermissionContext.Provider>
+        {client.artifacts?.publicationSource && (
+          <SharedArtifactPublication snapshot={snapshot} onPair={beginPair} onShareMedia={host.shareMedia} />
         )}
-      </ProductShell>
-      {firstEntry.phase === 'entry' && <EntrySpotlight onPair={beginPair} onBrowse={firstEntry.browse} />}
-      {firstEntry.phase === 'playing' && destination === 'channel' && channelId === 'general' && (
-        <DemoSpotlight
-          beat={firstEntry.beat}
-          selectedCats={firstEntry.ownCats}
-          arrivalComplete={firstEntry.arrivalComplete}
-          onNext={firstEntry.next}
-          onSkip={firstEntry.finish}
-        />
-      )}
-      {firstEntry.phase === 'handoff' && firstEntry.handoffCaptionVisible && firstEntry.narrator && (
-        <section className="demo-caption demo-handoff-caption" data-handoff-caption aria-label="轮到你">
-          <h2>换你来</h2>
-          <p>@ {firstEntry.narrator.displayName} 试试</p>
-        </section>
-      )}
-    </HostWorkPermissionContext.Provider>
+      </SharedArtifactReading>
+    </CollectiveArtifactContext.Provider>
   );
 }

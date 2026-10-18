@@ -29,39 +29,61 @@ type Scope = {
 const Context = createContext<Scope | null>(null);
 // These are presentation slots, never a second conversation, owner or draft store.
 export function ArtworkLightboxProvider({ threadId, children }: { threadId: string; children: ReactNode }) {
-  const [{ work, generation }, setPresentation] = useState<{ work: FloatingArtwork | null; generation: number }>({
+  const [presentation, setPresentation] = useState<{
+    threadId: string;
+    visit: number;
+    work: FloatingArtwork | null;
+    generation: number;
+  }>({
+    threadId,
+    visit: 0,
     work: null,
     generation: 0,
   });
+  const { work, generation, visit } = presentation;
+  // Reset this presentation before its children render the new thread. Keying
+  // the provider instead remounts the entire Chat, its viewport and composer.
+  if (presentation.threadId !== threadId) {
+    setPresentation({ threadId, visit: visit + 1, work: null, generation: generation + 1 });
+  }
   const [composerSlot, setComposerSlot] = useState<HTMLDivElement | null>(null);
   const [toolsSlot, setToolsSlot] = useState<HTMLDivElement | null>(null);
   const open = useCallback(
-    (work: FloatingArtwork) => setPresentation((current) => ({ work, generation: current.generation + 1 })),
-    [],
+    (work: FloatingArtwork) =>
+      setPresentation((current) =>
+        current.visit === visit ? { ...current, work, generation: current.generation + 1 } : current,
+      ),
+    [visit],
   );
   const close = useCallback(
-    () => setPresentation((current) => ({ work: null, generation: current.generation + 1 })),
-    [],
+    () =>
+      setPresentation((current) =>
+        current.visit === visit ? { ...current, work: null, generation: current.generation + 1 } : current,
+      ),
+    [visit],
   );
   const sourceSurfaceId = work?.surface?.id;
   const resolve = useCallback(
     (surface: WorkspaceSurfaceDescriptor) =>
       setPresentation((current) =>
-        current.generation !== generation || !current.work?.surface || current.work.surface.id !== sourceSurfaceId
+        current.visit !== visit ||
+        current.generation !== generation ||
+        !current.work?.surface ||
+        current.work.surface.id !== sourceSurfaceId
           ? current
           : {
               ...current,
               work: { ...current.work, surface: inheritContentSurfaceOrigin(current.work.surface, surface) },
             },
       ),
-    [generation, sourceSurfaceId],
+    [generation, sourceSurfaceId, visit],
   );
   const value = useMemo(
     () => ({ threadId, work, open, close, resolve, composerSlot, setComposerSlot, toolsSlot, setToolsSlot }),
     [threadId, work, open, close, resolve, composerSlot, toolsSlot],
   );
   return (
-    <ArtworkMediaViewportProvider>
+    <ArtworkMediaViewportProvider scopeKey={visit}>
       <Context.Provider value={value}>{children}</Context.Provider>
     </ArtworkMediaViewportProvider>
   );

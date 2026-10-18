@@ -3044,7 +3044,215 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveAcceptWork",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
+    },
+    {
+      "name": "cat_cafe_collective_artifact_command",
+      "serverFamily": "collab",
+      "resourceFamily": "collective-participation",
+      "actions": [
+        "artifact-command"
+      ],
+      "activeState": "canonical",
+      "description": "Read or return a named Markdown patch for the shared work referenced by this invocation. Use when: current-context artifactRequests identifies a Human request to 修改共同作品 and its exact base version. NOT for: choosing another source, private files or Tasks, Office/video editing, Human adoption, or marking Work complete. Output: read returns canonical owner text, selected annotations and the durable request/proposal revision; respond persists one version-bound F309 patch receipt for a Human to compare and adopt. Every call rechecks the requesting Human, Cat owner, current participation and Artifact rights. GOTCHA: owner reads may be snapshot-fenced JSON pages; concatenate every chunk and parse before computing sorted UTF-16 edits. A patch receipt never means the shared work was written back.",
+      "descriptionDigest": "sha256:36de894da8a32c009ce06436093077c2e623324913014a75c57b7a5dd344c38f",
+      "descriptionCharacters": 798,
+      "descriptionTokensCl100kBase": 153,
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "annotationId": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "annotationLimit": {
+                    "default": 2,
+                    "maximum": 2,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "annotationOffset": {
+                    "default": 0,
+                    "maximum": 500,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "artifactId": {
+                    "description": "Exact artifactId from current-context artifactRequests for this invocation source.",
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "cursor": {
+                    "default": 0,
+                    "maximum": 10000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expectedSnapshot": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "read",
+                    "type": "string"
+                  },
+                  "replyOffset": {
+                    "default": 0,
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "requestLimit": {
+                    "default": 30,
+                    "maximum": 30,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestOffset": {
+                    "default": 0,
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "artifactId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "artifactId": {
+                    "$ref": "#/properties/command/anyOf/0/properties/artifactId"
+                  },
+                  "baseRevision": {
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "edits": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "end": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "expectedText": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "replacement": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "selectionId": {
+                          "$ref": "#/properties/command/anyOf/1/properties/requestId"
+                        },
+                        "start": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end",
+                        "expectedText",
+                        "replacement"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 500,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "expectedOwnerRevision": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "expectedProposalRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "respond",
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "response": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "operationId",
+                  "expectedProposalRevision",
+                  "baseRevision",
+                  "edits",
+                  "response",
+                  "expectedOwnerRevision",
+                  "kind",
+                  "artifactId"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "read returns the pinned owner source, selected annotations, canonical requestId and latestProposalRevision. Read every JSON page using nextCursor and expectedSnapshot before editing. respond uses that requestId, expectedOwnerRevision, exact baseRevision, next proposal CAS and a stable operation UUID; edits are sorted UTF-16 [start,end) ranges with exact expectedText/replacement. respond returns a proposal receipt with exact ref/digests/author, without echoing edits or response; Humans read the complete owner-backed preview before deciding. No apply command is available to Cats."
+          },
+          "contextRef": {
+            "description": "Opaque contextRef issued by current-context in this authenticated invocation.",
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextRef",
+          "command"
+        ],
+        "type": "object"
+      },
+      "inputSchemaDigest": "sha256:dc67eeff0f4fd170ece1303eabef3868a5c39ac3e1204f66a75d3180c39dbef7",
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "runtimeProfiles": [
+        "collective-participation",
+        "collective-work",
+        "full"
+      ],
+      "schemaDelivery": {
+        "evidenceRef": "file:packages/mcp-server/src/tools/collective-participation-tools.ts",
+        "policy": "host-default"
+      },
+      "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveArtifactCommand",
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_continue_work",
@@ -3125,7 +3333,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveContinueWork",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_current_context",
@@ -3161,7 +3369,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveCurrentContext",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_progress",
@@ -3220,7 +3428,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveProgress",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_propose_work",
@@ -3283,7 +3491,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveProposeWork",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_read_context",
@@ -3340,7 +3548,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveReadContext",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_reply",
@@ -3400,7 +3608,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveReply",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_collective_set_interest",
@@ -3454,7 +3662,7 @@
         "policy": "host-default"
       },
       "implementationRef": "module:./tools/collective-participation-tools.js#handleCollectiveSetInterest",
-      "protectedImplementationDigest": "sha256:2379939d4ce0acbb679b8080f50e44ccca9b14cbad98c79273b8e5e101aa3be4"
+      "protectedImplementationDigest": "sha256:00f7490d5552c7c268f3faa671bcaec48bdd2a8771dcb4f2c520a3a236b5b99f"
     },
     {
       "name": "cat_cafe_community_await_external",

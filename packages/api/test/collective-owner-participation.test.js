@@ -39,6 +39,9 @@ async function harness(delayThreadWrites = false, initialExcludedCatIds = []) {
     { id: 'opus', displayName: 'Opus', supported: false },
   ];
   const connector = {
+    async readArtifactContext() {
+      return { status: 'available', requests: [] };
+    },
     async getProjection() {
       return {
         serviceInstanceId: 'svc_aaaaaaaa',

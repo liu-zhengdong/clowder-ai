@@ -53,6 +53,7 @@ import {
   isEntrustedWorkSubjectKey,
   type ReplaceAutomationStateIfGenerationInput,
   type ReplaceDeploymentWaitIfGenerationInput,
+  TaskPageCursorExpiredError,
   type UpdateEntrustedWorkStoreInput,
   type UpdateEntrustedWorkStoreResult,
 } from '../ports/TaskStoreContract.js';
@@ -526,6 +527,20 @@ export class RedisTaskStore implements ITaskStore {
     const ids = await this.redis.zrange(TaskKeys.thread(threadId), 0, -1);
     if (ids.length === 0) return [];
     return fetchRedisTasksByIds(this.redis, ids, { cleanupKey: TaskKeys.thread(threadId) });
+  }
+
+  async listByThreadPage(
+    threadId: string,
+    limit: number,
+    afterId?: string,
+  ): Promise<{ tasks: TaskItem[]; scannedCount: number; nextCursor?: string }> {
+    const key = TaskKeys.thread(threadId);
+    const rank = afterId ? await this.redis.zrank(key, afterId) : -1;
+    if (rank === null) throw new TaskPageCursorExpiredError('Works task cursor expired');
+    const ids = await this.redis.zrange(key, rank + 1, rank + Math.min(64, Math.max(1, limit)) + 1);
+    const page = ids.slice(0, limit);
+    const tasks = page.length ? await fetchRedisTasksByIds(this.redis, page, { strict: true }) : [];
+    return { tasks, scannedCount: page.length, ...(ids.length > page.length ? { nextCursor: page.at(-1) } : {}) };
   }
 
   async delete(taskId: string): Promise<boolean> {

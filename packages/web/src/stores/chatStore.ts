@@ -1533,12 +1533,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setRightPanelOpen: (open) => set({ rightPanelOpen: open }),
   // F232 P2（云端 round 5）：workspace/transcript mode 被 ChatContainer auto-open effect 强制开，
   // 显式关闭 panel 时必须先退出这两个 mode 回 status，否则 effect 立即重开（关不掉）。status 无此问题，保留。
-  closeRightPanel: () =>
+  closeRightPanel: () => {
+    // A deliberate fold also wins over a cold snapshot when the not-yet-hydrated panel is already closed.
+    if (!get().presentationLock) advanceWorkspaceRevision(get().currentThreadId);
     set((s) => ({
       rightPanelMode:
         s.rightPanelMode === 'workspace' || s.rightPanelMode === 'transcript' ? 'status' : s.rightPanelMode,
       rightPanelOpen: false,
-    })),
+    }));
+  },
   setWorkspaceWorktreeId: (id) => {
     // Guard: skip destructive reset when worktreeId is unchanged.
     // setWorkspaceWorktreeId unconditionally clears openFilePath/openTabs,
