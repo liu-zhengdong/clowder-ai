@@ -53,7 +53,6 @@ import {
   isEntrustedWorkSubjectKey,
   type ReplaceAutomationStateIfGenerationInput,
   type ReplaceDeploymentWaitIfGenerationInput,
-  TaskPageCursorExpiredError,
   type UpdateEntrustedWorkStoreInput,
   type UpdateEntrustedWorkStoreResult,
 } from '../ports/TaskStoreContract.js';
@@ -61,7 +60,7 @@ import { buildTaskWaitReplacement } from '../ports/TaskWaitReplacement.js';
 import { TaskKeys } from '../redis-keys/task-keys.js';
 import { DEPLOYMENT_WAIT_INDEX, listDeploymentWaitProjectionCandidates } from './deployment-wait-index.js';
 import { hydrateTask, hydrateWaitRegistration, serializeTask } from './RedisTaskCodec.js';
-import { fetchRedisTasksByIds } from './RedisTaskCollectionReader.js';
+import { fetchRedisTasksByIds, readRedisTaskThreadPage } from './RedisTaskCollectionReader.js';
 import { RedisTaskDevelopmentWorkStore } from './RedisTaskDevelopmentWorkStore.js';
 import { RedisTaskEntrustedWorkMutationStore } from './RedisTaskEntrustedWorkMutationStore.js';
 import { deleteGenericTasks } from './RedisTaskGenericDeletion.js';
@@ -529,18 +528,8 @@ export class RedisTaskStore implements ITaskStore {
     return fetchRedisTasksByIds(this.redis, ids, { cleanupKey: TaskKeys.thread(threadId) });
   }
 
-  async listByThreadPage(
-    threadId: string,
-    limit: number,
-    afterId?: string,
-  ): Promise<{ tasks: TaskItem[]; scannedCount: number; nextCursor?: string }> {
-    const key = TaskKeys.thread(threadId);
-    const rank = afterId ? await this.redis.zrank(key, afterId) : -1;
-    if (rank === null) throw new TaskPageCursorExpiredError('Works task cursor expired');
-    const ids = await this.redis.zrange(key, rank + 1, rank + Math.min(64, Math.max(1, limit)) + 1);
-    const page = ids.slice(0, limit);
-    const tasks = page.length ? await fetchRedisTasksByIds(this.redis, page, { strict: true }) : [];
-    return { tasks, scannedCount: page.length, ...(ids.length > page.length ? { nextCursor: page.at(-1) } : {}) };
+  listByThreadPage(threadId: string, limit: number, afterId?: string) {
+    return readRedisTaskThreadPage(this.redis, threadId, limit, afterId);
   }
 
   async delete(taskId: string): Promise<boolean> {

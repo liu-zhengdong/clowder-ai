@@ -5100,6 +5100,23 @@ export class QueueProcessor {
           persistenceContext,
           ...(invocationId ? { parentInvocationId: invocationId } : {}),
           persistedPromptMessageIds: messageIds,
+          resolvePendingPromptMessageIds: async (catId, candidateIds) => {
+            const pending = await queue.getDurableEntriesForMessages(threadId, candidateIds);
+            const ownedIds = new Set(messageIds);
+            return candidateIds.filter(
+              (id) =>
+                !ownedIds.has(id) &&
+                pending
+                  .get(id)
+                  ?.some(
+                    (row) =>
+                      row.threadId === threadId &&
+                      queueEntryOwnerId(row) === userId &&
+                      row.targets.includes(catId) &&
+                      (row.status === 'queued' || row.status === 'claimed'),
+                  ),
+            );
+          },
           // F063: this is the authoritative per-message hydration subset. Passing
           // an explicit empty/partial array prevents the aggregate raw batch text
           // from becoming either a prompt fallback or durable exposure evidence.

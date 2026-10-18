@@ -78,6 +78,7 @@ import {
   resolveDeliveryTimelineScore,
   resolveThreadMessageVisibility,
 } from '../visibility.js';
+import { ThreadMessageTimelineIndex } from './ThreadMessageTimelineIndex.js';
 // Single source of truth: ThreadStore.ts owns DEFAULT_THREAD_ID
 import { DEFAULT_THREAD_ID } from './ThreadStore.js';
 import type { TurnExecutionMessageProjection } from './TurnExecutionStore.js';
@@ -2443,6 +2444,7 @@ export function prepareLifecycleResponseTerminalMessage(
 
 export class MessageStore {
   private readonly userMentionIndex = new UserMentionIndex();
+  private readonly threadTimeline = new ThreadMessageTimelineIndex();
   private mentionCutover: number | undefined;
 
   getLastUserMentionHandling(userId: string) {
@@ -2571,6 +2573,7 @@ export class MessageStore {
 
   private pruneIdempotencyIndexForMessageIds(messageIds: readonly string[]): void {
     if (messageIds.length === 0) return;
+    for (const id of messageIds) this.threadTimeline.remove(id);
     const removedIds = new Set(messageIds);
     for (const [key, value] of this.idempotencyIndex.entries()) {
       if (removedIds.has(value)) {
@@ -2581,6 +2584,7 @@ export class MessageStore {
 
   /** Publish a bodyless processing placeholder only when its final body is durable. */
   private publishLifecycleResponse(message: StoredMessage): void {
+    this.threadTimeline.upsert(message);
     if (!this.visibilitySeq.has(message.id)) {
       this.visibilitySeqCounter = Math.max(this.visibilitySeqCounter + 1, Date.now());
       this.visibilitySeq.set(message.id, this.visibilitySeqCounter);
@@ -2719,6 +2723,7 @@ export class MessageStore {
     }
     message.lifecycle = structuredClone(lifecycle);
     if (!preservesPublishedAgent) message.deliveryStatus = 'queued';
+    this.threadTimeline.upsert(message);
     return { outcome: 'enqueued', message: { ...message }, entries: admitted.entries, deduped: false };
   }
 
@@ -2805,6 +2810,7 @@ export class MessageStore {
       threadId,
     };
     this.messages.push(stored);
+    this.threadTimeline.upsert(stored);
     if (idempotencyIndexKey) {
       this.idempotencyIndex.set(idempotencyIndexKey, stored.id);
     }
@@ -3506,7 +3512,20 @@ export class MessageStore {
     options?: ThreadMessageReadOptions,
   ): BoundedThreadMessagePage {
     const rawLimit = Math.max(0, Math.floor(scanLimit));
-    const eligible = this.messages
+    const isVisible = resolveThreadMessageVisibility(options, userId);
+    const visible = (message: StoredMessage) =>
+      !message.deletedAt &&
+      isVisible(message) &&
+      (!userId || message.userId === userId || isSystemUserMessage(message));
+    if (options?.artifactProjection) {
+      const page = this.threadTimeline.readBefore(threadId, timestamp, beforeId, rawLimit);
+      return { ...page, messages: page.messages.filter(visible) };
+    }
+
+    // F148 keyword ranking consumes the bounded global memory window once.
+    // Account for every raw row, including other threads and rows past the cursor.
+    const rawCandidates = rawLimit === 0 ? [] : this.messages.slice(-rawLimit);
+    const candidates = rawCandidates
       .filter((message) => message.threadId === threadId)
       .sort((a, b) => {
         const aTimestamp = getTimelineOrderTime(a);
@@ -3515,27 +3534,20 @@ export class MessageStore {
       })
       .filter((message) => {
         const effectiveTimestamp = getTimelineOrderTime(message);
-        if (effectiveTimestamp < timestamp) return true;
-        return effectiveTimestamp === timestamp && beforeId !== undefined && message.id < beforeId;
+        return (
+          effectiveTimestamp < timestamp ||
+          (effectiveTimestamp === timestamp && beforeId !== undefined && message.id < beforeId)
+        );
       });
-    const candidates = eligible.slice(0, rawLimit);
-
-    const isVisible = resolveThreadMessageVisibility(options, userId);
-    const messages = candidates.filter((message) => {
-      if (message.deletedAt || !isVisible(message)) return false;
-      return !userId || message.userId === userId || isSystemUserMessage(message);
-    });
     const oldestCandidate = candidates.at(-1);
-    const nextCursor = oldestCandidate
-      ? { timestamp: getTimelineOrderTime(oldestCandidate), id: oldestCandidate.id }
-      : undefined;
-
     return {
-      messages: messages.reverse(),
-      scannedCount: candidates.length,
+      messages: candidates.filter(visible).reverse(),
+      scannedCount: rawCandidates.length,
       storageRoundTrips: 0,
-      exhausted: candidates.length >= eligible.length,
-      ...(nextCursor ? { nextCursor } : {}),
+      exhausted: rawCandidates.length >= this.messages.length,
+      ...(oldestCandidate
+        ? { nextCursor: { timestamp: getTimelineOrderTime(oldestCandidate), id: oldestCandidate.id } }
+        : {}),
     };
   }
 
@@ -3880,6 +3892,7 @@ export class MessageStore {
       source.timelineOrderAt = input.failedAt;
       source.deliveredAt = input.failedAt;
       source.deliveryStatus = 'delivered';
+      this.threadTimeline.update(source);
       if (!this.visibilitySeq.has(source.id)) {
         this.visibilitySeqCounter = Math.max(this.visibilitySeqCounter + 1, Date.now());
         this.visibilitySeq.set(source.id, this.visibilitySeqCounter);
@@ -3958,6 +3971,7 @@ export class MessageStore {
     msg.timelineOrderAt = resolveDeliveryTimelineScore(msg, deliveredAt);
     msg.deliveredAt = deliveredAt;
     msg.deliveryStatus = 'delivered';
+    this.threadTimeline.upsert(msg);
     // #1269: Preserve existing visibility position for already-published speech.
     // Timeline-published queued cat speech gets visibilitySeq at append — delivery
     // must NOT reallocate or it would move the message after later arrivals and
@@ -3979,6 +3993,7 @@ export class MessageStore {
     if (msg.deliveryStatus === 'queued') return { kind: 'existing', message: { ...msg } };
     if (msg.deliveryStatus !== undefined) return { kind: 'conflict' };
     msg.deliveryStatus = 'queued';
+    this.threadTimeline.upsert(msg);
     return { kind: 'prepared', message: { ...msg } };
   }
 

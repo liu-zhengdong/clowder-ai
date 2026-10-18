@@ -818,6 +818,11 @@ export async function* routeParallel(
               threadTitle: routeThread?.title ?? undefined,
               projectPath: routeThread?.projectPath,
               cursorOverlay: options.cursorBoundaries?.get(catId as string),
+              ...(options.resolvePendingPromptMessageIds
+                ? {
+                    resolvePendingPromptMessageIds: options.resolvePendingPromptMessageIds.bind(undefined, catId),
+                  }
+                : {}),
               ...(currentUserMessageId ? { sameUserWaveTriggerMessageId: currentUserMessageId } : {}),
               ...(contextProjection ? { contextProjection } : {}),
             },

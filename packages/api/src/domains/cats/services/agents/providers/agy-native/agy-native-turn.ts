@@ -71,11 +71,13 @@ export async function* observeAgyNativeTurn(
     if (isLivenessWarning(raw)) continue;
     const record = readAgyNativeEnvelope(raw);
     if (record.event === 'init') {
+      if (resultCount > 0) throw new Error('AGY native init followed a terminal result');
       sessionId = verifiedInitSessionId(record, expected, sessionId !== null);
       yield { kind: 'init', sessionId };
     }
     if (record.event === 'result') {
-      verifyAgyNativeResult(record, sessionId);
+      // Pre-init results are startup diagnostics only; drain transport and fail below.
+      if (sessionId) verifyAgyNativeResult(record, sessionId);
       resultCount++;
       if (!signal?.aborted) resultSeenBeforeCancellation = true;
     }

@@ -1,5 +1,6 @@
 import type { TaskItem } from '@cat-cafe/shared';
 import type { RedisClient } from '@cat-cafe/shared/utils';
+import { TaskPageCursorExpiredError } from '../ports/TaskStoreContract.js';
 import { TaskKeys } from '../redis-keys/task-keys.js';
 import { hydrateTask } from './RedisTaskCodec.js';
 
@@ -46,4 +47,19 @@ export async function fetchRedisTasksByIds(
   if (options?.cleanupKey) await cleanupStaleTaskIndexes(redis, options.cleanupKey, staleIds);
 
   return tasks;
+}
+
+export async function readRedisTaskThreadPage(
+  redis: RedisClient,
+  threadId: string,
+  limit: number,
+  afterId?: string,
+): Promise<{ tasks: TaskItem[]; scannedCount: number; nextCursor?: string }> {
+  const key = TaskKeys.thread(threadId);
+  const rank = afterId ? await redis.zrank(key, afterId) : -1;
+  if (rank === null) throw new TaskPageCursorExpiredError('Works task cursor expired');
+  const ids = await redis.zrange(key, rank + 1, rank + Math.min(64, Math.max(1, limit)) + 1);
+  const page = ids.slice(0, limit);
+  const tasks = page.length ? await fetchRedisTasksByIds(redis, page, { strict: true }) : [];
+  return { tasks, scannedCount: page.length, ...(ids.length > page.length ? { nextCursor: page.at(-1) } : {}) };
 }

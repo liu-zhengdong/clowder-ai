@@ -1380,6 +1380,11 @@ export async function* routeSerial(
               cursorOverlay: options.cursorBoundaries?.get(catId as string),
               sameRouteOutputMessageIds,
               exactA2ATriggerMessageId: streamReplyTo,
+              ...(options.resolvePendingPromptMessageIds
+                ? {
+                    resolvePendingPromptMessageIds: options.resolvePendingPromptMessageIds.bind(undefined, catId),
+                  }
+                : {}),
               ...(contextProjection ? { contextProjection } : {}),
             },
           );

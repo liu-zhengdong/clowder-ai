@@ -1,23 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createCatId } from '@cat-cafe/shared';
 import Fastify from 'fastify';
 import { withBallCustodyTaskEvents } from '../src/domains/ball-custody/BallCustodyTaskStore.js';
 import { readGlobalWorksPage, WorksPageError } from '../src/domains/cats/services/agents/routing/global-works-page.js';
+import { MessageStore } from '../src/domains/cats/services/stores/ports/MessageStore.js';
 import { TaskStore } from '../src/domains/cats/services/stores/ports/TaskStore.js';
 import { threadsRoutes } from '../src/routes/threads.js';
 
 const owner = 'works-page-owner';
 const headers = { 'x-cat-cafe-user': owner };
-const file = (id: string, timestamp: number) => ({
-  id,
-  threadId: 'T',
-  userId: owner,
-  catId: 'codex61-sol',
-  timestamp,
-  content: '',
-  mentions: [],
-  extra: { rich: { blocks: [{ kind: 'file', v: 1, id, url: `/uploads/${id}.pdf`, fileName: `${id}.pdf` }] } },
-});
 
 test('cursor positions cannot retain revoked thread access, and failed source reads never become an empty success', async () => {
   const input = {
@@ -102,7 +94,21 @@ test('many PR attachments in one task page resume within the 512-candidate budge
 
 test('global Works yields a bounded page before scanning long history, then resumes without losing older works', async () => {
   const app = Fastify();
-  const messages = Array.from({ length: 700 }, (_, i) => file(`m-${String(i).padStart(4, '0')}`, i + 1));
+  const messageStore = new MessageStore();
+  for (let i = 0; i < 700; i++) {
+    messageStore.append({
+      userId: owner,
+      from: { kind: 'agent', catId: createCatId('codex61-sol') },
+      threadId: 'T',
+      timestamp: i + 1,
+      content: '',
+      mentions: [],
+      extra: {
+        rich: { v: 1, blocks: [{ kind: 'file', v: 1, id: `f-${i}`, url: `/uploads/${i}.pdf`, fileName: `${i}.pdf` }] },
+      },
+    });
+  }
+  const readPage = messageStore.getByThreadBeforeBounded.bind(messageStore);
   let rawReads = 0;
   let custodyEvents = 0;
   const tasks = new TaskStore();
@@ -110,26 +116,16 @@ test('global Works yields a bounded page before scanning long history, then resu
   tasks.listByThread = () => assert.fail('unbounded task read');
   await app.register(threadsRoutes, {
     threadStore: { list: async () => [{ id: 'T', title: 'Long history', createdBy: owner }] },
-    messageStore: {
+    messageStore: Object.assign(messageStore, {
       getByThread: () => assert.fail('paged Works must not start an unbounded visible-message refill'),
-      getByThreadBeforeBounded: async (_thread, time, limit, beforeId, userId, scanLimit) => {
-        assert.equal(userId, owner);
-        assert.ok(limit <= 128 && scanLimit <= 128);
-        const eligible = [...messages]
-          .reverse()
-          .filter((m) => m.timestamp < time || (m.timestamp === time && m.id < beforeId));
-        const rows = eligible.slice(0, scanLimit);
-        rawReads += rows.length;
-        const last = rows.at(-1);
-        return {
-          messages: rows.reverse(),
-          scannedCount: rows.length,
-          storageRoundTrips: 0,
-          exhausted: eligible.length <= scanLimit,
-          ...(last ? { nextCursor: { timestamp: last.timestamp, id: last.id } } : {}),
-        };
+      getByThreadBeforeBounded: (...args: Parameters<MessageStore['getByThreadBeforeBounded']>) => {
+        assert.equal(args[4], owner);
+        assert.ok(args[2] <= 128 && args[5] <= 128);
+        const page = readPage(...args);
+        rawReads += page.scannedCount;
+        return page;
       },
-    },
+    }),
     taskStore: withBallCustodyTaskEvents(tasks, {
       record: async () => {
         custodyEvents += 1;
