@@ -17,6 +17,7 @@ import { describe, it } from 'node:test';
 import vm from 'node:vm';
 import { assignDocHeadingIds, resolveDocLink, resolveImageSrc } from './lib/doc-links.mjs';
 import { fetchLocalizedMarkdown, localizedDocCandidates } from './lib/doc-locale.mjs';
+import { stripFrontmatter } from './lib/doc-frontmatter.mjs';
 import { sanitizeMarkdown } from './lib/sanitize-md.mjs';
 
 const require = createRequire(import.meta.url);
@@ -317,6 +318,41 @@ describe('localized roadmap bars', () => {
       [],
       'every roadmap hover description needs an i18n key',
     );
+  });
+});
+
+// ─── Frontmatter stripping ───────────────────────────────────────────
+// Repo docs carry a YAML frontmatter block for tooling. marked renders it as
+// a paragraph of raw text, so the viewer must strip it before rendering —
+// otherwise the first thing a reader sees is `title: "…" doc_kind: …`.
+describe('stripFrontmatter', () => {
+  const doc = '---\ndoc_kind: architecture\ncreated: 2026-02-26\n---\n\n# Clowder AI 愿景\n\n正文。\n';
+
+  it('removes a leading frontmatter block and keeps the body', () => {
+    const out = stripFrontmatter(doc);
+    assert.doesNotMatch(out, /doc_kind/);
+    assert.match(out, /^# Clowder AI 愿景/);
+  });
+
+  it('leaves markdown without frontmatter untouched', () => {
+    const plain = '# Title\n\nBody.\n';
+    assert.equal(stripFrontmatter(plain), plain);
+  });
+
+  it('keeps a horizontal rule that is not frontmatter', () => {
+    // No closing fence after a blank line, so this is a rule, not metadata.
+    const rule = '---\n\nJust a rule below.\n';
+    assert.equal(stripFrontmatter(rule), rule);
+  });
+
+  it('does not strip a block that appears later in the document', () => {
+    const late = '# Title\n\n---\nkeep: me\n---\n';
+    assert.match(stripFrontmatter(late), /keep: me/);
+  });
+
+  it('leaves issue bodies alone (community.html shares the sanitizer)', () => {
+    // community.html must not call stripFrontmatter; guard the wiring itself.
+    assert.doesNotMatch(readSite('community.html'), /_stripFrontmatter/);
   });
 });
 
