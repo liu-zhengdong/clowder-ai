@@ -15,9 +15,9 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import vm from 'node:vm';
+import { stripFrontmatter } from './lib/doc-frontmatter.mjs';
 import { assignDocHeadingIds, resolveDocLink, resolveImageSrc } from './lib/doc-links.mjs';
 import { fetchLocalizedMarkdown, localizedDocCandidates } from './lib/doc-locale.mjs';
-import { stripFrontmatter } from './lib/doc-frontmatter.mjs';
 import { sanitizeMarkdown } from './lib/sanitize-md.mjs';
 
 const require = createRequire(import.meta.url);

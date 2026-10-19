@@ -20,7 +20,5 @@
  */
 export function stripFrontmatter(md) {
   if (typeof md !== 'string') return md;
-  return md
-    .replace(/^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/, '')
-    .replace(/^\s*\r?\n/, '');
+  return md.replace(/^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/, '').replace(/^\s*\r?\n/, '');
 }
