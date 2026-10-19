@@ -843,6 +843,25 @@ describe('no runtime Tailwind CDN', () => {
     assert.ok(existsSync(resolve(SITE, 'tailwind.css')));
   });
 
+  // Tailwind preflight sets `img { display: block }`. Without an override the
+  // README badge row stacks vertically — six badges become six lines, which is
+  // the first thing a visitor sees because README is the default document.
+  it('docs content keeps badge images inline instead of stacking them', () => {
+    const css = readSite('tailwind.css');
+    assert.match(
+      css,
+      /#doc-content img\{[^}]*display:inline-block/,
+      'badge images must be inline-block inside the docs article',
+    );
+  });
+
+  it('the inline-image override is scoped to the docs article', () => {
+    const css = readSite('tailwind.css');
+    // A bare `img{display:inline-block}` would leak into the homepage, which
+    // lays out its own images and relies on preflight's block behavior.
+    assert.doesNotMatch(css, /(^|\})img\{[^}]*display:inline-block/, 'override must stay scoped to #doc-content');
+  });
+
   it('tailwind config exists for reproducible rebuilds', () => {
     assert.ok(existsSync(resolve(ROOT, 'tailwind.site.config.js')));
   });
