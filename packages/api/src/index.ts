@@ -404,6 +404,7 @@ import { securityHeadersPlugin } from './infrastructure/security-headers.js';
 import { sessionAuthPlugin, sessionRoute } from './infrastructure/session-auth.js';
 import { startupMilestone } from './infrastructure/startup-diagnostics.js';
 import { SocketManager } from './infrastructure/websocket/index.js';
+import { registerArtifactWidgetBlockRoute } from './routes/artifact-widget-block-route.js';
 import { avatarsRoutes } from './routes/avatars.js';
 import {
   appendA2ASourceWithLedgerAdmission,
@@ -3122,6 +3123,8 @@ async function main(): Promise<void> {
   };
   await app.register(messagesRoutes, messagesOpts);
   await app.register(messageBundleRoutes, { messageStore, threadStore });
+  // F232 PR-A: Works 打开 HTML 作品时，按坐标回原消息读正文；权限与可见性在路由内复核。
+  registerArtifactWidgetBlockRoute(app, { messageStore });
   // F297 Phase B: 所有"什么在跑"的问题收口到同一个 domain service。
   //
   // 它比旧结构多做一件关键的事：**正向 working 投影**。live invocation / managed command /
