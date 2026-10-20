@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import type { StoredMessage } from '../src/domains/cats/services/stores/ports/MessageStore.js';
-import { registerArtifactWidgetBlockRoute } from '../src/routes/artifact-widget-block-route.js';
+import type { Thread } from '../src/domains/cats/services/stores/ports/ThreadStore.js';
+import { threadsRoutes } from '../src/routes/threads.js';
 
 const owner = 'widget-read-owner';
-const headers = { 'x-cat-cafe-user': owner };
 const threadId = 'thread-widget-read';
 const messageId = 'msg-widget-read';
 const html = '<!doctype html><html><body><button id="b">click me</button></body></html>';
@@ -33,21 +33,48 @@ function message(overrides: Partial<StoredMessage> = {}): StoredMessage {
   } as StoredMessage;
 }
 
-async function appWith(stored: StoredMessage | null) {
-  const app = Fastify();
-  registerArtifactWidgetBlockRoute(app, {
-    messageStore: { getById: async (id: string) => (id === messageId ? stored : null) },
-  });
-  return app;
+function thread(overrides: Partial<Thread> = {}): Thread {
+  return {
+    id: threadId,
+    projectPath: 'default',
+    title: 'Widget read fixture',
+    createdBy: owner,
+    participants: [],
+    lastActiveAt: 1,
+    createdAt: 1,
+    ...overrides,
+  } as Thread;
 }
 
-async function get(stored: StoredMessage | null, blockId: string, options: { user?: string; thread?: string } = {}) {
-  const app = await appWith(stored);
+async function request(input: {
+  thread?: Thread | null;
+  messages?: Map<string, StoredMessage>;
+  user?: string | null;
+  blockId?: string;
+  messageId?: string;
+  threadId?: string;
+}) {
+  const app = Fastify();
+  await app.register(threadsRoutes, {
+    threadStore: {
+      get: async (id: string) => (input.thread && id === input.thread.id ? input.thread : null),
+    } as never,
+    messageStore: {
+      getById: async (id: string) => input.messages?.get(id) ?? null,
+    } as never,
+    presenceSource: {} as never,
+  });
+  await app.ready();
   try {
+    const headers: Record<string, string> = {};
+    // `resolveUserId(request, {})` only reads a session or a non-browser header.
+    if (input.user !== null) headers['x-cat-cafe-user'] = input.user ?? owner;
     return await app.inject({
       method: 'GET',
-      url: `/api/threads/${options.thread ?? threadId}/artifacts/${messageId}/blocks/${blockId}`,
-      headers: { 'x-cat-cafe-user': options.user ?? owner },
+      url:
+        `/api/threads/${input.threadId ?? threadId}/artifacts/` +
+        `${input.messageId ?? messageId}/blocks/${input.blockId ?? 'widget-a'}`,
+      headers,
     });
   } finally {
     await app.close();
@@ -55,56 +82,83 @@ async function get(stored: StoredMessage | null, blockId: string, options: { use
 }
 
 test('reads the exact html_widget block named by the coordinate', async () => {
-  const response = await get(message(), 'widget-b');
+  const response = await request({ thread: thread(), messages: new Map([[messageId, message()]]) });
   assert.equal(response.statusCode, 200);
   const body = response.json();
-  assert.equal(body.block.id, 'widget-b');
+  assert.equal(body.block.id, 'widget-a');
   assert.equal(body.block.kind, 'html_widget');
   assert.equal(body.block.html, html);
-  assert.equal(body.messageId, messageId);
 });
 
-test('two same-name widgets in one message resolve to their own block, never the first one', async () => {
-  const first = await get(message(), 'widget-a');
-  const second = await get(message(), 'widget-b');
+test('two same-name widgets in one message resolve to their own block', async () => {
+  const messages = new Map([[messageId, message()]]);
+  const first = await request({ thread: thread(), messages, blockId: 'widget-a' });
+  const second = await request({ thread: thread(), messages, blockId: 'widget-b' });
   assert.equal(first.json().block.id, 'widget-a');
   assert.equal(second.json().block.id, 'widget-b');
 });
 
-test('a block that is not html_widget is unavailable even when the id exists', async () => {
-  const response = await get(message(), 'choice-a');
-  assert.equal(response.statusCode, 404);
-  assert.equal(response.json().error, 'widget_block_unavailable');
+test('no identity is 401, not default-user', async () => {
+  const response = await request({
+    thread: thread(),
+    messages: new Map([[messageId, message()]]),
+    user: null,
+  });
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.json().error, 'Identity required');
 });
 
-test('a missing block id is unavailable, not a fallback to another widget', async () => {
-  const response = await get(message(), 'does-not-exist');
-  assert.equal(response.statusCode, 404);
+test('the sibling artefacts route admission applies: missing thread 404, other owner 403', async () => {
+  const missing = await request({ thread: null, messages: new Map() });
+  assert.equal(missing.statusCode, 404);
+  const foreign = await request({
+    thread: thread({ createdBy: 'someone-else' }),
+    messages: new Map([[messageId, message()]]),
+  });
+  assert.equal(foreign.statusCode, 403);
 });
 
-test('another thread cannot read the block', async () => {
-  const response = await get(message(), 'widget-a', { thread: 'thread-other' });
-  assert.equal(response.statusCode, 404);
+test('a system thread admits an ordinary authenticated user, but only for their own messages', async () => {
+  const sharedThread = thread({ createdBy: 'system' });
+  const own = await request({ thread: sharedThread, messages: new Map([[messageId, message()]]) });
+  assert.equal(own.statusCode, 200);
+  const foreign = await request({
+    thread: sharedThread,
+    messages: new Map([[messageId, message({ userId: 'another-user' })]]),
+  });
+  assert.equal(foreign.statusCode, 404);
 });
 
-test('another user cannot read the block', async () => {
-  const response = await get(message(), 'widget-a', { user: 'someone-else' });
-  assert.equal(response.statusCode, 404);
+test('a system-user message is readable because the catalogue lists it', async () => {
+  const response = await request({
+    thread: thread(),
+    messages: new Map([[messageId, message({ userId: 'system', from: { kind: 'system', service: 'scheduler' } })]]),
+  });
+  assert.equal(response.statusCode, 200);
 });
 
-test('deleted, internal and unpublished messages are unavailable', async () => {
+test('another user, a deleted message and queued user work are all unavailable', async () => {
   for (const stored of [
+    message({ userId: 'another-user' }),
     message({ deletedAt: 1 }),
-    message({ from: { kind: 'system', service: 'scheduler' } }),
-    message({ origin: 'briefing' }),
     message({ deliveryStatus: 'queued', catId: null, from: { kind: 'user', userId: owner } }),
   ]) {
-    const response = await get(stored, 'widget-a');
-    assert.equal(response.statusCode, 404);
+    const response = await request({ thread: thread(), messages: new Map([[messageId, stored]]) });
+    assert.equal(response.statusCode, 404, JSON.stringify(stored.deliveryStatus));
   }
 });
 
-test('a missing message is unavailable', async () => {
-  const response = await get(null, 'widget-a');
-  assert.equal(response.statusCode, 404);
+test('queued cat speech stays readable, matching the catalogue read', async () => {
+  const response = await request({
+    thread: thread(),
+    messages: new Map([[messageId, message({ deliveryStatus: 'queued' })]]),
+  });
+  assert.equal(response.statusCode, 200);
+});
+
+test('a block that is not html_widget, a missing block, or a wrong thread is unavailable', async () => {
+  const messages = new Map([[messageId, message()]]);
+  assert.equal((await request({ thread: thread(), messages, blockId: 'choice-a' })).statusCode, 404);
+  assert.equal((await request({ thread: thread(), messages, blockId: 'gone' })).statusCode, 404);
+  assert.equal((await request({ thread: thread(), messages, threadId: 'other-thread' })).statusCode, 404);
 });
