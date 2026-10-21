@@ -905,7 +905,7 @@ export class AcpClient {
       const entry = this.pending.get(promptReqId);
       if (entry) {
         this.pending.delete(promptReqId);
-        entry.reject(new Error(`Session ${sessionId} cancelled — prompt request settled`));
+        entry.reject(new AcpSessionCancelledError(sessionId));
       }
       this.sessionPromptPendingIds.delete(sessionId);
     }
@@ -1155,7 +1155,9 @@ export class AcpClient {
         },
         reject: (err) => {
           if (timer) clearTimeout(timer);
-          log.error({ method, id, durationMs: Date.now() - sentAt, error: err.message }, 'ACP sendRequest: rejected');
+          const context = { method, id, durationMs: Date.now() - sentAt, error: err.message };
+          if (err instanceof AcpSessionCancelledError) log.info(context, 'ACP prompt request locally cancelled');
+          else log.error(context, 'ACP sendRequest: rejected');
           reject(err);
         },
         refreshTimeout: armTimeout,

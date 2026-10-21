@@ -39,10 +39,12 @@ import type {
   MessageMetadata,
   PreparedProviderRequestV1,
 } from '../../../types.js';
+import { isExpectedInvocationCancellation } from '../../invocation/invoke-helpers.js';
 import {
   type AcpCapacitySignal,
   type AcpPermissionHandler,
   AcpProtocolError,
+  AcpSessionCancelledError,
   AcpStreamIdleError,
   AcpTimeoutError,
 } from './AcpClient.js';
@@ -366,6 +368,10 @@ export class AcpAgentService implements AgentService {
     const acpState = createAcpSessionState();
 
     // Window 1: pre-aborted signal short-circuits immediately
+    if (isExpectedInvocationCancellation(options?.signal)) {
+      yield { type: 'done', catId: this.catId, errorCode: 'INVOCATION_CANCELLED', metadata, timestamp: Date.now() };
+      return;
+    }
     if (options?.signal?.aborted) {
       yield {
         type: 'error',
@@ -718,6 +724,10 @@ export class AcpAgentService implements AgentService {
         );
 
       // Window 2: abort may have fired during newSession
+      if (isExpectedInvocationCancellation(options?.signal)) {
+        yield { type: 'done', catId: this.catId, errorCode: 'INVOCATION_CANCELLED', metadata, timestamp: Date.now() };
+        return;
+      }
       if (options?.signal?.aborted) {
         yield {
           type: 'error',
@@ -742,6 +752,10 @@ export class AcpAgentService implements AgentService {
       };
 
       // Window 3: consumer may abort during the yield above
+      if (isExpectedInvocationCancellation(options?.signal)) {
+        yield { type: 'done', catId: this.catId, errorCode: 'INVOCATION_CANCELLED', metadata, timestamp: Date.now() };
+        return;
+      }
       if (options?.signal?.aborted) {
         yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
         return;
@@ -924,6 +938,16 @@ export class AcpAgentService implements AgentService {
           sessionId = freshSessionId;
 
           // Abort may have fired during the fresh newSession (mirrors Window 2)
+          if (isExpectedInvocationCancellation(options?.signal)) {
+            yield {
+              type: 'done',
+              catId: this.catId,
+              errorCode: 'INVOCATION_CANCELLED',
+              metadata,
+              timestamp: Date.now(),
+            };
+            return;
+          }
           if (options?.signal?.aborted) {
             yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
             return;
@@ -953,6 +977,16 @@ export class AcpAgentService implements AgentService {
           };
 
           // Consumer may abort during the yield above (mirrors Window 3)
+          if (isExpectedInvocationCancellation(options?.signal)) {
+            yield {
+              type: 'done',
+              catId: this.catId,
+              errorCode: 'INVOCATION_CANCELLED',
+              metadata,
+              timestamp: Date.now(),
+            };
+            return;
+          }
           if (options?.signal?.aborted) {
             yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
             return;
@@ -1022,6 +1056,17 @@ export class AcpAgentService implements AgentService {
           yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
           return; // Exit — retry path handled completion
         } catch (retryErr) {
+          if (retryErr instanceof AcpSessionCancelledError && isExpectedInvocationCancellation(options?.signal)) {
+            log.info({ ...ctx, sessionId }, 'ACP invocation locally cancelled; provider termination unconfirmed');
+            yield {
+              type: 'done',
+              catId: this.catId,
+              errorCode: 'INVOCATION_CANCELLED',
+              metadata,
+              timestamp: Date.now(),
+            };
+            return;
+          }
           if (sessionId && (retryErr instanceof AcpTimeoutError || retryErr instanceof AcpStreamIdleError)) {
             sealActivePromptSession(sessionId);
           }
@@ -1049,6 +1094,11 @@ export class AcpAgentService implements AgentService {
       yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
     } catch (err) {
       if (this.antigravity && sessionId) sealActivePromptSession(sessionId);
+      if (err instanceof AcpSessionCancelledError && isExpectedInvocationCancellation(options?.signal)) {
+        log.info({ ...ctx, sessionId }, 'ACP invocation locally cancelled; provider termination unconfirmed');
+        yield { type: 'done', catId: this.catId, errorCode: 'INVOCATION_CANCELLED', metadata, timestamp: Date.now() };
+        return;
+      }
       if (sessionId && (err instanceof AcpTimeoutError || err instanceof AcpStreamIdleError)) {
         sealActivePromptSession(sessionId);
       }
