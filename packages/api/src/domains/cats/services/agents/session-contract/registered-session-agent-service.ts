@@ -83,7 +83,7 @@ export class RegisteredSessionAgentService implements AgentService {
       return;
     }
     const signal = AbortSignal.any([cached.lifetime.signal, ...(options?.signal ? [options.signal] : [])]);
-    this.input.log?.info('[session-contract] bridged', { catId: this.input.catId });
+    this.input.log?.info({ catId: this.input.catId }, '[session-contract] bridged');
     yield* typeof prompt === 'string'
       ? cached.bridge.invoke(prompt, { ...options, signal })
       : cached.bridge.invokeWithContinuityPreflight(prompt, { ...options, signal });

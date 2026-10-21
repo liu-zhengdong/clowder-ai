@@ -265,3 +265,26 @@ for (const stop of ['caller', 'release'])
     assert.deepEqual(opts, snapshot);
     await service.releaseAll('test');
   });
+
+test('bridge marker uses Pino structured fields and does not log Host credentials', async () => {
+  const { default: pino } = await import('pino');
+  const lines = [];
+  const log = pino(
+    {},
+    {
+      write(line) {
+        lines.push(JSON.parse(line));
+      },
+    },
+  );
+  const registry = new SessionImplementationRegistry();
+  registry.register(ref, () => new FakeSessionProvider());
+  const service = new RegisteredSessionAgentService({ catId: 'codex', ref, registry, log });
+  await collect(service.invoke('x', options({ hostSessionId: 'host', callbackEnv: { token: 'not-for-logs' } })));
+  assert.deepEqual(
+    lines.filter((line) => line.msg === '[session-contract] bridged').map((line) => line.catId),
+    ['codex'],
+  );
+  assert.equal(JSON.stringify(lines).includes('not-for-logs'), false);
+  await service.releaseAll('test');
+});
