@@ -25,11 +25,19 @@ export function declaredAgentSessionProviders(input: {
   packages: VerifiedPluginPackageLocator;
   registry: SessionImplementationRegistry;
   services: ReadonlyMap<string, RegisteredSessionAgentService>;
+  log?: { info(...args: unknown[]): void; warn(...args: unknown[]): void };
   createProvider(declaration: AgentProviderDeclaration, ctx: { catId: CatId }): AgentSessionProvider;
 }): AgentSessionProviderLifecycle {
   return {
     async activate(admission) {
       if (input.settings.mode === 'off') return;
+      const pluginId = admission.packageRecord.pluginId;
+      let providerId = 'unknown';
+      const log = (result: string, reason?: string) =>
+        input.log?.[result === 'rejected' ? 'warn' : 'info'](
+          { pluginId, providerId, protocol: 'acp', result, ...(reason ? { reason } : {}) },
+          `[session-contract] agent-provider ${result}`,
+        );
       const located = await input.packages.resolveInstalledPackage(admission.packageRecord.packageDigest);
       try {
         if (!isDeepStrictEqual(located.manifest, admission.packageRecord.manifest))
@@ -48,6 +56,7 @@ export function declaredAgentSessionProviders(input: {
         }
         const raw = await readDeclaration(path);
         await located.verifyIntegrity();
+        providerId = declarationId(raw);
         const result = parseAgentProviderDeclaration(raw, { packageRoot: located.rootDir });
         if (!result.ok) throw new Error(`${result.code}: ${result.reason}`);
         const registration = registerPluginAgentProvider(input.registry, {
@@ -55,19 +64,28 @@ export function declaredAgentSessionProviders(input: {
           declaration: result.declaration,
           createProvider: input.createProvider,
         });
+        log('registered');
         return async () => {
           registration.unregister();
+          log('unregistered');
           await Promise.all(
             [...input.settings.bindings]
               .filter(([, ref]) => sessionImplementationKey(ref) === registration.key)
               .map(([catId]) => input.services.get(catId)?.releaseAll('implementation_unregistered')),
           );
         };
+      } catch (error) {
+        log('rejected', String(error));
+        throw error;
       } finally {
         await located.release();
       }
     },
   };
+}
+
+function declarationId(raw: unknown): string {
+  return raw && typeof raw === 'object' && 'id' in raw && typeof raw.id === 'string' ? raw.id.slice(0, 128) : 'unknown';
 }
 
 async function readDeclaration(path: string): Promise<unknown> {

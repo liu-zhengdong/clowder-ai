@@ -108,9 +108,20 @@ async function lifecycle(t, raw = declaration, mode) {
   const registry = new SessionImplementationRegistry();
   const service = registered(registry);
   const created = [];
+  const logs = [];
+  const { default: pino } = await import('pino');
+  const log = pino(
+    {},
+    {
+      write(line) {
+        logs.push(JSON.parse(line));
+      },
+    },
+  );
   const host = declaredAgentSessionProviders({
     packages,
     registry,
+    log,
     services: new Map([['codex', service]]),
     settings: readSessionContractSettings({
       CAT_CAFE_AGENT_SESSION_CONTRACT: mode,
@@ -124,12 +135,22 @@ async function lifecycle(t, raw = declaration, mode) {
   });
   const runtime = new DeclaredRuntimeContributions({ packages, configuration: {}, agentSessionProviders: host });
   const admission = { instance, packageRecord: pkg, effectiveGrants: [] };
-  return { runtime, admission, registry, service, created, packagesRoot };
+  return { runtime, admission, registry, service, created, packagesRoot, logs };
+}
+function assertLifecycleLog(line, result, level, providerId = 'agent') {
+  assert.equal(line.pluginId, ref.pluginId);
+  assert.equal(line.providerId, providerId);
+  assert.equal(line.protocol, 'acp');
+  assert.equal(line.result, result);
+  assert.equal(line.level, level);
+  assert.equal(line.msg, `[session-contract] agent-provider ${result}`);
+  return line;
 }
 test('static reference package passes real local admission; activation/disable/restart use existing lifecycle', async (t) => {
   const h = await lifecycle(t);
   await h.runtime.activate(h.admission, () => assert.fail('plugin code invoked'));
   assert.ok(h.registry.has(ref));
+  assert.deepEqual(h.logs, [assertLifecycleLog(h.logs[0], 'registered', 30)]);
   await collect(h.service.invoke('x', options({ hostSessionId: 'host' })));
   const first = h.created[0];
   first.inbox = new Inbox();
@@ -140,9 +161,11 @@ test('static reference package passes real local admission; activation/disable/r
   await h.runtime.deactivate(h.admission.instance.pluginInstanceId);
   assert.equal((await done).value.errorCode, 'cancelled');
   assert.equal(h.registry.has(ref), false);
+  assertLifecycleLog(h.logs[1], 'unregistered', 30);
   assert.equal(first.calls.release.length, 1);
   assert.equal(first.calls.release[0].reason, 'implementation_unregistered');
   await h.runtime.deactivate(h.admission.instance.pluginInstanceId);
+  assert.equal(h.logs.length, 2, 'duplicate disable has no duplicate unregister log');
   await h.runtime.activate(h.admission, () => assert.fail('plugin code invoked'));
   await collect(h.service.invoke('new', options({ hostSessionId: 'host' })));
   assert.equal(h.created.length, 2);
@@ -162,6 +185,9 @@ for (const raw of [
       /invalid_declaration|transport_not_allowed|JSON|64 KiB/,
     );
     assert.equal(h.registry.has(ref), false);
+    assert.equal(h.logs.length, 1);
+    assertLifecycleLog(h.logs[0], 'rejected', 40, typeof raw === 'string' ? 'unknown' : 'agent');
+    assert.match(h.logs[0].reason, /invalid_declaration|transport_not_allowed|JSON|64 KiB/);
   });
 for (const mode of [undefined, 'plugin'])
   test(`enabled mode ${mode ?? 'default'} accepts a package without agent-provider.json`, async (t) => {
@@ -169,12 +195,14 @@ for (const mode of [undefined, 'plugin'])
     await h.runtime.activate(h.admission, () => assert.fail('plugin code invoked'));
     assert.equal(h.registry.has(ref), false);
     assert.equal(h.created.length, 0);
+    assert.deepEqual(h.logs, []);
     await h.runtime.deactivateAll();
   });
 
 test('off never accesses package declaration or package locator', async () => {
   const host = declaredAgentSessionProviders({
     settings: { mode: 'off' },
+    log: { info: () => assert.fail('off logged registration'), warn: () => assert.fail('off logged rejection') },
     packages: {
       resolveInstalledPackage: () => assert.fail('package accessed'),
     },

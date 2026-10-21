@@ -4884,6 +4884,7 @@ async function main(): Promise<void> {
   const pluginRuntime = cloudConversations.createRuntime({
     agentSessionProviders: (packages) =>
       declaredAgentSessionProviders({
+        log: app.log,
         settings: sessionContractSettings,
         packages,
         registry: sessionImplementations,
