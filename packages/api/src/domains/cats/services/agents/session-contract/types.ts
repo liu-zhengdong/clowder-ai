@@ -61,6 +61,8 @@ export interface TurnRef {
 }
 
 export interface TurnInput {
+  /** Host-owned only: never serialize or expose to plugin code. */
+  hostOptions?: Service.AgentServiceOptions;
   invocation: {
     invocationId: HostInvocationId;
 

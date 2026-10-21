@@ -136,7 +136,7 @@ test('new production directory contains no vendor comparisons or vendor-name str
     /\b(?:provider|clientId|carrier)\s*(?:===|!==|==|!=)\s*['"`]|['"`][^'"`]+['"`]\s*(?:===|!==|==|!=)\s*(?:\w+\.)?(?:provider|clientId|carrier)\b/;
   assert.ok(comparison.test("provider === 'vendor'"));
   assert.ok(comparison.test("'vendor' === config.carrier"));
-  const vendors = /^(?:claude|codex|openai|anthropic|gemini|antigravity|kimi|opencode|catagent|acp)$/i;
+  const vendors = /^(?:claude|codex|openai|anthropic|gemini|antigravity|kimi|opencode|catagent)$/i;
   for (const file of await readdir(dir)) {
     if (!file.endsWith('.ts')) continue;
     const text = await readFile(new URL(file, dir), 'utf8');

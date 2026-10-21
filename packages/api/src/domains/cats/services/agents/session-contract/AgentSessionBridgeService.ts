@@ -18,6 +18,7 @@ interface BridgeInput {
     observation: Service.ProviderCompactionObservation,
     ctx: { sessionId: string },
   ): void | Promise<void>;
+  passHostOptions?: boolean;
   metadata?: { provider: string; model: string };
   log?: { info(...a: unknown[]): void; warn(...a: unknown[]): void };
 }
@@ -264,7 +265,11 @@ export class AgentSessionBridgeService implements Service.AgentService {
       const prepared = await this.prepare(options, signal, prompt, metadata);
       live = prepared.live;
       const { host, session, invocation } = prepared;
-      const started = await this.input.provider.startTurn(host.sessionId, { invocation, prompt }, signal);
+      const started = await this.input.provider.startTurn(
+        host.sessionId,
+        { invocation, prompt, ...(this.input.passHostOptions ? { hostOptions: options } : {}) },
+        signal,
+      );
       if (!started.ok) throw new SessionFailure(started.code, started.reason);
       live.turn = started.turn;
       if (!signal.aborted) this.register(live, metadata, options ?? {});
