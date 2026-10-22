@@ -1,4 +1,4 @@
-// #1647 slice 1a — agreement v1.1 §2, v1.2 §25: the compaction observation callback.
+// Compaction events await the observer without producing turn messages.
 //
 // It is a constructor option, it is awaited once per `compaction_observed`
 // event, it produces no AgentMessage, and a throwing observer is a warning —

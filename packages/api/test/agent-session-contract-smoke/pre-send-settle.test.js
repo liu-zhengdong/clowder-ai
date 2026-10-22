@@ -1,4 +1,4 @@
-// #1647 slice 1a — acceptance points 2, 3, 4, 5.
+// Pre-send settlement gates prompts and receives continuity evidence.
 //
 // These are the F296 preflight behaviours, expressed against the contract:
 // no prompt byte may exist before `settle` resolves, the evidence the adapter
@@ -157,7 +157,7 @@ test('[4] a failure before the verdict never settles and ends the stream with er
   assert.equal(settleCalls.length, 0, 'settle must not run without a verdict');
   assert.deepEqual(sent, [], 'no prompt bytes may be sent without a verdict');
 
-  // v1.1 §8: the provider already emitted its done, so the bridge adds none.
+  // The provider already emitted its done, so the bridge adds none.
   assert.deepEqual(
     messages.map((m) => m.type),
     ['error', 'done'],

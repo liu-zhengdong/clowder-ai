@@ -1,10 +1,10 @@
-// Scripted fake `AgentSessionProvider` for the #1647 slice-1a acceptance tests.
+// Scripted fake `AgentSessionProvider` for bridge and session contract acceptance tests.
 //
 // It records every call the bridge makes and lets each test script the events a
 // turn emits. It never talks to a real runtime: the acceptance points under test
 // are bridge/contract semantics, so a fake is the honest instrument here.
 //
-// Agreement v1.1 notes:
+// Session lifecycle behavior:
 //   * `capabilities()` is per session, and the bridge must not call it before a
 //     session exists.
 //   * `openSession` may be gated (to make two first calls overlap) or scripted

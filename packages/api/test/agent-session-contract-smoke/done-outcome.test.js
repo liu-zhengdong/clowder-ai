@@ -1,7 +1,7 @@
-// #1647 slice 1a — agreement v1.1 §7 and §8.
+// Done events carry explicit outcome codes and terminate the stream.
 //
-// §7: the errorCode a `done` carries is decided, not inferred by callers.
-// §8: every call ends with exactly one `done`, and nothing follows it.
+// The errorCode a `done` carries is decided, not inferred by callers.
+// Every call ends with exactly one `done`, and nothing follows it.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AgentSessionBridgeService } from '../../dist/domains/cats/services/agents/session-contract/AgentSessionBridgeService.js';

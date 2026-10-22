@@ -1,7 +1,7 @@
-// #1647 slice 1a — agreement v1.1 §10–§13: the fields the bridge must fill in.
+// The bridge fills session, turn and metadata fields.
 //
-// §10 resume mapping, §11 OpenSessionInput defaults, §12 TurnInput optionals,
-// §13 metadata identity and updates.
+// Resume mapping, OpenSessionInput defaults, TurnInput optionals,
+// metadata identity and updates.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AgentSessionBridgeService } from '../../dist/domains/cats/services/agents/session-contract/AgentSessionBridgeService.js';

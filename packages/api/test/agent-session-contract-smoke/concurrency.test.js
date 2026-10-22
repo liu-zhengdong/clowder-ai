@@ -1,4 +1,4 @@
-// #1647 slice 1a — agreement v1.1 §16 and v1.2 §23: concurrency and reuse.
+// Concurrent invocations share session opening and refuse overlapping turns.
 //
 // Two simultaneous first calls share a single `openSession`. Once the open
 // resolves, the call that entered the turn runs and the other is refused with

@@ -1,4 +1,4 @@
-// #1647 slice 1a — acceptance point 8: the live-input dispatcher.
+// Live input uses the active-run fence and Host invocation identity.
 //
 // A supported implementation is registered against the Host's
 // `activeRunDispatch` fence, the Host's ids are the ones that reach the
@@ -9,9 +9,9 @@
 // releases the registration when the turn ends, so calling into a released
 // dispatcher would be testing an unspecified state.
 //
-// Agreement v1.2 §19: the Host fills `options.invocationId` and
+// The Host fills `options.invocationId` and
 // `options.activeRunDispatch.invocationId` from one variable, so the fixture
-// must make them equal. §20: `provider.input` / `inspectInput` receive the
+// must make them equal. `provider.input` / `inspectInput` receive the
 // round's full `TurnRef`, `nativeTurnId` included when the turn reported one.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

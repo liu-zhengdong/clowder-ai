@@ -1,4 +1,4 @@
-// #1647 slice 1a — cancellation.
+// Cancellation reaches the provider and suppresses late turn content.
 //
 // `options.signal` abort must reach the provider as `cancelTurn(..., 'abort')`,
 // and nothing that arrives afterwards may surface as turn content.
@@ -55,6 +55,6 @@ test('[extra] abort calls cancelTurn and drops everything the provider emits aft
     ['done'],
     'abort produces no error, only a done',
   );
-  // v1.1 §8 / v1.2 §22: the bridge's own done wins, and the provider's later done is dropped.
+  // The bridge's own done wins, and the provider's later done is dropped.
   assert.equal(rest.at(-1).errorCode, 'cancelled');
 });

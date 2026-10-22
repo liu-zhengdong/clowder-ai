@@ -11,7 +11,7 @@ import {
 import { collect, fixture, options, session, turn } from './fake-session-provider.js';
 
 const dir = new URL('../../src/domains/cats/services/agents/session-contract/', import.meta.url);
-test('v1.1/13: projected sequence, shallow metadata snapshots and both textMode layers', async () => {
+test('projected sequence, shallow metadata snapshots and both textMode layers', async () => {
   const { bridge, provider } = fixture({ metadata: { provider: 'test-provider', model: 'initial' } });
   const usage = { inputTokens: 42 };
   const nativeMessage = {
@@ -116,7 +116,7 @@ test('registry: exact keys, duplicate rejection, factory context and idempotent 
   }
 });
 
-test('v1.1/3: Support has exactly the two agreed literals', async () => {
+test('Support has exactly the two agreed literals', async () => {
   const source = ts.createSourceFile(
     'types.ts',
     await readFile(new URL('types.ts', dir), 'utf8'),

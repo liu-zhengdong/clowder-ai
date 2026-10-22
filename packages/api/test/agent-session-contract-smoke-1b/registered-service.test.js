@@ -1,4 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §38: the lazily-resolving per-cat service.
+// Per-cat services resolve implementations lazily and report unavailable plugins.
 //
 // A bound cat must be able to exist before its plugin is enabled. The service
 // therefore resolves the implementation on every call, keeps one bridge per

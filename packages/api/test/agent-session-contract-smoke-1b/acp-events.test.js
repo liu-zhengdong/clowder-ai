@@ -1,4 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §39 (part 2): AgentMessage → contract events.
+// ACP AgentMessages project into session contract events.
 //
 // The adapter is the only place that knows how ACP-shaped AgentMessages look, so
 // this table is the whole translation surface. Anything it cannot express is a

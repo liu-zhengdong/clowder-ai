@@ -1,10 +1,6 @@
-// Fakes for the #1647 slice-1b acceptance tests.
-//
-// Slice 1b adds four things on top of the 1a bridge: the declaration parser, the
-// plugin registration wrapper, the settings reader, the lazily-resolving service
-// and the ACP adapter. None of them needs a real process, so every collaborator
-// here is scripted: the goal is to pin the interface agreement (v1.3 §34–§42),
-// not to prove a transport works.
+// Scripted collaborators for plugin declaration, registration, settings,
+// service selection and ACP adapter acceptance tests.
+// These tests verify session behavior without starting a transport process.
 
 /** Push-based async iterable used when a test needs to interleave with the code under test. */
 export class AsyncInbox {

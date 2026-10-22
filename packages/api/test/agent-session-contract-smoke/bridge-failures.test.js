@@ -1,14 +1,14 @@
-// #1647 slice 1a — refusals the bridge must make explicit.
+// Bridge refusals report explicit errors and complete the turn.
 //
-// Agreement v1.1 §9: a missing invocation id is checked before the session is
-// opened. §6: a `startTurn` refusal becomes error + done, with the provider's
-// code, and neither cancels nor releases anything. §16: an openSession failure
+// A missing invocation id is checked before the session is
+// opened. A `startTurn` refusal becomes error + done, with the provider's
+// code, and neither cancels nor releases anything. An openSession failure
 // is not cached, so the next call retries the open.
 //
-// Agreement v1.2 §21: an `openSession` refusal reports its code and reason, and
-// a thrown error becomes `session_contract_failed`.
-// §22: every bridge-produced error is followed by a done with the same code.
-// §27: an empty invocationId counts as missing.
+// An `openSession` refusal reports its code and reason, and
+// A thrown error becomes `session_contract_failed`.
+// Every bridge-produced error is followed by a done with the same code.
+// An empty invocationId counts as missing.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AgentSessionBridgeService } from '../../dist/domains/cats/services/agents/session-contract/AgentSessionBridgeService.js';

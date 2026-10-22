@@ -1,4 +1,4 @@
-// #1647 slice 1a — the Host-held implementation registry.
+// The Host-held implementation registry uses unique keys.
 //
 // Keys are the only identity; duplicate registration is an error rather than a
 // silent overwrite, and unregistering removes exactly one entry.

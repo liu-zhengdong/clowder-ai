@@ -20,7 +20,7 @@ const rows = [
   [new Error('uncertain'), { accepted: false, reason: 'exception', acceptance: 'unknown' }],
 ];
 for (const [result, expected] of rows)
-  test(`v1.1/15: dispatcher maps ${JSON.stringify(result)}`, async () => {
+  test(`dispatcher maps ${JSON.stringify(result)}`, async () => {
     const f = await liveFixture();
     if (result instanceof Error) f.provider.inputError = result;
     else f.provider.inputResult = result;
@@ -97,7 +97,7 @@ test('missing deliveryId gets a UUID; mismatch and force never reach provider', 
 });
 
 for (const bound of [true, false])
-  test(`v1.1/14: fixed handle and optional inspect (bound=${bound})`, async () => {
+  test(`fixed handle and optional inspect (bound=${bound})`, async () => {
     const f = await liveFixture({}, {}, (provider) => {
       provider.binding = bound ? { state: 'bound', nativeSessionId: 'native' } : { state: 'pending_first_input' };
       provider.omitNativeTurn = !bound;
@@ -126,7 +126,7 @@ test('unsupported input never registers; no registration also works on supported
   assert.equal(provider.calls.input.length, 0);
 });
 
-test('v1.1/8,15: abort cancels once, discards late output/done and releases once', { timeout: 3000 }, async () => {
+test('abort cancels once, discards late output/done and releases once', { timeout: 3000 }, async () => {
   const controller = new AbortController();
   const f = await liveFixture({ signal: controller.signal });
   const waiting = f.iterator.next();

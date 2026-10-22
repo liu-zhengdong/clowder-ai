@@ -1,4 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §36: registering a plugin's declared provider.
+// Plugin registration shares one provider per cat and refreshes it on re-registration.
 //
 // The registry entry is a ref (`plugin:<pluginId>/<declaration.id>`), but the
 // provider object is created by Host code and must be shared per cat: one cat

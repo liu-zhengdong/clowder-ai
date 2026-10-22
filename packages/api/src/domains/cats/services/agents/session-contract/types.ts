@@ -1,4 +1,4 @@
-/** Internal / unstable: slice 1a contract. */
+/** Internal / unstable session contract (#1647). */
 import type { ProviderOutputMessage } from '@cat-cafe/shared';
 import type * as Service from '../../types.js';
 export type Support = 'supported' | 'unsupported';

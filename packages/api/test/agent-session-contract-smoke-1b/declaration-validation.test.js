@@ -1,4 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §35: the plugin agent-provider declaration.
+// Plugin agent-provider declarations reject unsupported fields and package code.
 //
 // The declaration is the only thing a plugin is allowed to say about its agent,
 // so the parser is the security boundary: unknown keys are refused rather than

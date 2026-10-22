@@ -1,9 +1,8 @@
-// #1647 slice 1a — acceptance points 6 and 7, plus the rest of the projection
-// table that the interface agreement fixes exactly.
+// Session events preserve native identity, text mode and outcome semantics.
 //
-// Point 6: a `pending_first_input` implementation reports its native id late,
+// A `pending_first_input` implementation reports its native id late,
 // and that event becomes a `session_init` carrying the native id.
-// Point 7: the two textMode layers survive the projection unchanged.
+// The two textMode layers survive the projection unchanged.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AgentSessionBridgeService } from '../../dist/domains/cats/services/agents/session-contract/AgentSessionBridgeService.js';
@@ -325,7 +324,7 @@ test('[7] error and failed done project the error code', () => {
   assert.equal(error.error, 'provider exploded');
   assert.equal(error.errorCode, 'boom');
 
-  // The default code for a bare cancelled/failed outcome is decided at v1.1 §7;
+  // Bare cancelled/failed outcomes use the default error code;
   // this only pins that an explicit provider code survives projection untouched.
   const done = projectSessionEvent(
     {

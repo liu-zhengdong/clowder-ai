@@ -1,7 +1,7 @@
-// #1647 slice 1b — agreement v1.3 §34: Host options reach Host-owned adapters.
+// Host options reach Host-owned adapters when explicitly enabled.
 //
 // Every session implementation is Host code, so the bridge may hand the raw
-// `AgentServiceOptions` to the provider. It stays opt-in so the 1a behaviour
+// `AgentServiceOptions` to the provider. It stays opt-in so the default behaviour
 // (nothing but the contract fields on the wire) is still the default.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -56,8 +56,8 @@ test('[34] passHostOptions: true hands the caller the same options object', asyn
   await collect(service.invoke('hello', options));
 
   assert.equal(calls.startTurn.length, 1);
-  // v1.4 §49: the direct bridge is unchanged — it hands over the caller object
-  // itself. Only `RegisteredSessionAgentService` copies it (§45).
+  // The direct bridge is unchanged — it hands over the caller object
+  // itself. Only `RegisteredSessionAgentService` copies it.
   assert.equal(calls.startTurn[0].input.hostOptions, options);
   assert.equal(calls.startTurn[0].input.invocation.invocationId, 'inv-1');
   assert.deepEqual(calls.startTurn[0].input.invocation.callbackEnv, { CAT_CAFE_CALLBACK_TOKEN: 'token-1' });

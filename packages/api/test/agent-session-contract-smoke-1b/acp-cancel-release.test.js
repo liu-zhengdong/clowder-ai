@@ -1,4 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §39 (part 3): cancellation and release.
+// ACP cancellation interrupts the turn and release uses known native sessions.
 //
 // Cancellation must reach the running turn through the adapter's own signal, and
 // release must not claim more than it did: it only calls `releaseSession` when it

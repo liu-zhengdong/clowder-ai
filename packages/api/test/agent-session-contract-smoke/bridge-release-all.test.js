@@ -1,4 +1,4 @@
-// #1647 slice 1a — releaseAll (agreement v1.1 §17, v1.2 §24).
+// Release all sessions owned by the bridge exactly once.
 //
 // The bridge owns the sessions it opened: each open is released exactly once
 // with the caller's reason, the records are then dropped, a second call is a

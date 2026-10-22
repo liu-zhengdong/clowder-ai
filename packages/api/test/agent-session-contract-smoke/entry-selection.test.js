@@ -1,4 +1,4 @@
-// #1647 slice 1a — acceptance point 1 as decided by agreement v1.1 §1.
+// Entry selection respects per-session continuity capabilities.
 //
 // Preflight capability is a per-session fact, never a construction-time one:
 //   * both entry points always exist;
@@ -14,7 +14,7 @@ import { collect, createFakeProvider } from './fake-provider.js';
 
 const HOST_SESSION_ID = 'host-session-1';
 
-/** Records any `resolveHostSession(undefined)` the bridge must never make (v1.1 §1). */
+/** Records any `resolveHostSession(undefined)` the bridge must never make. */
 function bridgeFor(provider, overrides = {}) {
   const undefinedResolutions = [];
   const service = new AgentSessionBridgeService({

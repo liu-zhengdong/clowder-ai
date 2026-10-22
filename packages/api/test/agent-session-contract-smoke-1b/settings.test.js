@@ -1,8 +1,7 @@
-// #1647 slice 1b — agreement v1.4 §37/§44: the environment switch and the
-// cat→ref bindings.
+// Environment settings control session mode and cat-to-implementation bindings.
 //
 // The switch is deliberately dumb: only the two exact strings count, an unset
-// switch is "plugin" (v1.4 §44), everything else is "off" plus a warning, and a
+// switch is "plugin", everything else is "off" plus a warning, and a
 // broken bindings document must never take the process down.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

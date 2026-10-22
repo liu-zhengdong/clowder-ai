@@ -1,5 +1,4 @@
-// #1647 slice 1b — agreement v1.3 §39 (part 1): the ACP adapter's capabilities,
-// session opening and turn start.
+// ACP capabilities, session opening and turn start reflect the underlying service.
 //
 // The adapter is a thin projection over the existing ACP `AgentService`: it
 // declares what ACP cannot do, never claims continuity, and rebuilds the Host
@@ -34,7 +33,7 @@ async function open(provider, overrides = {}) {
   );
 }
 
-test('[39] ACP declares exactly the capabilities the agreement fixes', () => {
+test('[39] ACP declares exactly the supported session capabilities', () => {
   const { provider } = makeProvider();
 
   assert.deepEqual(provider.capabilities(HOST_SESSION_ID), {

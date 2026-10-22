@@ -12,7 +12,7 @@ function assertFailure(messages, code, error = code) {
   assert.equal(messages[1].errorCode, code);
 }
 
-test('v1.1/1,9: constructor is inert; missing options/identity fail before resolver or provider', async () => {
+test('constructor is inert; missing options/identity fail before resolver or provider', async () => {
   let resolutions = 0;
   const { bridge, provider } = fixture({
     resolveHostSession: (opts) => {
@@ -33,7 +33,7 @@ test('v1.1/1,9: constructor is inert; missing options/identity fail before resol
   for (const calls of Object.values(provider.calls)) assert.equal(calls.length, 0);
 });
 
-test('v1.1/1: capabilities vary by real session after open; frozen works for either capability', async () => {
+test('capabilities vary by real session after open; frozen works for either capability', async () => {
   const { bridge, provider } = fixture();
   provider.supportFor = (id) => {
     assert.ok(provider.calls.open.some(({ input }) => input.sessionId === id));
@@ -127,7 +127,7 @@ test('buffered compactions reach Host once across turns; a second settle is forw
   assert.equal(facts[2], facts[3]);
 });
 
-test('v1.1/2: compaction callback is awaited per event, warns on failure, and emits no message', async () => {
+test('compaction callback is awaited per event, warns on failure, and emits no message', async () => {
   const entered = deferred();
   const unblock = deferred();
   const observed = [];
@@ -171,7 +171,7 @@ test('v1.1/2: compaction callback is awaited per event, warns on failure, and em
 
 for (const code of ['busy', 'session_unavailable', 'failed']) {
   for (const reason of [undefined, 'specific failure'])
-    test(`v1.1/6: start failure ${code}/${reason} preserves code and session`, async () => {
+    test(`start failure ${code}/${reason} preserves code and session`, async () => {
       const { bridge, provider } = fixture();
       provider.startResult = { ok: false, code, ...(reason ? { reason } : {}) };
       assertFailure(await collect(bridge.invoke('x', options())), code, reason ?? code);
@@ -185,7 +185,7 @@ for (const code of ['busy', 'session_unavailable', 'failed']) {
 
 for (const outcome of ['completed', 'cancelled', 'failed']) {
   for (const errorCode of [undefined, 'native-code'])
-    test(`v1.1/7,8: terminal ${outcome}/${errorCode} occurs exactly once`, async () => {
+    test(`terminal ${outcome}/${errorCode} occurs exactly once`, async () => {
       const { bridge, provider } = fixture();
       provider.events = [
         turn('done', { outcome, errorCode }),
@@ -200,7 +200,7 @@ for (const outcome of ['completed', 'cancelled', 'failed']) {
     });
 }
 
-test('v1.1/8: EOF without done supplies a terminal errorCode', async () => {
+test('EOF without done supplies a terminal errorCode', async () => {
   const { bridge, provider } = fixture();
   provider.events = [turn('status', { phase: 'working' })];
   const messages = await collect(bridge.invoke('x', options()));
@@ -211,7 +211,7 @@ test('v1.1/8: EOF without done supplies a terminal errorCode', async () => {
   assert.equal(messages[1].errorCode, 'provider_stream_ended_without_done');
 });
 
-test('v1.1/10-13: allowlisted DTOs, resume once, default fields, credentials are not logged', async () => {
+test('allowlisted DTOs, resume once, default fields, credentials are not logged', async () => {
   const { bridge, provider, logs, warnings } = fixture({ resolveMcpServers: () => [{ name: 'tools', opaque: true }] });
   const callbackEnv = { CAT_CAFE_CALLBACK_TOKEN: 'secret' };
   const toolExecutionPolicy = { mode: 'read_only', replayDeniedToolNames: ['write'] };
@@ -284,7 +284,7 @@ test('pending native binding projects session_init, preserves frozen prompt, and
   assert.equal(provider.calls.open.length, 1);
 });
 
-test('v1.1/16: simultaneous first calls share open; active turn is busy without second start', async () => {
+test('simultaneous first calls share open; active turn is busy without second start', async () => {
   const { bridge, provider } = fixture();
   provider.openGate = deferred();
   const settled = deferred();
@@ -311,7 +311,7 @@ test('v1.1/16: simultaneous first calls share open; active turn is busy without 
 });
 
 for (const throws of [false, true])
-  test(`v1.1/16: failed open is retried (throw=${throws})`, async () => {
+  test(`failed open is retried (throw=${throws})`, async () => {
     const { bridge, provider } = fixture();
     if (throws) provider.openError = new Error('open failed');
     else provider.openResult = { ok: false, code: 'resume_unavailable', reason: 'open failed' };
@@ -326,7 +326,7 @@ for (const throws of [false, true])
     assert.equal(provider.calls.open.length, 2);
   });
 
-test('v1.1/17: release once per session, repeated/concurrent calls are inert, later invocation reopens', async () => {
+test('release once per session, repeated/concurrent calls are inert, later invocation reopens', async () => {
   const { bridge, provider } = fixture();
   await collect(bridge.invoke('a', options()));
   await collect(bridge.invoke('b', options({ hostId: 'second' })));
@@ -342,7 +342,7 @@ test('v1.1/17: release once per session, repeated/concurrent calls are inert, la
 });
 
 for (const throws of [false, true])
-  test(`v1.1/17: release failure warns without throwing (throw=${throws})`, async () => {
+  test(`release failure warns without throwing (throw=${throws})`, async () => {
     const { bridge, provider, warnings } = fixture();
     await collect(bridge.invoke('a', options()));
     if (throws) provider.releaseError = new Error('release failed');
