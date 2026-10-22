@@ -290,9 +290,9 @@ export class ProjectContentOwnerService {
     return this.store.listVideoProjects(ownerUserId);
   }
 
-  listRetainedMedia(ownerUserId: string, after?: string) {
+  listRetainedMedia(ownerUserId: string, after?: string, includeHtmlWorks = false) {
     validateIdentity(ownerUserId, 'ownerUserId');
-    return this.store.listRetainedMedia(ownerUserId, after);
+    return this.store.listRetainedMedia(ownerUserId, after, 30, includeHtmlWorks);
   }
 
   /** Internal batch lookup; read projections must freshly authorize each resulting coordinate. */

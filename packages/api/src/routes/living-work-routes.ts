@@ -9,6 +9,7 @@ import {
   WorkProjectionPendingError,
 } from '../domains/collaborative-content/works/service.js';
 import type { WorkVideoContextService } from '../domains/collaborative-content/works/video-context.js';
+import { ContentOwnerCapacityError } from '../domains/video-studio/content-owner/errors.js';
 import { MediaOwnerError } from '../domains/video-studio/content-owner/media-errors.js';
 import { WorkspaceContentSourceError } from '../domains/workspace/workspace-content-source.js';
 import { replyArtifactReviewError } from './artifact-review-route-errors.js';
@@ -48,6 +49,7 @@ async function run(
       ? contexts.save(command, principal)
       : contexts.read(command.reference, principal, command.metadataRevision);
   }
+  if (command.action === 'read-body') return service.readBody(command.reference, principal);
   if (command.action === 'read') return service.read(command.reference, principal);
   if (command.action === 'publish-reference') return service.reference(command.reference, principal);
   if (command.action === 'list') return service.list(principal, command.after, command.catalogueSnapshot);
@@ -56,6 +58,7 @@ async function run(
 }
 
 function fail(reply: FastifyReply, error: unknown) {
+  if (error instanceof ContentOwnerCapacityError) return reply.code(409).send({ error: 'work_version_limit' });
   if (error instanceof WorkContextConflictError) return reply.code(409).send({ error: 'context_conflict' });
   if (error instanceof WorkProjectionPendingError)
     return reply.code(503).send({

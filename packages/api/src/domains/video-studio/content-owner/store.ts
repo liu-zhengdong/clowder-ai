@@ -113,7 +113,7 @@ export class ProjectContentOwnerStore {
   }
 
   /** Bounded manifest discovery only; callers must reauthorize every resulting publication. */
-  async listRetainedMedia(ownerUserId: string, after = '', limit = 30) {
+  async listRetainedMedia(ownerUserId: string, after = '', limit = 30, includeHtmlWorks = false) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 30) throw new TypeError('Invalid media page');
     const items: { contentRef: string; ownerRevision: number }[] = [];
     const directory = await openOwnerManifestDirectory(this.rootDir);
@@ -123,7 +123,13 @@ export class ProjectContentOwnerStore {
         if (
           state?.publicationScope?.ownerUserId !== ownerUserId ||
           state.contentRef.localeCompare(after) <= 0 ||
-          !['image/png', 'video/mp4'].includes(state.mediaType)
+          (!['image/png', 'video/mp4'].includes(state.mediaType) &&
+            !(
+              includeHtmlWorks &&
+              state.mediaType === 'text/html' &&
+              'kind' in state.publicationScope &&
+              state.publicationScope.kind === 'work'
+            ))
         )
           continue;
         items.push({ contentRef: state.contentRef, ownerRevision: state.currentOwnerRevision });

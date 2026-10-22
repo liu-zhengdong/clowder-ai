@@ -109,7 +109,8 @@ function validateWorkOrigin(scope: WorkPublicationScopeV1, publication: ContentS
       (key) => !['kind', 'ownerUserId', 'threadId', 'creationOperationId', 'createdBy'].includes(key),
     ) ||
     publication.threadId !== scope.threadId ||
-    !publication.sourceRef.startsWith('workspace:') ||
+    (!publication.sourceRef.startsWith('workspace:') &&
+      !(publication.sourceRef === 'inline-html' && publication.artifactRef === 'inline-html')) ||
     !/^sha256:[a-f0-9]{64}$/.test(publication.revision)
   )
     throw new TypeError('Invalid work publication');

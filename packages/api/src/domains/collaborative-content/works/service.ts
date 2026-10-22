@@ -25,12 +25,13 @@ import {
   isWorkPublicationScope,
   type WorkPublicationScopeV1,
 } from '../../video-studio/content-owner/types.js';
+import { openHtmlWorkSource, readHtmlWorkBody } from './html-source.js';
 import type { WorkReviewResponseService } from './review-response.js';
 import { workVersionRecord } from './version-record.js';
 import type { WorkVersionStore } from './version-store.js';
 
 export interface OpenWorkSource extends ContentStream {
-  readonly mediaType: 'video/mp4';
+  readonly mediaType: 'video/mp4' | 'text/html';
   /** F063 probes the same frozen snapshot used by this stream; review admission must require this clock. */
   readonly media?: ImmutableMedia;
   readonly publication: ContentSourcePublicationV1;
@@ -83,6 +84,7 @@ export class LivingWorkService {
   async commit(raw: unknown, principal: WorkPrincipal) {
     const command = commitWorkSchema.parse(raw);
     const response = command.action === 'submit' ? command.reviewResponse : undefined;
+    if (response && 'kind' in command.source) throw new MediaOwnerError('invalid_media');
     if (response && !this.deps.responses) throw new MediaOwnerError('media_unavailable');
     await this.deps.authorize({ principal, permission: 'write' });
     const contentRef = command.action === 'submit' ? command.contentRef : createdWorkRef(command, principal);
@@ -121,8 +123,13 @@ export class LivingWorkService {
         command.expectedOwnerRevision,
         current?.currentOwnerRevision ?? 0,
       );
-    const opened = await this.deps.source.open({ source: command.source, principal, threadId: workScope.threadId });
+    const opened =
+      'kind' in command.source
+        ? openHtmlWorkSource(command.source)
+        : await this.deps.source.open({ source: command.source, principal, threadId: workScope.threadId });
     try {
+      if ((current && current.mediaType !== opened.mediaType) || (response && opened.mediaType !== 'video/mp4'))
+        throw new MediaOwnerError('invalid_media');
       if (command.action === 'submit' && current?.blobDigest === opened.blobDigest)
         throw new MediaOwnerError('publication_changed');
       const pending =
@@ -180,6 +187,20 @@ export class LivingWorkService {
     const revision = await this.deps.owner.describeRevision(reference.contentRef, reference.ownerRevision);
     await this.deps.authorize({ principal, permission: 'read', scope });
     return { reference, currentOwnerRevision: description.currentOwnerRevision, version, description, revision };
+  }
+
+  async readBody(raw: WorkReference, principal: WorkPrincipal) {
+    // A missing fixed version and a forbidden one have the same content-free result at this new boundary.
+    try {
+      await this.deps.authorize({ principal, permission: 'read' });
+      const { reference, description } = await this.read(raw, principal);
+      const html = await readHtmlWorkBody(this.deps.owner, reference, description);
+      await this.read(reference, principal);
+      return { reference, mediaType: 'text/html' as const, html };
+    } catch (error) {
+      if (error instanceof ContentOwnerNotFoundError) throw new MediaOwnerError('access_denied');
+      throw error;
+    }
   }
 
   async reference(raw: WorkReference, principal: WorkPrincipal) {
@@ -259,7 +280,7 @@ export class LivingWorkService {
     const heads: WorkReference[] = [];
     let after: string | undefined;
     do {
-      const page = await this.deps.owner.listRetainedMedia(ownerUserId, after);
+      const page = await this.deps.owner.listRetainedMedia(ownerUserId, after, true);
       heads.push(...page.items);
       if (heads.length > 10000) throw new MediaOwnerError('media_unavailable');
       after = page.nextCursor;

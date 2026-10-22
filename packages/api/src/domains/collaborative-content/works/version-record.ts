@@ -15,7 +15,7 @@ export function workVersionRecord(
     title: command.title,
     changeSummary: command.changeSummary,
     ...(command.versionLabel ? { versionLabel: command.versionLabel } : {}),
-    source: command.source,
+    source: 'kind' in command.source ? { kind: 'html' } : command.source,
     operationId: command.operationId,
     requestDigest,
     receiptRef: receipt.receiptId,
