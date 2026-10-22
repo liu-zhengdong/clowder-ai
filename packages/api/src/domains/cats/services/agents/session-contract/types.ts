@@ -141,6 +141,13 @@ export type TurnEvent = { scope: 'turn'; sessionId: HostSessionId; turn: TurnRef
   | { type: 'tool_call'; callId?: string; name: string; input?: unknown }
   | { type: 'tool_result'; callId?: string; name: string; status: 'ok' | 'error' | 'unknown'; output?: unknown }
   | { type: 'status'; phase: string; detail?: string }
+  | { type: 'system_info' | 'provider_signal' | 'liveness_signal' | 'agent_loop'; content?: string }
+  | {
+      type: 'handoff';
+      content?: string;
+      targetCatId?: Service.AgentMessage['targetCatId'];
+      routing?: Service.AgentMessage['routing'];
+    }
   | { type: 'input_read'; deliveryId: string }
   | { type: 'error'; code: string; message: string; disposition: 'transient' | 'terminal' }
   | { type: 'done'; outcome: 'completed' | 'cancelled' | 'failed'; errorCode?: string }

@@ -54,6 +54,20 @@ export function projectSessionEvent(
     case 'status':
       message = { type: 'status', content: event.detail ?? event.phase };
       break;
+    case 'system_info':
+    case 'provider_signal':
+    case 'liveness_signal':
+    case 'agent_loop':
+      message = { type: event.type, content: event.content };
+      break;
+    case 'handoff':
+      message = {
+        type: 'a2a_handoff',
+        content: event.content,
+        targetCatId: event.targetCatId,
+        routing: event.routing,
+      };
+      break;
     case 'error':
       message = { type: 'error', error: event.message, errorCode: event.code, errorDisposition: event.disposition };
       break;

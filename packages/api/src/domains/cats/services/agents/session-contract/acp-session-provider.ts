@@ -146,8 +146,24 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
           errorCode: message.errorCode,
           outcome: session.active?.controller.signal.aborted ? 'cancelled' : message.errorCode ? 'failed' : 'completed',
         };
+      case 'system_info':
+      case 'provider_signal':
+      case 'liveness_signal':
+      case 'agent_loop':
+        return { ...base, type: message.type, content: message.content };
+      case 'status':
+        return { ...base, type: 'status', phase: 'status', detail: message.content };
+      case 'a2a_handoff':
+        return {
+          ...base,
+          type: 'handoff',
+          content: message.content,
+          targetCatId: message.targetCatId,
+          routing: message.routing,
+        };
       default:
-        return { ...base, type: 'status', phase: message.type };
+        message.type satisfies never;
+        throw new Error('Unsupported ACP message type');
     }
   }
   private async *events(

@@ -1,8 +1,8 @@
 // ACP AgentMessages project into session contract events.
 //
 // The adapter is the only place that knows how ACP-shaped AgentMessages look, so
-// this table is the whole translation surface. Anything it cannot express is a
-// `status` event, never a bespoke passthrough field.
+// this table verifies the translation surface, including system and telemetry
+// events whose types must survive until Host invocation policy handles them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AcpSessionProvider } from '../../dist/domains/cats/services/agents/session-contract/acp-session-provider.js';
@@ -179,20 +179,21 @@ test('[39] a metadata model or usage change becomes a session-scoped context eve
   assert.deepEqual(changed.usage, usage);
 });
 
-test('[39] message types without a contract equivalent become status events', async () => {
-  const { provider } = providerFor([
-    agentMessage('system_info', { content: 'thinking' }),
-    agentMessage('provider_signal', {}),
-    agentMessage('text', { content: 'reply' }),
-    agentMessage('done'),
-  ]);
+test('system and telemetry events retain their types and content', async () => {
+  const originals = ['system_info', 'provider_signal', 'liveness_signal', 'agent_loop'].map((type) =>
+    agentMessage(type, { content: `${type} body` }),
+  );
+  const { provider } = providerFor([...originals, agentMessage('text', { content: 'reply' }), agentMessage('done')]);
 
   const events = await runTurn(provider);
-  const statuses = events.filter((event) => event.type === 'status');
-
-  assert.deepEqual(
-    statuses.map((event) => event.phase),
-    ['system_info', 'provider_signal'],
+  for (const original of originals) {
+    const event = events.find((event) => event.type === original.type);
+    assert.ok(event);
+    assert.equal(event.content, original.content);
+  }
+  assert.equal(
+    events.some((event) => event.type === 'status'),
+    false,
   );
   assert.equal(events.filter((event) => event.type === 'output').length, 1);
 });

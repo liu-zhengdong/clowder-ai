@@ -108,19 +108,19 @@ test('adapter supplies done on EOF; errors/outcomes/metadata/status map as agree
         content: 'result',
         toolResultStatus: 'error',
       });
-      yield message('provider_signal', { content: 'detail is outside contract' });
+      yield message('provider_signal', { content: 'capacity retry warning' });
       yield message('error', { error: 'failed' });
     },
   });
   const messages = await collect(bridge.invoke('x', options()));
   assert.deepEqual(
     messages.map((m) => m.type),
-    ['session_init', 'text', 'tool_use', 'tool_result', 'status', 'error', 'done'],
+    ['session_init', 'text', 'tool_use', 'tool_result', 'provider_signal', 'error', 'done'],
   );
   assert.equal(messages[1].textMode, 'replace');
   assert.equal(messages[1].metadata.model, 'm');
   assert.equal(messages[3].toolResultStatus, 'ok');
-  assert.equal(messages[4].content, 'provider_signal');
+  assert.equal(messages[4].content, 'capacity retry warning');
   assert.equal(messages[5].errorCode, 'provider_error');
   assert.equal(messages.at(-1).errorCode, undefined);
 });
@@ -157,7 +157,7 @@ test('release reports errors; native id absence strips stale Host sessionId', as
   assert.deepEqual(await failing.provider.release('host'), { ok: false, code: 'failed', reason: 'close failed' });
   await bridge.releaseAll('done');
 });
-test('real ACP transformer replay preserves representable consumed fields and exposes telemetry gaps', async () => {
+test('real ACP transformer replay preserves output, thinking and usage telemetry', async () => {
   const metadata = { provider: 'acp', model: 'fixture' };
   const updates = [
     { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hello' } },
@@ -186,16 +186,16 @@ test('real ACP transformer replay preserves representable consumed fields and ex
     model: m.metadata?.model,
     usage: m.metadata?.usage,
   });
-  for (const original of native.filter((m) => ['text', 'tool_use'].includes(m.type)))
+  for (const original of native)
     assert.deepEqual(fields(messages.find((m) => m.type === original.type)), fields(original));
   for (const type of ['system_info', 'agent_loop']) {
     assert.ok(native.some((m) => m.type === type));
-    assert.equal(
-      messages.some((m) => m.type === type),
-      false,
-    );
-    assert.ok(messages.some((m) => m.type === 'status' && m.content === type));
+    assert.ok(messages.some((m) => m.type === type));
   }
+  assert.equal(
+    messages.some((m) => m.type === 'status'),
+    false,
+  );
 });
 test(
   'reference ACP subprocess: factory → adapter → bridge, two turns + resume + cancel',
