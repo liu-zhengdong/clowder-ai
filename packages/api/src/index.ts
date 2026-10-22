@@ -36,6 +36,7 @@ import {
   CORE_COMMANDS,
   catRegistry,
   createCatId,
+  deploymentDefaults,
   type EventMemoryRecord,
   type ILimbNode,
 } from '@cat-cafe/shared';
@@ -254,6 +255,7 @@ import {
 } from './domains/growing/EntrustedWorkOwnerReadService.js';
 import { EntrustedWorkTaskExecutionService } from './domains/growing/EntrustedWorkTaskExecutionService.js';
 import { F232PreparedArtifactReader } from './domains/growing/F232PreparedArtifactReader.js';
+import { F290CollectiveWorkResultPluginAdapter } from './domains/growing/F290CollectiveWorkResultPluginAdapter.js';
 import { F246NeedsMeProducerAdapter, F306NeedsMeProducerAdapter } from './domains/growing/NeedsMeProducerAdapter.js';
 import { NeedsMeProducerCatalog } from './domains/growing/NeedsMeProducerCatalog.js';
 import { ActivityTracker } from './domains/health/ActivityTracker.js';
@@ -579,7 +581,7 @@ import { resolveCatCafeSkillsSource } from './utils/skill-source.js';
 import { buildThreadDeepLink } from './utils/thread-deep-link.js';
 import { getDefaultConnectorMediaDir, getDefaultUploadDir } from './utils/upload-paths.js';
 
-const PORT = parseInt(process.env.API_SERVER_PORT ?? '3004', 10);
+const PORT = parseInt(process.env.API_SERVER_PORT ?? String(deploymentDefaults.apiPort), 10);
 const HOST = process.env.API_SERVER_HOST ?? '127.0.0.1';
 
 let socketManager: SocketManager | null = null;
@@ -3789,7 +3791,9 @@ async function main(): Promise<void> {
     './infrastructure/harness-eval/publish-verdict/git-worktree-publisher.js'
   );
   const verdictRepoFullName =
-    process.env.CAT_CAFE_VERDICT_REPO_FULL_NAME ?? process.env.CAT_CAFE_REPO_FULL_NAME ?? 'zts212653/cat-cafe';
+    process.env.CAT_CAFE_VERDICT_REPO_FULL_NAME ??
+    process.env.CAT_CAFE_REPO_FULL_NAME ??
+    deploymentDefaults.repositoryFullName;
   const harnessGitPublisher = createGitWorktreePublisher({
     repoRoot,
     expectedRepoFullName: verdictRepoFullName,
@@ -4817,10 +4821,8 @@ async function main(): Promise<void> {
   // Seed only an absent registry before plugin activation can persist schedules
   // into it. Native invoke-time MCP resolution must work without visiting Settings.
   const { initializeFirstRunCapabilities } = await import('./config/capabilities/first-run-capabilities.js');
-  const capabilityInitialization = await initializeFirstRunCapabilities(
-    await resolveInvokeCapabilityRoot(runtimeEntrypointRoot),
-    runtimeEntrypointRoot,
-  );
+  const pluginCapabilityRoot = await resolveInvokeCapabilityRoot(runtimeEntrypointRoot);
+  const capabilityInitialization = await initializeFirstRunCapabilities(pluginCapabilityRoot, runtimeEntrypointRoot);
   if (capabilityInitialization.status === 'unreadable') {
     app.log.warn('[api] Existing capabilities are unreadable; preserved without enabling default tools');
   }
@@ -4926,6 +4928,7 @@ async function main(): Promise<void> {
       ],
     ]),
     projectRoot: pluginProjectRoot,
+    capabilityProjectRoot: pluginCapabilityRoot,
     editorParentOrigin: new URL(resolveFrontendBaseUrl(process.env, app.log)).origin,
     desktopExecutor: {
       open: async (launch) =>
@@ -5169,12 +5172,17 @@ async function main(): Promise<void> {
   const { createCollectiveAccountabilitySource } = await import(
     './routes/companion-collective-accountability-source.js'
   );
-  collectiveAttentionReader = createCollectiveAccountabilitySource(
-    new InstalledPluginOperations({
-      inventory: pluginRuntime.inventoryStore,
-      configuration: pluginManagerRuntime.configuration,
-      invocation: pluginRuntime.supervisor,
-    }),
+  const collectiveSourceOperations = new InstalledPluginOperations({
+    inventory: pluginRuntime.inventoryStore,
+    configuration: pluginManagerRuntime.configuration,
+    invocation: pluginRuntime.supervisor,
+  });
+  collectiveAttentionReader = createCollectiveAccountabilitySource(collectiveSourceOperations, privateUserId);
+  const { createCollectiveWorkResultAttentionSource } = await import(
+    './domains/plugin/host-surface/collective-work-result-attention.js'
+  );
+  const collectiveWorkResultAttentionSource = createCollectiveWorkResultAttentionSource(
+    collectiveSourceOperations,
     privateUserId,
   );
   await app.register(pluginOperationRoutes, { operations: installedPluginOperations });
@@ -5661,6 +5669,96 @@ async function main(): Promise<void> {
   await app.register(async (scope) => registerArtifactReviewRoutes(scope, artifactReview));
   const { registerPublishedContentRoutes } = await import('./routes/published-content-routes.js');
   registerPublishedContentRoutes(app, { media: artifactReview.media });
+  const { LivingWorkService } = await import('./domains/collaborative-content/works/service.js');
+  const { WorkCatalogue } = await import('./domains/collaborative-content/works/catalogue.js');
+  const { createWorkAuthorizer, workMediaPrincipal } = await import('./domains/collaborative-content/works/access.js');
+  const { createWorkWorkspaceSource } = await import('./domains/collaborative-content/works/workspace-source.js');
+  const { registerLivingWorkRoutes } = await import('./routes/living-work-routes.js');
+  const { WorkReviewResponseService } = await import('./domains/collaborative-content/works/review-response.js');
+  const { createWorkResponseAuthority } = await import(
+    './domains/collaborative-content/works/review-response-authority.js'
+  );
+  const { withContentTask: withWorkResponseTask } = await import(
+    './domains/video-studio/content-owner/published-media-access.js'
+  );
+  const workResponses = new WorkReviewResponseService({
+    owner: collaborativeContent.owner,
+    store: artifactReview.store,
+    onCommitted: async (reviewId) => {
+      await artifactReview.reviews.projectCommitted(reviewId);
+      await artifactReview.changed(privateUserId, reviewId);
+    },
+    authorize: createWorkResponseAuthority({
+      store: artifactReview.store,
+      media: artifactReview.media,
+      messages: messageStore,
+    }),
+    readAsset: (review, revision, principal) =>
+      artifactReview.media.read(
+        review.contentRef,
+        revision,
+        withWorkResponseTask(workMediaPrincipal(principal), review.task.taskId),
+      ),
+  });
+  artifactReview.reviews.setWorkResponseRecovery((review, principal) =>
+    workResponses.recover(review, {
+      ...principal,
+      threadId: principal.threadId ?? review.task.threadId,
+    }),
+  );
+  const livingWorks = new LivingWorkService({
+    responses: workResponses,
+    owner: collaborativeContent.owner,
+    versions: artifactReview.store.works,
+    source: createWorkWorkspaceSource(workspaceContentReviews.source),
+    authorize: createWorkAuthorizer({
+      ownerUserId: privateUserId,
+      access: artifactReview.media.access,
+      invocation: (id) => registry.peekRecord(id),
+    }),
+  });
+  const { WorkVideoContextService } = await import('./domains/collaborative-content/works/video-context.js');
+  const { createWorkContextSource } = await import('./domains/collaborative-content/works/context-source.js');
+  const { createWorkSourceBindingVerifier } = await import('./domains/collaborative-content/works/source-binding.js');
+  const workContexts = new WorkVideoContextService({
+    store: artifactReview.store.works.contexts,
+    contextSource: createWorkContextSource(workspaceContentReviews.source),
+    verifyBinding: createWorkSourceBindingVerifier({
+      projects: collaborativeContent.projects,
+      screenings: collaborativeContent.screenings,
+      reviews: artifactReview.projectReviews,
+      workDigest: async (reference, principal) =>
+        (await artifactReview.media.read(reference.contentRef, reference.ownerRevision, workMediaPrincipal(principal)))
+          .blobDigest,
+    }),
+    authorize: (reference, principal, permission) => livingWorks.authorizeVersion(reference, principal, permission),
+    media: async (reference, principal) => {
+      const asset = await artifactReview.media.read(
+        reference.contentRef,
+        reference.ownerRevision,
+        workMediaPrincipal(principal),
+      );
+      if (asset.media.kind !== 'video') throw new Error('Video context requires video bytes');
+      return asset.media;
+    },
+  });
+  artifactReview.media.setAnchorEvidenceVerifier(async (reference, anchor, principal) => {
+    const { scope } = await artifactReview.media.origin(reference.contentRef, principal);
+    if (!scope.threadId) throw new Error('Story evidence requires its original work thread');
+    await workContexts.verifyStory(reference, anchor, {
+      ...principal,
+      threadId: principal.threadId ?? scope.threadId,
+    });
+  });
+  await registerLivingWorkRoutes(app, { service: livingWorks, registry, contexts: workContexts });
+  const { registerWorkVideoAssetRoutes } = await import('./routes/work-video-asset-routes.js');
+  const { VideoProjectAssetIndex } = await import('./domains/video-studio/project/asset-index.js');
+  const { resolveWorkspaceContentRoot } = await import('./domains/workspace/workspace-content-source-factory.js');
+  registerWorkVideoAssetRoutes(app, {
+    contexts: workContexts,
+    assets: new VideoProjectAssetIndex({ resolveRoot: resolveWorkspaceContentRoot }),
+  });
+  artifactWorkLineageHolder.independent = new WorkCatalogue(livingWorks, artifactReview.store.works.contexts);
   if (!artifactReview.ledgers) throw new Error('F309 publication ledger requires the F063 source owner');
   registerWorkspaceContentReviewRoutes(app, {
     reviews: artifactReview.ledgers,
@@ -5747,8 +5845,9 @@ async function main(): Promise<void> {
       new F246NeedsMeProducerAdapter(approvalProducerRegistry),
       new F306NeedsMeProducerAdapter(runtimeInteractionRuntime.store),
       artifactReview.producer,
+      new F290CollectiveWorkResultPluginAdapter(collectiveWorkResultAttentionSource),
     ],
-    ['f246.approval', 'f306.runtime_interaction', 'f309.content_review'],
+    ['f246.approval', 'f306.runtime_interaction', 'f309.content_review', 'f290.collective_work_result'],
   );
   const { DevelopmentReturnService } = await import(
     './infrastructure/scheduler/development-return/DevelopmentReturnService.js'
@@ -7390,11 +7489,13 @@ async function main(): Promise<void> {
     const runManagedCommandWakeRecovery = (): void => {
       if (managedCommandRecoveryTickInFlight) return;
       managedCommandRecoveryTickInFlight = true;
+      const sweepStarted = performance.now();
       void recovery
         .runOnce()
         .then((stats) => {
-          if (stats.scanned > 0) {
-            app.log.info({ ...stats }, 'F167 S.1-c managed-command wake recovery sweep');
+          const elapsedMs = performance.now() - sweepStarted;
+          if (stats.scanned > 0 || elapsedMs >= 200) {
+            app.log.info({ ...stats, elapsedMs }, 'F167 S.1-c managed-command wake recovery sweep');
           }
         })
         .catch((err: unknown) => {
@@ -7438,6 +7539,7 @@ async function main(): Promise<void> {
       const deploymentWaitLifecycle = new DeploymentWaitLifecycleService({
         taskStore,
         messageStore,
+        authorizationRegistry: registry,
         deliveryDeps,
         eventLog: waitEventLog,
         log: app.log,

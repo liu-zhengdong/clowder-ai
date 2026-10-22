@@ -130,6 +130,9 @@ export interface DormantPluginRuntimeCompositionOptions {
   readonly builtinRuntimes?: ReadonlyMap<string, BuiltinPluginRuntime>;
   readonly taskArtifactReader?: import('../growing/ports/PreparedArtifactReader.js').PreparedArtifactReader;
   readonly projectRoot: string;
+  /** Persistent capability authority used by native invocations and Settings;
+   * package/config/inventory storage retains its existing projectRoot. */
+  readonly capabilityProjectRoot?: string;
   readonly paths?: PluginRuntimePersistencePaths;
   readonly messageStore: IMessageStore;
   readonly lifecyclePresentation?: LifecycleDeliveryDeps['presentation'];
@@ -438,7 +441,8 @@ export function createDormantPluginRuntimeComposition(
     : undefined;
   // Every admitted instance takes this one path; the carrier is selected from the
   // package's own manifest, most specific claim first (F202 C1 clauses 1/2/6).
-  const mcpConfigIO = options.mcpConfigIO ?? fileBasedMcpIO(options.projectRoot);
+  const capabilityProjectRoot = options.capabilityProjectRoot ?? options.projectRoot;
+  const mcpConfigIO = options.mcpConfigIO ?? fileBasedMcpIO(capabilityProjectRoot);
   const builtinPackages =
     options.builtinPackages ??
     new FilesystemBuiltinPluginPackageMaterializer({
@@ -528,7 +532,7 @@ export function createDormantPluginRuntimeComposition(
   const supervisor = new PluginRuntimeCarrierRouter(
     inventoryStore,
     {
-      projectRoot: options.projectRoot,
+      projectRoot: capabilityProjectRoot,
       packages,
       mcpPackages: builtinPackages,
       resourcesRoot: resolve(dirname(paths.inventorySnapshotPath), PLUGIN_HOST_ENTRIES.resources),
@@ -847,7 +851,7 @@ export class InventoryPluginManagerInstalledPackages implements PluginManagerIns
     const plugins: PluginManagerDetail[] = [];
     for (const instance of inventory.instances.filter((candidate) => candidate.lifecycleState === 'installed')) {
       const packageRecord = inventory.packages.find((candidate) => candidate.packageDigest === instance.packageDigest);
-      if (!packageRecord || (!packageRecord.provenance && packageRecord.manifest !== null)) continue;
+      if (!packageRecord) continue;
       const candidate = inventoryCandidate(packageRecord);
       const projected = projectPluginManagerCatalogCandidate(candidate, inventory, {
         activeCapabilityIds: await managerActiveCapabilities(
@@ -858,35 +862,8 @@ export class InventoryPluginManagerInstalledPackages implements PluginManagerIns
           configured,
         ),
       });
-      const provenance = packageRecord.provenance ?? { kind: 'local-archive' as const };
       plugins.push({
         ...projected,
-        source:
-          provenance.kind === 'catalog'
-            ? {
-                kind: 'catalog' as const,
-                catalogId: provenance.catalogId,
-                packageName: provenance.packageName,
-                trust: 'official' as const,
-              }
-            : provenance.kind === 'git'
-              ? {
-                  kind: 'git' as const,
-                  url: provenance.url,
-                  packageName: provenance.packageName ?? null,
-                  trust: 'unverified' as const,
-                  ...(provenance.dependencyClosure === undefined
-                    ? {}
-                    : { dependencyClosure: provenance.dependencyClosure }),
-                }
-              : {
-                  kind: provenance.kind,
-                  packageName: provenance.packageName ?? null,
-                  trust: 'unverified' as const,
-                  ...(provenance.dependencyClosure === undefined
-                    ? {}
-                    : { dependencyClosure: provenance.dependencyClosure }),
-                },
         capabilities: projected.capabilitySummary.map((capability) => ({ ...capability })),
         contributions: (packageRecord.manifest
           ? pluginManagerContributionsFromManifest(packageRecord.manifest)
@@ -1106,7 +1083,9 @@ export function createPluginManagerRuntimeComposition(
         const installed =
           request.source.kind === 'git'
             ? await gitAdmission.install(request.source)
-            : await localAdmission.install(request.source);
+            : await localAdmission.install(request.source, {
+                ...('replacement' in request ? { replacement: request.replacement } : {}),
+              });
         return { pluginId: installed.pluginId, pluginInstanceId: installed.pluginInstanceId };
       },
     },
