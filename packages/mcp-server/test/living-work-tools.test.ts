@@ -170,6 +170,7 @@ test('explicit delivery attaches the exact owner card; reads stay silent and fai
 });
 
 test('the common Work MCP entry forwards bounded HTML input and fixed body reads without a chat publication', async (t) => {
+  assert.match(workCommandInputSchema.command.description ?? '', /JSON escaping can lower the effective HTML size limit/);
   const previous = { ...process.env },
     fetcher = globalThis.fetch;
   process.env.CAT_CAFE_API_URL = 'http://127.0.0.1:1';

@@ -84,7 +84,7 @@ function streamMetadata(input: StreamMutation, state: ProjectContentStateV1 | un
     throw new TypeError('Unsupported streamed publication format');
   if (mediaType === 'text/html' && input.byteLength > MAX_HTML_WORK_BYTES)
     throw new TypeError('HTML exceeds the owner size limit');
-  validateContentPublication(publicationScope, input.sourcePublication);
+  validateContentPublication(publicationScope, input.sourcePublication, mediaType);
   validateVideoProjectScope(projectScope, input.contentRef, mediaType, publicationScope);
   validateVideoProjectMediaScope(projectMediaScope, { ...input, mediaType, publicationScope, projectScope });
   validateContentOperationContext(input.operationContext, projectScope);

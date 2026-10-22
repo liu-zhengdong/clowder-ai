@@ -25,7 +25,7 @@ import {
   isWorkPublicationScope,
   type WorkPublicationScopeV1,
 } from '../../video-studio/content-owner/types.js';
-import { openHtmlWorkSource, readHtmlWorkBody } from './html-source.js';
+import { isHtmlWorkSource, openHtmlWorkSource, readHtmlWorkBody } from './html-source.js';
 import type { WorkReviewResponseService } from './review-response.js';
 import { workVersionRecord } from './version-record.js';
 import type { WorkVersionStore } from './version-store.js';
@@ -84,7 +84,7 @@ export class LivingWorkService {
   async commit(raw: unknown, principal: WorkPrincipal) {
     const command = commitWorkSchema.parse(raw);
     const response = command.action === 'submit' ? command.reviewResponse : undefined;
-    if (response && 'kind' in command.source) throw new MediaOwnerError('invalid_media');
+    if (response && isHtmlWorkSource(command.source)) throw new MediaOwnerError('invalid_media');
     if (response && !this.deps.responses) throw new MediaOwnerError('media_unavailable');
     await this.deps.authorize({ principal, permission: 'write' });
     const contentRef = command.action === 'submit' ? command.contentRef : createdWorkRef(command, principal);
@@ -123,10 +123,9 @@ export class LivingWorkService {
         command.expectedOwnerRevision,
         current?.currentOwnerRevision ?? 0,
       );
-    const opened =
-      'kind' in command.source
-        ? openHtmlWorkSource(command.source)
-        : await this.deps.source.open({ source: command.source, principal, threadId: workScope.threadId });
+    const opened = isHtmlWorkSource(command.source)
+      ? openHtmlWorkSource(command.source)
+      : await this.deps.source.open({ source: command.source, principal, threadId: workScope.threadId });
     try {
       if ((current && current.mediaType !== opened.mediaType) || (response && opened.mediaType !== 'video/mp4'))
         throw new MediaOwnerError('invalid_media');
@@ -176,7 +175,7 @@ export class LivingWorkService {
     return this.deps.responses.resolve(command, principal);
   }
 
-  async read(raw: WorkReference, principal: WorkPrincipal) {
+  private async readWorkVersion(raw: WorkReference, principal: WorkPrincipal) {
     const reference = workReferenceSchema.parse(raw);
     const description = await this.deps.owner.describe(reference.contentRef, reference.ownerRevision);
     const scope = description.publicationScope;
@@ -184,6 +183,11 @@ export class LivingWorkService {
     await this.deps.authorize({ principal, permission: 'read', scope });
     const version = this.deps.versions.get(principal.userId, reference.contentRef, reference.ownerRevision);
     if (!version) throw new MediaOwnerError('media_unavailable');
+    return { reference, description, version, scope };
+  }
+
+  async read(raw: WorkReference, principal: WorkPrincipal) {
+    const { reference, description, version, scope } = await this.readWorkVersion(raw, principal);
     const revision = await this.deps.owner.describeRevision(reference.contentRef, reference.ownerRevision);
     await this.deps.authorize({ principal, permission: 'read', scope });
     return { reference, currentOwnerRevision: description.currentOwnerRevision, version, description, revision };
@@ -192,10 +196,9 @@ export class LivingWorkService {
   async readBody(raw: WorkReference, principal: WorkPrincipal) {
     // A missing fixed version and a forbidden one have the same content-free result at this new boundary.
     try {
-      await this.deps.authorize({ principal, permission: 'read' });
-      const { reference, description } = await this.read(raw, principal);
+      const { reference, description, scope } = await this.readWorkVersion(raw, principal);
       const html = await readHtmlWorkBody(this.deps.owner, reference, description);
-      await this.read(reference, principal);
+      await this.deps.authorize({ principal, permission: 'read', scope });
       return { reference, mediaType: 'text/html' as const, html };
     } catch (error) {
       if (error instanceof ContentOwnerNotFoundError) throw new MediaOwnerError('access_denied');

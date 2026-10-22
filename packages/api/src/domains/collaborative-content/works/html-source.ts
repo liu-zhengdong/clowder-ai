@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
-import { MAX_HTML_WORK_BYTES, type WorkHtmlSource, type WorkReference } from '@cat-cafe/shared';
+import { type CommitWork, MAX_HTML_WORK_BYTES, type WorkHtmlSource, type WorkReference } from '@cat-cafe/shared';
 import { MediaOwnerError } from '../../video-studio/content-owner/media-errors.js';
 import type { ProjectContentOwnerService } from '../../video-studio/content-owner/service.js';
 import type { OpenWorkSource } from './service.js';
+
+export function isHtmlWorkSource(source: CommitWork['source']): source is WorkHtmlSource {
+  return 'kind' in source && source.kind === 'html';
+}
 
 /** The authenticated Work coordinator owns attribution. No file, message, renderer or network is consulted. */
 export function openHtmlWorkSource(source: WorkHtmlSource): OpenWorkSource {
@@ -41,7 +45,11 @@ export async function readHtmlWorkBody(
     const bytes = Buffer.concat(chunks);
     if (length !== description.byteLength || digest(bytes) !== description.blobDigest)
       throw new MediaOwnerError('media_unavailable');
-    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    try {
+      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+      throw new MediaOwnerError('media_unavailable');
+    }
   } finally {
     stream.destroy();
     await opened.handle.close();

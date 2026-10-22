@@ -57,7 +57,7 @@ export class ProjectContentOwnerService {
     validateIdentity(input.operationId, 'operationId');
     validateIdentity(input.mediaType, 'mediaType');
     validateActor(input.actor);
-    validateContentPublication(input.publicationScope, input.sourcePublication);
+    validateContentPublication(input.publicationScope, input.sourcePublication, input.mediaType);
     validateVideoProjectScope(input.projectScope, input.contentRef, input.mediaType, input.publicationScope);
     validateCollectiveContentScope(input.collectiveScope, input);
     validateContentOperationContext(input.operationContext, input.projectScope, input.collectiveScope);
@@ -132,7 +132,7 @@ export class ProjectContentOwnerService {
       const state = await this.store.readState(input.contentRef);
       if (!state) throw new ContentOwnerNotFoundError(input.contentRef);
       if (state.projectMediaScope) throw new TypeError('Project screening media is immutable');
-      validateContentPublication(state.publicationScope, input.sourcePublication);
+      validateContentPublication(state.publicationScope, input.sourcePublication, state.mediaType);
       validateContentOperationContext(input.operationContext, state.projectScope, state.collectiveScope);
       validateCollectiveContentWrite({
         scope: state.collectiveScope,
