@@ -1,10 +1,5 @@
 import { Transform } from 'node:stream';
-import {
-  MAX_HTML_WORK_COMMAND_BYTES,
-  MAX_WORK_COMMAND_BYTES,
-  type WorkCommand,
-  workCommandSchema,
-} from '@cat-cafe/shared';
+import { MAX_HTML_WORK_COMMAND_BYTES, type WorkCommand, workCommandSchema } from '@cat-cafe/shared';
 import {
   errorCodes,
   type FastifyInstance,
@@ -32,6 +27,7 @@ import {
   requireCallbackPrincipal,
 } from './callback-auth-prehandler.js';
 import { directContentHuman } from './content-modification-routes.js';
+import { workCommandInputError } from './living-work-command-budget.js';
 
 const envelope = z.object({ threadId: z.string().min(1).max(128).optional(), command: workCommandSchema }).strict();
 const callbackEnvelope = envelope.extend({
@@ -71,6 +67,9 @@ async function run(
 }
 
 function fail(reply: FastifyReply, error: unknown) {
+  // Work validation responses have a fixed 27-byte budget. In particular, do
+  // not serialize nested union errors, unknown keys, or user-supplied values.
+  if (error instanceof z.ZodError) return reply.code(400).send({ error: 'invalid_request' });
   if (error instanceof ContentOwnerCapacityError) return reply.code(409).send({ error: 'work_version_limit' });
   if (error instanceof WorkContextConflictError) return reply.code(409).send({ error: 'context_conflict' });
   if (error instanceof WorkProjectionPendingError)
@@ -112,21 +111,9 @@ const measureCommandBody: preParsingAsyncHookHandler = async (request, _reply, p
   );
 };
 
-// Only inspect the transport discriminator here. Full envelope/command validation
-// must run after the byte limit, including for malformed non-HTML commands.
-const htmlBodyDiscriminator = z.object({
-  command: z.object({
-    action: z.enum(['create', 'submit']),
-    source: z.object({ kind: z.literal('html'), html: z.string() }),
-  }),
-});
 const enforceCommandLimit: preValidationAsyncHookHandler = async (request, reply) => {
-  if (
-    (streamedCommandBytes.get(request) ?? 0) > MAX_WORK_COMMAND_BYTES &&
-    !htmlBodyDiscriminator.safeParse(request.body).success
-  ) {
-    return reply.code(413).send({ error: 'work_command_too_large' });
-  }
+  const error = workCommandInputError(request.body, streamedCommandBytes.get(request) ?? 0);
+  if (error) return reply.code(error === 'work_command_too_large' ? 413 : 400).send({ error });
 };
 
 export async function registerLivingWorkRoutes(
