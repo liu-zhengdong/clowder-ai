@@ -81,7 +81,7 @@ F309 原 `pending_versions` 封存完整接受命令、原 actor 和服务端验
 - `read` 仍只返回固定版元数据；新增 `read-body` 接相同 `reference`，返回 `{reference,mediaType:"text/html",html}`。它只读取已授权的固定 HTML blob，有界校验长度、digest、UTF-8，返回前重新授权。callback 沿现有 snapshot-fenced JSON 文本分页，续页必须复制 snapshot、nextCursor。缺失或无权固定版均为内容无关 `access_denied`；不存在的 handle 不授予读取权。
 - 原文始终是不可信数据；存储/读取不执行脚本、不解析依赖、不抓取外部 URL。读取是 JSON、private/no-store，没有同源可执行 HTML/raw URL。提交不做 DOMPurify 转换，避免丢失续改源；后续预览必须复用 `sanitizeWidgetHtml` 与 `HtmlWidgetBlock` 的 iframe sandbox，不能据存储成功声称任意应用或外部资源可运行。内联事件策略不在此切片更改。
 - 权限继续由 `createWorkAuthorizer` / PublishedMediaAccess、strict active invocation、当前工具策略及原 exact publication Task grant 决定。作品来源 thread 隐藏、删除或撤权后，列表、读回、重放和提交都不能绕过；换会话不是跨 thread 授权。
-- 原 owner manifest 发现可显式纳入 work HTML，媒体选择器默认仍仅 PNG/MP4。同一 F232 WorkCatalogue 为未发聊天的 HTML 投影 `widget + work` 坐标，无正文、虚构消息或 raw URL。该最小目录投影不代表已交付按版本打开 UI；Works 沙盒预览及固定版引用消费仍属后续切片。
+- 原 owner manifest 发现可显式纳入 work HTML，媒体选择器默认仍仅 PNG/MP4。同一 F232 WorkCatalogue 为未发聊天的 HTML 投影 `widget + work` 坐标，无正文、虚构消息或 raw URL。Works 的原查看区通过原 publication surface 打开目录给出的固定版；HTML 复用 HtmlWidgetBlock 的 workspace 展示模式、sanitizeWidgetHtml 与 allow-scripts iframe。版本下拉只调用 read/read-body；刷新版本目录保留当前固定版和 iframe 状态，不自动切换最新。换版、换 thread 或错误时卸载旧画面，响应坐标错配、损坏或无权不能退回另一版。
 - 沿原 owner lock/CAS/幂等回执与初版 staging；owner 成功、注释失败仍返回 `version_saved`，原完整请求恢复相同回执和注释，不提交第二版。追加版在 manifest 发布前失败可留下未引用的内容寻址 blob，沿既有 owner 行为，不暴露半版；不引入新的 GC。
 
-配额数值是本切片的保守格式默认值，待维护者确认；不会通过配置旁路放宽 authority。验证见 `living-work-html*.test.ts`、`living-work-tools.test.ts` 与原 content-owner/living-work/F232 套件。没有按版预览、编辑、分享或整个 F309 完成的声明。
+配额数值是本切片的保守格式默认值，待维护者确认；不会通过配置旁路放宽 authority。验证见 `living-work-html*.test.ts`、`living-work-tools.test.ts` 与原 content-owner/living-work/F232 套件。指定版预览的 Web 验证见 work-content-boundary 与 F307OwnerSurfaceRenderer 套件；living-work-html-journey.test.ts 验证猫沿同一 handle 读回续版。没有编辑、分享或整个 F309 完成的声明。
