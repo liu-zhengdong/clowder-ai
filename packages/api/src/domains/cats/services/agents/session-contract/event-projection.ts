@@ -11,10 +11,15 @@ export function projectSessionEvent(
   switch (event.type) {
     case 'native_bound':
       metadata.sessionId = event.nativeSessionId;
-      message = { type: 'session_init', sessionId: event.nativeSessionId };
+      message = {
+        type: 'session_init',
+        sessionId: event.nativeSessionId,
+        nativeSessionBinding: event.nativeSessionBinding,
+        ephemeralSession: event.ephemeralSession,
+      };
       break;
     case 'context':
-      if (event.usage) metadata.usage = event.usage;
+      if (Object.hasOwn(event, 'usage')) metadata.usage = event.usage;
       metadata.model = event.model ?? metadata.model;
       return [];
     case 'continuity':
@@ -36,10 +41,9 @@ export function projectSessionEvent(
         type: 'tool_use',
         toolName: event.name,
         toolUseId: event.callId,
-        toolInput:
-          event.input !== null && typeof event.input === 'object' && !Array.isArray(event.input)
-            ? (event.input as Record<string, unknown>)
-            : { value: event.input },
+        toolSource: event.source,
+        toolRawPayload: event.rawPayload,
+        toolInput: projectToolInput(event.input),
       };
       break;
     case 'tool_result':
@@ -47,7 +51,10 @@ export function projectSessionEvent(
         type: 'tool_result',
         toolName: event.name,
         toolUseId: event.callId,
+        toolSource: event.source,
+        toolRawPayload: event.rawPayload,
         toolResultStatus: event.status,
+        toolInput: projectToolInput(event.input),
         content: typeof event.output === 'string' ? event.output : JSON.stringify(event.output),
       };
       break;
@@ -78,5 +85,19 @@ export function projectSessionEvent(
       };
       break;
   }
-  return [{ ...message, catId: ctx.catId, metadata: { ...metadata }, timestamp: Date.now() }];
+  return [
+    {
+      ...message,
+      catId: ctx.catId,
+      metadata: { ...metadata, ...(Object.hasOwn(event, 'messageUsage') ? { usage: event.messageUsage } : {}) },
+      timestamp: Date.now(),
+    },
+  ];
+}
+
+function projectToolInput(input: unknown): Record<string, unknown> | undefined {
+  if (input === undefined) return undefined;
+  return input !== null && typeof input === 'object' && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : { value: input };
 }

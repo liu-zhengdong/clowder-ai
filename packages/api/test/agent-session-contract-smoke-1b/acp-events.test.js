@@ -92,7 +92,7 @@ test('[39] tool_use becomes tool_call keyed by the native tool id', async () => 
   assert.equal(calls[1].name, 'ping');
 });
 
-test('[39] tool_result becomes tool_result with status ok', async () => {
+test('[39] tool_result without native status remains unknown', async () => {
   const { provider } = providerFor([
     agentMessage('tool_result', { toolName: 'read_file', content: 'file body', toolUseId: 'call-1' }),
     agentMessage('done'),
@@ -103,7 +103,7 @@ test('[39] tool_result becomes tool_result with status ok', async () => {
 
   assert.equal(result.callId, 'call-1');
   assert.equal(result.name, 'read_file');
-  assert.equal(result.status, 'ok');
+  assert.equal(result.status, 'unknown');
   assert.equal(result.output, 'file body');
 });
 
@@ -161,7 +161,7 @@ test('[39] a stream that ends without done gets exactly one completed done', asy
   assert.equal(events.at(-1).type, 'done');
 });
 
-test('[39] a metadata model or usage change becomes a session-scoped context event', async () => {
+test('model changes update session context; usage belongs to each message', async () => {
   const usage = { inputTokens: 5, outputTokens: 2, totalTokens: 7 };
   const { provider } = providerFor([
     agentMessage('text', { content: 'a' }, { model: 'model-a' }),
@@ -176,7 +176,9 @@ test('[39] a metadata model or usage change becomes a session-scoped context eve
   const changed = contexts.find((event) => event.model === 'model-b');
   assert.ok(changed, 'the new model must be reported');
   assert.equal(changed.scope, 'session');
-  assert.deepEqual(changed.usage, usage);
+  assert.equal(changed.usage, undefined);
+  assert.deepEqual(events.find((event) => event.text === 'b').messageUsage, usage);
+  assert.equal(events.at(-1).messageUsage, undefined);
 });
 
 test('system and telemetry events retain their types and content', async () => {

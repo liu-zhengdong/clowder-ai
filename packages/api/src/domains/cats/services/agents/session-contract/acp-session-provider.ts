@@ -111,25 +111,38 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
       case 'session_init':
         if (!message.sessionId) return undefined;
         session.nativeId = message.sessionId;
-        return { scope: 'session', sessionId, seq: 0, type: 'native_bound', nativeSessionId: message.sessionId };
+        return {
+          scope: 'session',
+          sessionId,
+          seq: 0,
+          type: 'native_bound',
+          nativeSessionId: message.sessionId,
+          nativeSessionBinding: message.nativeSessionBinding,
+          ephemeralSession: message.ephemeralSession,
+        };
       case 'text':
         return { ...base, type: 'output', text: message.content ?? '', textMode: message.textMode ?? 'append' };
       case 'tool_use':
         return {
           ...base,
           type: 'tool_call',
-          name: message.toolName ?? '',
+          name: message.toolName,
           callId: message.toolUseId,
           input: message.toolInput,
+          source: message.toolSource,
+          rawPayload: message.toolRawPayload,
         };
       case 'tool_result':
         return {
           ...base,
           type: 'tool_result',
-          name: message.toolName ?? '',
+          name: message.toolName,
           callId: message.toolUseId,
-          status: 'ok',
+          status: message.toolResultStatus ?? 'unknown',
           output: message.content,
+          input: message.toolInput,
+          source: message.toolSource,
+          rawPayload: message.toolRawPayload,
         };
       case 'error':
         return {
@@ -137,7 +150,7 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
           type: 'error',
           code: message.errorCode ?? 'provider_error',
           message: message.error ?? '',
-          disposition: 'terminal',
+          disposition: message.errorDisposition ?? 'terminal',
         };
       case 'done':
         return {
@@ -152,7 +165,7 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
       case 'agent_loop':
         return { ...base, type: message.type, content: message.content };
       case 'status':
-        return { ...base, type: 'status', phase: 'status', detail: message.content };
+        return { ...base, type: 'status', detail: message.content };
       case 'a2a_handoff':
         return {
           ...base,
@@ -173,7 +186,7 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
     active: ActiveTurn,
     cleanup: () => void,
   ): AsyncGenerator<Contract.AgentSessionEvent> {
-    let metadata: Pick<MessageMetadata, 'usage' | 'model'> | undefined;
+    let metadata: Pick<MessageMetadata, 'model'> | undefined;
     let seq = 0;
     let wake = () => {};
     const aborted = new Promise<undefined>((resolve) => {
@@ -187,14 +200,14 @@ export class AcpSessionProvider implements Contract.AgentSessionProvider {
         const next = await Promise.race([iterator.next(), aborted]);
         if (!next || next.done || active.controller.signal.aborted) break;
         const current = next.value.metadata;
-        if (current && !isDeepStrictEqual(metadata, { model: current.model, usage: current.usage })) {
-          metadata = structuredClone({ model: current.model, usage: current.usage });
+        if (current && !isDeepStrictEqual(metadata, { model: current.model })) {
+          metadata = structuredClone({ model: current.model });
           yield { scope: 'session', sessionId, seq: ++seq, type: 'context', ...metadata };
         }
         const event = this.project(next.value, sessionId, session, active.ref);
         if (event) {
           active.done = event.type === 'done';
-          yield { ...event, seq: ++seq };
+          yield { ...event, messageUsage: structuredClone(current?.usage), seq: ++seq };
           if (event.type === 'done') return;
         }
       }

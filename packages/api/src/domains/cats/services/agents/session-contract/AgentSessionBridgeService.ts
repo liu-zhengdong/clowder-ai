@@ -260,7 +260,7 @@ export class AgentSessionBridgeService implements Service.AgentService {
     };
     const signal = options?.signal ?? new AbortController().signal;
     let live: LiveTurn | undefined;
-    let terminal = this.message('done', metadata, { errorCode: 'provider_stream_ended_without_done' });
+    let terminal: AgentMessage | undefined;
     try {
       const prepared = await this.prepare(options, signal, prompt, metadata);
       live = prepared.live;
@@ -290,8 +290,8 @@ export class AgentSessionBridgeService implements Service.AgentService {
         this.close(live);
       }
     }
-    // The metadata snapshot also covers silent context/native-bound events before EOF.
-    terminal.metadata = { ...metadata };
+    // A synthetic terminal uses the final session context; a provider terminal keeps its own usage fact.
+    terminal ??= this.message('done', metadata, { errorCode: 'provider_stream_ended_without_done' });
     if (signal.aborted) terminal.errorCode = 'cancelled';
     yield terminal;
   }

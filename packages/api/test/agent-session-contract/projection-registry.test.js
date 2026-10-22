@@ -78,7 +78,10 @@ test('projection: append, primitive tools, status fallback and silent session fa
   const project = (event) => projectSessionEvent(event, ctx);
   assert.equal(project(turn('output', { text: 'suffix', textMode: 'append' }))[0].textMode, 'append');
   for (const input of [undefined, null, 'string', 1, ['array']])
-    assert.deepEqual(project(turn('tool_call', { name: 'tool', input }))[0].toolInput, { value: input });
+    assert.deepEqual(
+      project(turn('tool_call', { name: 'tool', input }))[0].toolInput,
+      input === undefined ? undefined : { value: input },
+    );
   assert.equal(project(turn('tool_result', { name: 'tool', output: 'raw', status: 'error' }))[0].content, 'raw');
   assert.equal(project(turn('status', { phase: 'fallback' }))[0].content, 'fallback');
   assert.equal(project(turn('status', { phase: 'fallback', detail: '' }))[0].content, '');

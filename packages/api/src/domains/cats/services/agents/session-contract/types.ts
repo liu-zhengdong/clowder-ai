@@ -121,7 +121,12 @@ export type CompactResult =
   | { status: 'failed'; reason: string; observed?: Service.ProviderCompactionObservation };
 
 export type SessionEvent = { scope: 'session'; sessionId: HostSessionId; seq: number; nativeTurnRef?: string } & (
-  | { type: 'native_bound'; nativeSessionId: string }
+  | {
+      type: 'native_bound';
+      nativeSessionId: string;
+      nativeSessionBinding?: Service.AgentMessage['nativeSessionBinding'];
+      ephemeralSession?: boolean;
+    }
   | { type: 'continuity'; evidence: Service.ProviderContinuityEvidence }
   | { type: 'compaction_observed'; observation: Service.ProviderCompactionObservation }
   | { type: 'context'; usage?: Service.TokenUsage; windowTokens?: number; model?: string }
@@ -138,9 +143,25 @@ export type TurnEvent = { scope: 'turn'; sessionId: HostSessionId; turn: TurnRef
         channel?: 'final' | 'commentary' | 'unknown';
       };
     }
-  | { type: 'tool_call'; callId?: string; name: string; input?: unknown }
-  | { type: 'tool_result'; callId?: string; name: string; status: 'ok' | 'error' | 'unknown'; output?: unknown }
-  | { type: 'status'; phase: string; detail?: string }
+  | {
+      type: 'tool_call';
+      callId?: string;
+      name?: string;
+      input?: unknown;
+      source?: Service.AgentMessage['toolSource'];
+      rawPayload?: Service.AgentMessage['toolRawPayload'];
+    }
+  | {
+      type: 'tool_result';
+      callId?: string;
+      name?: string;
+      status: 'ok' | 'error' | 'unknown';
+      output?: unknown;
+      input?: unknown;
+      source?: Service.AgentMessage['toolSource'];
+      rawPayload?: Service.AgentMessage['toolRawPayload'];
+    }
+  | { type: 'status'; phase?: string; detail?: string }
   | { type: 'system_info' | 'provider_signal' | 'liveness_signal' | 'agent_loop'; content?: string }
   | {
       type: 'handoff';
@@ -153,4 +174,7 @@ export type TurnEvent = { scope: 'turn'; sessionId: HostSessionId; turn: TurnRef
   | { type: 'done'; outcome: 'completed' | 'cancelled' | 'failed'; errorCode?: string }
 );
 
-export type AgentSessionEvent = SessionEvent | TurnEvent;
+export type AgentSessionEvent = (SessionEvent | TurnEvent) & {
+  /** Usage belongs to this emitted message, never to the cached session context. */
+  messageUsage?: Service.TokenUsage;
+};

@@ -119,7 +119,7 @@ test('adapter supplies done on EOF; errors/outcomes/metadata/status map as agree
   );
   assert.equal(messages[1].textMode, 'replace');
   assert.equal(messages[1].metadata.model, 'm');
-  assert.equal(messages[3].toolResultStatus, 'ok');
+  assert.equal(messages[3].toolResultStatus, 'error');
   assert.equal(messages[4].content, 'capacity retry warning');
   assert.equal(messages[5].errorCode, 'provider_error');
   assert.equal(messages.at(-1).errorCode, undefined);
