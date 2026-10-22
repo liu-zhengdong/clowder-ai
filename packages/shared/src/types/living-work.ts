@@ -36,7 +36,9 @@ export const workWorkspaceSourceSchema = z
 export type WorkWorkspaceSource = z.infer<typeof workWorkspaceSourceSchema>;
 
 /** Bounded tool input. The original UTF-8 source is data; renderers must sanitize before sandboxing. */
-export const MAX_HTML_WORK_BYTES = 16 * 1024;
+export const MAX_HTML_WORK_BYTES = 1024 * 1024;
+export const MAX_WORK_COMMAND_BYTES = 32 * 1024;
+export const MAX_HTML_WORK_COMMAND_BYTES = 2 * MAX_HTML_WORK_BYTES + MAX_WORK_COMMAND_BYTES;
 export const MAX_HTML_WORK_VERSIONS = 256;
 export const workHtmlSourceSchema = z
   .object({

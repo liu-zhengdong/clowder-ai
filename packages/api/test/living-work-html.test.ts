@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { commitWorkSchema, MAX_HTML_WORK_BYTES, MAX_HTML_WORK_VERSIONS } from '@cat-cafe/shared';
+import {
+  commitWorkSchema,
+  MAX_HTML_WORK_BYTES,
+  MAX_HTML_WORK_COMMAND_BYTES,
+  MAX_HTML_WORK_VERSIONS,
+  MAX_WORK_COMMAND_BYTES,
+} from '@cat-cafe/shared';
 import { WorkCatalogue } from '../src/domains/collaborative-content/works/catalogue.js';
 import { LivingWorkService } from '../src/domains/collaborative-content/works/service.js';
 import { ProjectContentOwnerService } from '../src/domains/video-studio/content-owner/service.js';
@@ -85,7 +92,7 @@ test('unpublished HTML is discovered by the original Works projection without ex
   );
 });
 
-test('HTML input rejects oversize UTF-8, NUL, malformed Unicode and caller authority; 32 KiB transport stays bounded', async (t) => {
+test('HTML input rejects oversize UTF-8, NUL, malformed Unicode and caller authority; HTML transport stays bounded', async (t) => {
   const f = await htmlFixture(t);
   for (const html of [
     '',
@@ -99,11 +106,59 @@ test('HTML input rejects oversize UTF-8, NUL, malformed Unicode and caller autho
     assert.equal((await f.call({ ...htmlCreate, source: { kind: 'html', html } })).statusCode, 400);
   }
   assert.equal((await f.call({ ...htmlCreate, actor: f.principal.actor })).statusCode, 400);
-  const boundary = await f.call({ ...htmlCreate, source: { kind: 'html', html: `${'猫'.repeat(5461)}x` } });
+  const html = `${'猫'.repeat(Math.floor(MAX_HTML_WORK_BYTES / 3))}${'x'.repeat(MAX_HTML_WORK_BYTES % 3)}`;
+  const boundary = await f.call({ ...htmlCreate, source: { kind: 'html', html } });
   assert.equal(boundary.statusCode, 200, boundary.body);
-  const tooLargeEnvelope = await f.call({ ...htmlCreate, title: 'x'.repeat(33000) });
+  assert.equal((await f.service.readBody(JSON.parse(boundary.json().json).reference, f.principal)).html, html);
+  const tooLargeEnvelope = await f.call({
+    ...htmlCreate,
+    source: { kind: 'html', html: 'x'.repeat(MAX_HTML_WORK_COMMAND_BYTES + 1) },
+  });
   assert.equal(tooLargeEnvelope.statusCode, 413);
   assert.equal((await f.service.list(f.principal)).items.length, 1);
+});
+
+test('non-HTML commands keep the 32 KiB transport limit on both HTTP entries', async (t) => {
+  const f = await htmlFixture(t);
+  const origin = await f.app.listen({ port: 0, host: '127.0.0.1' });
+  for (const url of ['/api/works/command', '/api/callbacks/work']) {
+    const command = { action: 'list' };
+    const body = JSON.stringify({ threadId: 'thread-cover', command });
+    const headers = {
+      ...(url === '/api/works/command' ? { 'x-fixture-user': 'operator' } : f.headers),
+      'content-type': 'application/json',
+    };
+    const boundary = await f.app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: body.padEnd(MAX_WORK_COMMAND_BYTES),
+    });
+    assert.equal(boundary.statusCode, 200, boundary.body);
+    const tooLarge = await f.app.inject({
+      method: 'POST',
+      url,
+      headers,
+      payload: body.padEnd(MAX_WORK_COMMAND_BYTES + 1),
+    });
+    assert.equal(tooLarge.statusCode, 413, tooLarge.body);
+    for (const [bytes, expectedStatus] of [
+      [MAX_WORK_COMMAND_BYTES, 200],
+      [MAX_WORK_COMMAND_BYTES + 1, 413],
+    ]) {
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        const request = httpRequest(new URL(url, origin), { method: 'POST', headers }, (response) => {
+          response.resume();
+          response.on('end', () => resolve(response.statusCode));
+          response.on('error', reject);
+        });
+        request.on('error', reject);
+        request.write(body.padEnd(bytes));
+        request.end();
+      });
+      assert.equal(status, expectedStatus, `${url}: chunked ${bytes} bytes`);
+    }
+  }
 });
 
 test('owner enforces the HTML version quota inside its write lock; replay at capacity still succeeds', async (t) => {

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { MAX_HTML_WORK_BYTES } from '@cat-cafe/shared';
 import { z } from 'zod';
 import { handleWorkCommand, workCommandInputSchema } from '../src/tools/work-tools.js';
 
@@ -170,7 +171,10 @@ test('explicit delivery attaches the exact owner card; reads stay silent and fai
 });
 
 test('the common Work MCP entry forwards bounded HTML input and fixed body reads without a chat publication', async (t) => {
-  assert.match(workCommandInputSchema.command.description ?? '', /JSON escaping can lower the effective HTML size limit/);
+  assert.match(
+    workCommandInputSchema.command.description ?? '',
+    /JSON escaping can lower the effective HTML size limit/,
+  );
   const previous = { ...process.env },
     fetcher = globalThis.fetch;
   process.env.CAT_CAFE_API_URL = 'http://127.0.0.1:1';
@@ -204,5 +208,7 @@ test('the common Work MCP entry forwards bounded HTML input and fixed body reads
     [create, read],
   );
   assert.ok(calls.every((call) => call.url.endsWith('/api/callbacks/work')));
-  assert.throws(() => parse({ ...create.command, source: { kind: 'html', html: '猫'.repeat(6000) } }));
+  assert.throws(() =>
+    parse({ ...create.command, source: { kind: 'html', html: '猫'.repeat(Math.floor(MAX_HTML_WORK_BYTES / 3) + 1) } }),
+  );
 });

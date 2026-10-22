@@ -1,5 +1,11 @@
-import { type WorkCommand, workCommandSchema } from '@cat-cafe/shared';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import { Transform } from 'node:stream';
+import {
+  MAX_HTML_WORK_COMMAND_BYTES,
+  MAX_WORK_COMMAND_BYTES,
+  type WorkCommand,
+  workCommandSchema,
+} from '@cat-cafe/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest, preParsingAsyncHookHandler } from 'fastify';
 import { z } from 'zod';
 import { WorkContextConflictError } from '../domains/collaborative-content/works/context-store.js';
 import { inspectWorkResult } from '../domains/collaborative-content/works/inspection.js';
@@ -81,6 +87,30 @@ function fail(reply: FastifyReply, error: unknown) {
   return replyArtifactReviewError(reply, error);
 }
 
+const streamedCommandBytes = new WeakMap<FastifyRequest, number>();
+const measureCommandBody: preParsingAsyncHookHandler = async (request, _reply, payload) => {
+  if (request.headers['content-length'] !== undefined) return payload;
+  let bytes = 0;
+  return payload.pipe(
+    new Transform({
+      transform(chunk, _encoding, callback) {
+        bytes += chunk.length;
+        streamedCommandBytes.set(request, bytes);
+        callback(null, chunk);
+      },
+    }),
+  );
+};
+
+function exceedsCommandLimit(command: WorkCommand, request: FastifyRequest) {
+  const hasHtmlBody =
+    (command.action === 'create' || command.action === 'submit') &&
+    'kind' in command.source &&
+    command.source.kind === 'html';
+  const bytes = Number(request.headers['content-length'] ?? streamedCommandBytes.get(request) ?? 0);
+  return !hasHtmlBody && bytes > MAX_WORK_COMMAND_BYTES;
+}
+
 export async function registerLivingWorkRoutes(
   app: FastifyInstance,
   deps: {
@@ -89,12 +119,14 @@ export async function registerLivingWorkRoutes(
     contexts?: WorkVideoContextService;
   },
 ) {
-  app.post('/api/works/command', { bodyLimit: 32 * 1024 }, async (request, reply) => {
+  const commandBodyOptions = { bodyLimit: MAX_HTML_WORK_COMMAND_BYTES, preParsing: measureCommandBody };
+  app.post('/api/works/command', commandBodyOptions, async (request, reply) => {
     reply.header('Cache-Control', 'private, no-store');
     const human = directContentHuman(request);
     if (!human) return reply.code(401).send({ error: 'identity_required' });
     try {
       const body = envelope.required({ threadId: true }).parse(request.body);
+      if (exceedsCommandLimit(body.command, request)) return reply.code(413).send({ error: 'work_command_too_large' });
       return await run(deps.service, body.command, { ...human, threadId: body.threadId }, deps.contexts);
     } catch (error) {
       return fail(reply, error);
@@ -102,7 +134,7 @@ export async function registerLivingWorkRoutes(
   });
   await app.register(async (scope) => {
     registerCallbackAuthHook(scope, deps.registry);
-    scope.post('/api/callbacks/work', { bodyLimit: 32 * 1024 }, async (request, reply) => {
+    scope.post('/api/callbacks/work', commandBodyOptions, async (request, reply) => {
       reply.header('Cache-Control', 'private, no-store');
       const authenticated = requireCallbackPrincipal(request, reply);
       if (!authenticated) return;
@@ -110,6 +142,8 @@ export async function registerLivingWorkRoutes(
         return reply.code(403).send({ error: 'current_production_invocation_required' });
       try {
         const body = callbackEnvelope.parse(request.body);
+        if (exceedsCommandLimit(body.command, request))
+          return reply.code(413).send({ error: 'work_command_too_large' });
         if (body.threadId && body.threadId !== authenticated.threadId)
           return reply.code(403).send({ error: 'cross_thread_write' });
         const result = await run(

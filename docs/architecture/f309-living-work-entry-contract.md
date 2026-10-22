@@ -76,7 +76,7 @@ F309 原 `pending_versions` 封存完整接受命令、原 actor 和服务端验
 首批沿相同 `cat_cafe_work`、本人 HTTP 和 callback 接口，直接提交 HTML，不要求创建 Workspace 临时文件。
 
 - `create/submit.source` 可为 `{kind: "html", html: "..."}`；原 Workspace locator 形状保留。标题、operationId、说明和显式 `contentRef + expectedOwnerRevision` 规则不变。同名不合并，改名不改 handle；不能把 MP4 与 HTML 互相替换成同一作品的新版本，HTML 不接受视频 reviewResponse。
-- 正文为非空、无 NUL、可无损编码的 UTF-8，最大 **16 KiB**；每件最多 **256 版**，不淘汰旧版。容量在原 owner 的提交锁内、CAS/重放后检查；满额重放仍返回原回执，下一版返回 `work_version_limit`。完整 JSON 命令仍为 **32 KiB**；大量引号/控制符转义可能更早触发 HTTP 413，不截断正文或全局提高 locator 限额。
+- 正文为非空、无 NUL、可无损编码的 UTF-8，最大 **1 MiB**；每件最多 **256 版**，不淘汰旧版。容量在原 owner 的提交锁内、CAS/重放后检查；满额重放仍返回原回执，下一版返回 `work_version_limit`。只有带 HTML 正文的 create/submit 命令放宽到约 **2 MiB**（2 × 正文上限 + 32 KiB）；其他命令仍为 **32 KiB**。JSON 转义可能更早触发 HTTP 413，不截断正文或全局提高 locator 限额。
 - 正文只在 F138 原 content owner 的 `text/html` blob 中保留；work scope/receipt 绑定真实 owner、thread、具名 actor。来源注释仅存 `{kind:"html"}`，原 sourcePublication 标明 `inline-html` 和字节 digest；它们不复制正文，也不是第二作品身份。
 - `read` 仍只返回固定版元数据；新增 `read-body` 接相同 `reference`，返回 `{reference,mediaType:"text/html",html}`。它只读取已授权的固定 HTML blob，有界校验长度、digest、UTF-8，返回前重新授权。callback 沿现有 snapshot-fenced JSON 文本分页，续页必须复制 snapshot、nextCursor。缺失或无权固定版均为内容无关 `access_denied`；不存在的 handle 不授予读取权。
 - 原文始终是不可信数据；存储/读取不执行脚本、不解析依赖、不抓取外部 URL。读取是 JSON、private/no-store，没有同源可执行 HTML/raw URL。提交不做 DOMPurify 转换，避免丢失续改源；后续预览必须复用 `sanitizeWidgetHtml` 与 `HtmlWidgetBlock` 的 iframe sandbox，不能据存储成功声称任意应用或外部资源可运行。内联事件策略不在此切片更改。

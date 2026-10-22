@@ -1,3 +1,4 @@
+import { MAX_HTML_WORK_BYTES } from '@cat-cafe/shared';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -119,7 +120,7 @@ it.each([
     if (failure === 'wrong-body-version') result.reference.ownerRevision = 1;
     if (failure === 'wrong-handle') result.reference.contentRef = `work:${'b'.repeat(64)}`;
     if (failure === 'wrong-type') result.mediaType = 'video/mp4';
-    if (failure === 'oversize') result.html = '猫'.repeat(6000);
+    if (failure === 'oversize') result.html = '猫'.repeat(Math.floor(MAX_HTML_WORK_BYTES / 3) + 1);
     return Response.json(result);
   });
   await render();
